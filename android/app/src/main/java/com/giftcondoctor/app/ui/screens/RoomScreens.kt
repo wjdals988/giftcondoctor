@@ -1,17 +1,23 @@
 package com.giftcondoctor.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Group
@@ -21,6 +27,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,7 +45,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +55,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.core.UiState
+import com.giftcondoctor.app.core.daysBeforeExpiry
+import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.PublicRoom
@@ -54,10 +65,14 @@ import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.data.model.RoomMembership
 import com.giftcondoctor.app.ui.components.EmptyState
 import com.giftcondoctor.app.ui.components.ErrorState
+import com.giftcondoctor.app.ui.components.GDBadge
+import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
+import com.giftcondoctor.app.ui.components.GDStatCard
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
+import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
@@ -89,14 +104,19 @@ fun RoomListScreen(
             }
         }
     ) { modifier ->
-        Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GDInfoBanner(
+                title = "만료 알림을 켜두면 놓치지 않아요",
+                body = "기프티콘닥터가 매일 오전 9시에 만료 예정 쿠폰을 확인해 알려드립니다.",
+                icon = Icons.Default.Notifications
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCreateRoom, modifier = Modifier.weight(1f)) {
+                Button(onClick = onCreateRoom, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.small) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text("방 만들기", modifier = Modifier.padding(start = 6.dp))
                 }
-                OutlinedButton(onClick = onJoinRoom, modifier = Modifier.weight(1f)) {
-                    Text("초대코드 입장")
+                OutlinedButton(onClick = onJoinRoom, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.small) {
+                    Text("방 입장")
                 }
             }
             when (val state = rooms) {
@@ -117,10 +137,24 @@ private fun RoomList(rooms: List<RoomMembership>, onOpenRoom: (String) -> Unit) 
 
     LazyColumn(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(rooms, key = { it.roomId }) { room ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { onOpenRoom(room.roomId) }) {
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { onOpenRoom(room.roomId) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 ListItem(
-                    headlineContent = { Text(room.name) },
-                    supportingContent = { Text(if (room.role == "owner") "방장" else "멤버") }
+                    headlineContent = { Text(room.name, fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text(if (room.role == "owner") "내가 만든 방" else "참여 중") },
+                    leadingContent = {
+                        Box(
+                            modifier = Modifier.size(44.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    trailingContent = {
+                        GDBadge(if (room.role == "owner") "방장" else "멤버")
+                    }
                 )
             }
         }
@@ -144,6 +178,11 @@ fun CreateRoomScreen(
             modifier = modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            GDInfoBanner(
+                title = "방을 만들고 쿠폰을 함께 관리하세요",
+                body = "공개 방은 목록에 보이고, 비공개로 만들면 초대코드로만 입장할 수 있습니다.",
+                icon = Icons.Default.Group
+            )
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -179,9 +218,10 @@ fun CreateRoomScreen(
             Button(
                 onClick = { viewModel.createRoom(name, publicRoom, password) { onCreated(it) } },
                 enabled = !busy && name.isNotBlank() && (!publicRoom || password.length >= 4),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small
             ) {
-                Text("생성하기")
+                Text("방 만들기")
             }
         }
     }
@@ -303,9 +343,12 @@ private fun PublicRoomList(rooms: List<PublicRoom>, onSelect: (PublicRoom) -> Un
         items(rooms, key = { it.roomId }) { room ->
             Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(room) }) {
                 ListItem(
-                    headlineContent = { Text(room.name) },
+                    headlineContent = { Text(room.name, fontWeight = FontWeight.SemiBold) },
                     supportingContent = {
                         Text("멤버 ${room.memberCount}명" + if (room.alreadyJoined) " · 참여 중" else "")
+                    },
+                    trailingContent = {
+                        GDBadge(if (room.alreadyJoined) "참여 중" else "입장")
                     }
                 )
             }
@@ -346,35 +389,93 @@ fun RoomDetailScreen(
         when (val state = coupons) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> CouponList(state.data, onOpenCoupon, modifier)
+            is UiState.Success -> RoomDashboard(state.data, onOpenCoupon, modifier)
         }
     }
 }
 
 @Composable
-private fun CouponList(coupons: List<Coupon>, onOpenCoupon: (String) -> Unit, modifier: Modifier) {
-    if (coupons.isEmpty()) {
-        EmptyState("아직 등록된 쿠폰이 없습니다.")
-        return
-    }
+private fun RoomDashboard(coupons: List<Coupon>, onOpenCoupon: (String) -> Unit, modifier: Modifier) {
+    val today = seoulToday()
+    val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
+    val todayCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) == 0 }
+    val soonCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) in 0..3 }
+    val activeCount = actionable.count()
+    val usedCount = coupons.count { it.status == "used" }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item {
+            ReminderTimeBanner()
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                GDStatCard("오늘 만료", "${todayCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                GDStatCard("3일 이내", "${soonCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.tertiary)
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                GDStatCard("사용 가능", "${activeCount}개", Modifier.weight(1f))
+                GDStatCard("사용 완료", "${usedCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Text("쿠폰 목록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (coupons.isEmpty()) {
+            item {
+                EmptyState("아직 등록된 쿠폰이 없습니다.")
+            }
+        }
         items(coupons, key = { it.id }) { coupon ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { onOpenCoupon(coupon.id) }) {
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { onOpenCoupon(coupon.id) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 ListItem(
-                    headlineContent = { Text(coupon.title) },
+                    headlineContent = { Text(coupon.title, fontWeight = FontWeight.SemiBold) },
                     supportingContent = {
                         Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${coupon.expiresLocalDate} · ${statusLabel(coupon.status)}")
                     },
+                    leadingContent = {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                coupon.title.firstOrNull()?.toString() ?: "쿠",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
                     trailingContent = {
-                        if (coupon.visibility == "private") Text("비공개", color = MaterialTheme.colorScheme.primary)
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            GDBadge(couponDdayText(coupon))
+                            if (coupon.visibility == "private") {
+                                Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 )
             }
         }
+    }
+}
+
+private fun couponDdayText(coupon: Coupon): String {
+    if (coupon.status == "used") return "사용 완료"
+    if (coupon.status == "expired") return "만료"
+    val days = daysBeforeExpiry(seoulToday(), coupon.expiresLocalDate)
+    return when {
+        days < 0 -> "만료"
+        days == 0 -> "오늘"
+        else -> "D-$days"
     }
 }
 
@@ -409,18 +510,23 @@ fun RoomSettingsScreen(
                     Text(room.name, style = MaterialTheme.typography.headlineSmall)
                     Text("초대코드: ${room.inviteCode ?: "없음"}")
                     Text("만료: ${room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
-                    Button(onClick = { settingsViewModel.regenerateInvite(roomId) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { settingsViewModel.regenerateInvite(roomId) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small
+                    ) {
                         Text("초대코드 재발급")
                     }
                     HorizontalDivider()
-                    Text("방 기본 알림")
-                    Text(
-                        "알림은 매일 오전 9시(한국시간)에 발송됩니다. 방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("방 기본 알림", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    ReminderTimeBanner()
+                    Text("방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     ModeChips(selected = roomMode, onSelected = { roomMode = it })
-                    Button(onClick = { settingsViewModel.updateRoom(roomId, roomMode) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { settingsViewModel.updateRoom(roomId, roomMode) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small
+                    ) {
                         Text("방 기본값 저장")
                     }
                     HorizontalDivider()
@@ -447,10 +553,18 @@ fun RoomSettingsScreen(
                             )
                         }
                     }
-                    Button(onClick = { settingsViewModel.updateMember(roomId, memberEnabled && canUsePush, memberMode) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { settingsViewModel.updateMember(roomId, memberEnabled && canUsePush, memberMode) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small
+                    ) {
                         Text("내 방 알림 저장")
                     }
-                    OutlinedButton(onClick = { settingsViewModel.leaveRoom(roomId, onLeft) }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small
+                    ) {
                         Text("방 나가기")
                     }
                     InlineMessage(message)
@@ -521,7 +635,7 @@ fun ModeChips(selected: NotificationMode, onSelected: (NotificationMode) -> Unit
             FilterChip(
                 selected = selected == mode,
                 onClick = { onSelected(mode) },
-                label = { Text("${mode.label} ${mode.days}") }
+                label = { Text("${mode.label} · ${reminderDaysLabel(mode)}") }
             )
         }
     }
@@ -529,3 +643,6 @@ fun ModeChips(selected: NotificationMode, onSelected: (NotificationMode) -> Unit
 
 private val inviteFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.of(AppConstants.SEOUL_TIME_ZONE))
+
+private fun reminderDaysLabel(mode: NotificationMode): String =
+    mode.days.joinToString(" / ") { if (it == 0) "당일" else "${it}일 전" }

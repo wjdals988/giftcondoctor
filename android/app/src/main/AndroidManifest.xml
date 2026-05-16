@@ -12,6 +12,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Giftcondoctor">
 
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_gd_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/gd_primary" />
+
         <service
             android:name=".notifications.GDFirebaseMessagingService"
             android:exported="false">

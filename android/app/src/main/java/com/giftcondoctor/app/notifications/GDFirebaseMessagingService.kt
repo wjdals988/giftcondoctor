@@ -60,12 +60,17 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
         )
 
         val notification = NotificationCompat.Builder(this, AppConstants.EXPIRY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_gd_notification)
+            .setColor(0xFF00B4A6.toInt())
             .setContentTitle(title)
             .setContentText(body)
+            .setSubText("오전 9시 만료 알림")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
 
         NotificationManagerCompat.from(this).notify(deepLink.hashCode(), notification)
@@ -79,7 +84,7 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
             "쿠폰 만료 알림",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "만료 예정 쿠폰을 알려드립니다."
+            description = "매일 오전 9시, 만료 예정 쿠폰을 알려드립니다."
         }
         manager.createNotificationChannel(channel)
     }

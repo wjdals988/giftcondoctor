@@ -80,7 +80,9 @@ async function sendToUid(params: {
       priority: "high",
       notification: {
         channelId: "coupon_expiry",
-        clickAction: "OPEN_COUPON_DETAIL"
+        clickAction: "OPEN_COUPON_DETAIL",
+        color: "#00B4A6",
+        icon: "ic_stat_gd_notification"
       }
     }
   });
@@ -177,7 +179,7 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
           couponId,
           daysBefore,
           title: notificationTitle(couponData.brand, daysBefore),
-          body: notificationBody(couponData.title, expiresLocalDate)
+          body: notificationBody(couponData.title, expiresLocalDate, daysBefore)
         });
         summary.sent += result.sent;
         summary.skipped += result.skipped;

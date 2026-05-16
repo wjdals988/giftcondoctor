@@ -24,6 +24,7 @@ import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
+import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
 
@@ -44,11 +45,7 @@ fun NotificationSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("기본 만료 알림", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "알림은 매일 오전 9시(한국시간)에 한 번 발송됩니다. 만료일 기준 D-7, D-3, D-1, 당일처럼 선택한 알림 모드에 해당하는 쿠폰만 알려줍니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            ReminderTimeBanner()
             Text(
                 "최소: 3일 전/당일 · 기본: 7일 전/3일 전/1일 전/당일 · 꼼꼼: 7/5/3/2/1일 전/당일",
                 style = MaterialTheme.typography.bodySmall,
@@ -66,7 +63,8 @@ fun NotificationSettingsScreen(
             NotificationPermissionStatus(notificationPermission)
             Button(
                 onClick = { viewModel.updateDefault(mode, pushEnabled && canUsePush) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small
             ) {
                 Text("저장")
             }

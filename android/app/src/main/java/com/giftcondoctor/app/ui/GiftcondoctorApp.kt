@@ -3,8 +3,6 @@ package com.giftcondoctor.app.ui
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +31,7 @@ import com.giftcondoctor.app.ui.screens.RoomDetailScreen
 import com.giftcondoctor.app.ui.screens.RoomListScreen
 import com.giftcondoctor.app.ui.screens.RoomSettingsScreen
 import com.giftcondoctor.app.ui.components.RequestNotificationPermissionOnLaunch
+import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 
 object Routes {
@@ -71,9 +70,7 @@ fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
         }
     }
 
-    MaterialTheme(
-        colorScheme = lightColorScheme()
-    ) {
+    GDTheme {
         RequestNotificationPermissionOnLaunch()
         Box(
             modifier = Modifier

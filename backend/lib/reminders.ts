@@ -94,9 +94,12 @@ export function notificationTitle(brand: unknown, daysBefore: number) {
   return `${daysBefore}일 뒤 만료되는 쿠폰이 있어요`;
 }
 
-export function notificationBody(title: unknown, expiresLocalDate: unknown) {
+export function notificationBody(title: unknown, expiresLocalDate: unknown, daysBefore?: number) {
   const couponTitle = typeof title === "string" && title.trim().length > 0 ? title.trim() : "쿠폰";
   const date = typeof expiresLocalDate === "string" ? expiresLocalDate : "";
+  if (daysBefore === 0) return `${couponTitle} · 오늘까지 사용할 수 있어요.`;
+  if (daysBefore === 1) return `${couponTitle} · 내일까지 사용하세요.`;
+  if (typeof daysBefore === "number" && daysBefore > 1) return `${couponTitle} · ${daysBefore}일 남았어요.`;
   return date ? `${couponTitle} · ${date}` : couponTitle;
 }
 

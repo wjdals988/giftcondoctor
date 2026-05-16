@@ -5,7 +5,9 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,9 +50,11 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.ui.components.ErrorState
+import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
+import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import kotlinx.coroutines.Dispatchers
@@ -94,16 +103,32 @@ fun AddCouponScreen(
             modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedButton(
-                onClick = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                modifier = Modifier.fillMaxWidth()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 148.dp)
+                    .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
             ) {
-                Text(if (imageUri == null) "이미지 선택" else "이미지 다시 선택")
+                Box(modifier = Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            Icons.Default.AddPhotoAlternate,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Text(if (imageUri == null) "쿠폰 이미지 추가" else "이미지 다시 선택", color = MaterialTheme.colorScheme.primary)
+                        Text("이미지 최대 10MB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             imageUri?.let { SelectedImagePreview(it) }
-            Text("이미지는 서버 API를 통해 private Blob으로 업로드됩니다.", style = MaterialTheme.typography.bodySmall)
+            GDInfoBanner(
+                title = "이미지는 안전하게 보관돼요",
+                body = "앱에는 공개 URL을 저장하지 않고, 인증된 멤버만 서버를 통해 이미지를 볼 수 있습니다."
+            )
             if (analysisBusy) {
                 Text("이미지를 분석하는 중입니다.", style = MaterialTheme.typography.bodySmall)
             }
@@ -119,6 +144,7 @@ fun AddCouponScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+            ReminderTimeBanner()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("비공개 쿠폰")
                 Switch(
@@ -159,9 +185,10 @@ fun AddCouponScreen(
                         onAdded = onAdded
                     )
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small
             ) {
-                Text(if (busy) "추가 중..." else "쿠폰 추가")
+                Text(if (busy) "추가 중..." else "추가하기")
             }
         }
     }
