@@ -26,15 +26,19 @@ export async function POST(request: Request) {
     const rooms = await db
       .collection("rooms")
       .where("inviteCode", "==", inviteCode)
-      .where("inviteExpiresAt", ">", Timestamp.now())
-      .limit(1)
+      .limit(10)
       .get();
 
-    if (rooms.empty) {
+    const inviteNow = Timestamp.now();
+    const room = rooms.docs.find((doc) => {
+      const expiresAt = doc.get("inviteExpiresAt");
+      return expiresAt instanceof Timestamp && expiresAt.toMillis() > inviteNow.toMillis();
+    });
+
+    if (!room) {
       throw new ApiError(404, "초대코드가 없거나 만료되었습니다.");
     }
 
-    const room = rooms.docs[0];
     const roomId = room.id;
     const profile = userProfile(token);
     const now = FieldValue.serverTimestamp();

@@ -1,6 +1,7 @@
 package com.giftcondoctor.app.ui.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,6 +52,10 @@ class SessionViewModel(
         _message.value = null
     }
 
+    fun showMessage(message: String) {
+        _message.value = message
+    }
+
     fun signIn(email: String, password: String) = runAuth {
         authRepository.signInWithEmail(email, password)
         pushTokenRepository.saveCurrentToken()
@@ -61,8 +66,10 @@ class SessionViewModel(
         pushTokenRepository.saveCurrentToken()
     }
 
-    fun signInWithGoogle(context: Context) = runAuth {
-        authRepository.signInWithGoogle(context)
+    fun googleSignInIntent(context: Context): Intent = authRepository.googleSignInIntent(context)
+
+    fun signInWithGoogleIntent(data: Intent?) = runAuth {
+        authRepository.signInWithGoogleIntent(data)
         pushTokenRepository.saveCurrentToken()
     }
 

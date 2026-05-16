@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.NotificationMode
+import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
@@ -64,6 +65,7 @@ fun NotificationSettingsScreen(
                 Text("저장")
             }
             InlineMessage(message)
+            AppVersionText(modifier = Modifier.padding(top = 8.dp))
         }
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.giftcondoctor.app.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,4 +91,14 @@ fun InlineMessage(message: String?) {
             modifier = Modifier.padding(vertical = 8.dp)
         )
     }
+}
+
+@Composable
+fun AppVersionText(modifier: Modifier = Modifier) {
+    Text(
+        text = "버전 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = modifier
+    )
 }

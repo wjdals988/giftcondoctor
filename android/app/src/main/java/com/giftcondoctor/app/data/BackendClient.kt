@@ -133,7 +133,7 @@ class BackendClient(
         val serverMessage = body?.let {
             runCatching { JSONObject(it).optString("error") }.getOrNull()
         }?.takeIf { it.isNotBlank() }
-        return serverMessage ?: "서버 요청에 실패했습니다. ($code)"
+        return if (serverMessage != null) "$serverMessage ($code)" else "서버 요청에 실패했습니다. ($code)"
     }
 }
 

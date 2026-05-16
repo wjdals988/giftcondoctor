@@ -1,11 +1,10 @@
 package com.giftcondoctor.app.data
 
 import android.content.Context
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
+import android.content.Intent
 import com.giftcondoctor.app.BuildConfig
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
@@ -38,22 +37,22 @@ class AuthRepository(
         upsertUser()
     }
 
-    suspend fun signInWithGoogle(context: Context) {
+    fun googleSignInIntent(context: Context): Intent {
         if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isBlank()) {
-            throw IOException("googleWebClientId가 local.properties에 설정되지 않았습니다.")
+            throw IOException("Google 로그인 설정이 누락되었습니다. local.properties의 googleWebClientId를 확인해 주세요.")
         }
 
-        val option = GetGoogleIdOption.Builder()
-            .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
-            .setFilterByAuthorizedAccounts(false)
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+            .requestEmail()
             .build()
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(option)
-            .build()
+        return GoogleSignIn.getClient(context, options).signInIntent
+    }
 
-        val credential = CredentialManager.create(context).getCredential(context, request).credential
-        val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-        val firebaseCredential = GoogleAuthProvider.getCredential(googleCredential.idToken, null)
+    suspend fun signInWithGoogleIntent(data: Intent?) {
+        val account = GoogleSignIn.getSignedInAccountFromIntent(data).await()
+        val idToken = account.idToken ?: throw IOException("Google ID 토큰을 받지 못했습니다.")
+        val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
         auth.signInWithCredential(firebaseCredential).await()
         upsertUser()
     }

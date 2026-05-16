@@ -1,9 +1,14 @@
 package com.giftcondoctor.app.ui.screens
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,6 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 
@@ -36,6 +42,15 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
     val message by sessionViewModel.message.collectAsStateWithLifecycle()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val googleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            sessionViewModel.signInWithGoogleIntent(result.data)
+        } else {
+            sessionViewModel.showMessage("Google 로그인이 취소되었습니다.")
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -80,7 +95,13 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
             Text("이메일로 회원가입")
         }
         OutlinedButton(
-            onClick = { sessionViewModel.signInWithGoogle(context) },
+            onClick = {
+                runCatching {
+                    googleLauncher.launch(sessionViewModel.googleSignInIntent(context))
+                }.onFailure {
+                    sessionViewModel.showMessage(it.localizedMessage ?: "Google 로그인 창을 열 수 없습니다.")
+                }
+            },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         ) {
@@ -90,5 +111,8 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
         if (busy) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        AppVersionText()
     }
 }

@@ -25,10 +25,14 @@ export async function createUniqueInviteCode() {
     const existing = await db
       .collection("rooms")
       .where("inviteCode", "==", code)
-      .where("inviteExpiresAt", ">", now)
-      .limit(1)
+      .limit(10)
       .get();
-    if (existing.empty) return code;
+
+    const hasActiveInvite = existing.docs.some((doc) => {
+      const expiresAt = doc.get("inviteExpiresAt");
+      return expiresAt instanceof Timestamp && expiresAt.toMillis() > now.toMillis();
+    });
+    if (!hasActiveInvite) return code;
   }
 
   throw new Error("초대코드를 생성하지 못했습니다.");
