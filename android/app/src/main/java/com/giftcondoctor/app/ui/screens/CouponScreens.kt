@@ -1,5 +1,6 @@
 package com.giftcondoctor.app.ui.screens
 
+import android.net.Uri
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -47,6 +48,8 @@ import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -59,8 +62,11 @@ fun AddCouponScreen(
 ) {
     val context = LocalContext.current
     val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val analysisBusy by viewModel.analysisBusy.collectAsStateWithLifecycle()
+    val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
+    val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
-    var imageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
     var title by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
     var expires by remember {
@@ -68,8 +74,19 @@ fun AddCouponScreen(
     }
     var privateCoupon by remember { mutableStateOf(false) }
     var ownerOnly by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {
-        imageUri = it
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        imageUri = uri
+    }
+
+    LaunchedEffect(imageUri) {
+        imageUri?.let { viewModel.recognizeCouponImage(context, it) }
+    }
+
+    LaunchedEffect(suggestion) {
+        val data = suggestion ?: return@LaunchedEffect
+        data.title?.let { title = it }
+        data.brand?.let { brand = it }
+        data.expiresLocalDate?.let { expires = it.toString() }
     }
 
     GDScaffold(title = "쿠폰 추가", onBack = onBack) { modifier ->
@@ -85,7 +102,14 @@ fun AddCouponScreen(
             ) {
                 Text(if (imageUri == null) "이미지 선택" else "이미지 다시 선택")
             }
+            imageUri?.let { SelectedImagePreview(it) }
             Text("이미지는 서버 API를 통해 private Blob으로 업로드됩니다.", style = MaterialTheme.typography.bodySmall)
+            if (analysisBusy) {
+                Text("이미지를 분석하는 중입니다.", style = MaterialTheme.typography.bodySmall)
+            }
+            analysisMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("쿠폰 이름") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("브랜드") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(
@@ -97,12 +121,28 @@ fun AddCouponScreen(
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("비공개 쿠폰")
-                Switch(checked = privateCoupon, onCheckedChange = { privateCoupon = it })
+                Switch(
+                    checked = privateCoupon,
+                    onCheckedChange = {
+                        privateCoupon = it
+                        if (it) ownerOnly = true
+                    }
+                )
             }
+            Text(
+                "비공개 쿠폰은 방 멤버 목록에 보이지 않고 등록자 본인만 상세/이미지/알림에 접근합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("등록자에게만 알림")
                 Switch(checked = ownerOnly || privateCoupon, enabled = !privateCoupon, onCheckedChange = { ownerOnly = it })
             }
+            Text(
+                "켜면 쿠폰은 방에 공유되지만 만료 푸시 알림은 쿠폰을 등록한 사람에게만 갑니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             InlineMessage(message)
             Button(
                 enabled = !busy,
@@ -122,6 +162,36 @@ fun AddCouponScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (busy) "추가 중..." else "쿠폰 추가")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedImagePreview(imageUri: Uri) {
+    val context = LocalContext.current
+    var bitmap by remember(imageUri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+
+    LaunchedEffect(imageUri) {
+        bitmap = withContext(Dispatchers.IO) {
+            context.contentResolver.openInputStream(imageUri)?.use { input ->
+                BitmapFactory.decodeStream(input)?.asImageBitmap()
+            }
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp)) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val preview = bitmap
+            if (preview == null) {
+                Text("선택한 이미지를 불러오는 중입니다")
+            } else {
+                Image(
+                    bitmap = preview,
+                    contentDescription = "선택한 쿠폰 이미지 미리보기",
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.Fit
+                )
             }
         }
     }
@@ -260,12 +330,28 @@ private fun EditCouponForm(
     OutlinedTextField(value = expires, onValueChange = { expires = it }, label = { Text("만료일") }, modifier = Modifier.fillMaxWidth())
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("비공개 쿠폰")
-        Switch(checked = privateCoupon, onCheckedChange = { privateCoupon = it })
+        Switch(
+            checked = privateCoupon,
+            onCheckedChange = {
+                privateCoupon = it
+                if (it) ownerOnly = true
+            }
+        )
     }
+    Text(
+        "비공개 쿠폰은 등록자 본인만 볼 수 있습니다.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("등록자에게만 알림")
         Switch(checked = ownerOnly || privateCoupon, enabled = !privateCoupon, onCheckedChange = { ownerOnly = it })
     }
+    Text(
+        "방에는 공유하되 만료 알림은 등록자에게만 보내고 싶을 때 사용합니다.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     Button(
         onClick = {
             onSave(

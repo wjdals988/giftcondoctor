@@ -6,7 +6,9 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.giftcondoctor.app.core.NotificationMode
+import com.giftcondoctor.app.core.CouponTextSuggestion
 import com.giftcondoctor.app.core.UiState
+import com.giftcondoctor.app.core.parseCouponText
 import com.giftcondoctor.app.data.AuthRepository
 import com.giftcondoctor.app.data.CouponRepository
 import com.giftcondoctor.app.data.NotificationRepository
@@ -16,11 +18,15 @@ import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.data.model.RoomMembership
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
 class SessionViewModel(
@@ -170,6 +176,42 @@ class AddCouponViewModel(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
+
+    private val _analysisBusy = MutableStateFlow(false)
+    val analysisBusy: StateFlow<Boolean> = _analysisBusy
+
+    private val _analysisMessage = MutableStateFlow<String?>(null)
+    val analysisMessage: StateFlow<String?> = _analysisMessage
+
+    private val _suggestion = MutableStateFlow<CouponTextSuggestion?>(null)
+    val suggestion: StateFlow<CouponTextSuggestion?> = _suggestion
+
+    fun recognizeCouponImage(context: Context, imageUri: Uri) {
+        viewModelScope.launch {
+            _analysisBusy.value = true
+            _analysisMessage.value = "이미지에서 쿠폰 정보를 읽는 중입니다."
+            _suggestion.value = null
+
+            runCatching {
+                val image = InputImage.fromFilePath(context, imageUri)
+                val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+                val recognizedText = recognizer.process(image).await().text
+                parseCouponText(recognizedText)
+            }.onSuccess { result ->
+                _suggestion.value = result
+                _analysisMessage.value =
+                    if (result.title != null || result.brand != null || result.expiresLocalDate != null) {
+                        "이미지에서 읽은 정보로 입력값을 채웠습니다. 정확한지 확인해 주세요."
+                    } else {
+                        "이미지는 선택됐지만 자동으로 읽을 수 있는 정보가 부족합니다."
+                    }
+            }.onFailure {
+                _analysisMessage.value = it.localizedMessage ?: "이미지 정보를 자동으로 읽지 못했습니다."
+            }
+
+            _analysisBusy.value = false
+        }
+    }
 
     fun addCoupon(
         context: Context,
