@@ -14,6 +14,7 @@ import {
 } from "@/lib/reminders";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type Summary = {
   scanned: number;
