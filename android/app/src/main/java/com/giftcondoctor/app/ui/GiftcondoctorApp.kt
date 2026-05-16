@@ -32,6 +32,7 @@ import com.giftcondoctor.app.ui.screens.NotificationSettingsScreen
 import com.giftcondoctor.app.ui.screens.RoomDetailScreen
 import com.giftcondoctor.app.ui.screens.RoomListScreen
 import com.giftcondoctor.app.ui.screens.RoomSettingsScreen
+import com.giftcondoctor.app.ui.components.RequestNotificationPermissionOnLaunch
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 
 object Routes {
@@ -73,6 +74,7 @@ fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
     MaterialTheme(
         colorScheme = lightColorScheme()
     ) {
+        RequestNotificationPermissionOnLaunch()
         Box(
             modifier = Modifier
                 .fillMaxSize()

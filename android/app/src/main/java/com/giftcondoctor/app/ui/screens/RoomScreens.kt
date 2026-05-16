@@ -52,6 +52,8 @@ import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
+import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
+import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
@@ -259,6 +261,8 @@ fun RoomSettingsScreen(
     LaunchedEffect(roomId) { roomViewModel.start(roomId) }
     val roomState by roomViewModel.room.collectAsStateWithLifecycle()
     val message by settingsViewModel.message.collectAsStateWithLifecycle()
+    val notificationPermission = rememberNotificationPermissionState()
+    val canUsePush = notificationPermission.granted || !notificationPermission.runtimeRequired
     var roomMode by remember { mutableStateOf(NotificationMode.Basic) }
     var memberEnabled by remember { mutableStateOf(true) }
     var memberMode by remember { mutableStateOf(NotificationMode.Basic) }
@@ -288,8 +292,13 @@ fun RoomSettingsScreen(
                     HorizontalDivider()
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("이 방 알림 받기")
-                        Switch(checked = memberEnabled, onCheckedChange = { memberEnabled = it })
+                        Switch(
+                            checked = memberEnabled && canUsePush,
+                            enabled = canUsePush,
+                            onCheckedChange = { memberEnabled = it }
+                        )
                     }
+                    NotificationPermissionStatus(notificationPermission)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         NotificationMode.entries.forEach { mode ->
                             FilterChip(
@@ -299,7 +308,7 @@ fun RoomSettingsScreen(
                             )
                         }
                     }
-                    Button(onClick = { settingsViewModel.updateMember(roomId, memberEnabled, memberMode) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { settingsViewModel.updateMember(roomId, memberEnabled && canUsePush, memberMode) }, modifier = Modifier.fillMaxWidth()) {
                         Text("내 방 알림 저장")
                     }
                     OutlinedButton(onClick = { settingsViewModel.leaveRoom(roomId, onLeft) }, modifier = Modifier.fillMaxWidth()) {

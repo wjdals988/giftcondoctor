@@ -1,9 +1,5 @@
 package com.giftcondoctor.app.ui.screens
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +23,8 @@ import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
+import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
+import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
 
 @Composable
@@ -37,7 +35,8 @@ fun NotificationSettingsScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     var mode by remember { mutableStateOf(NotificationMode.Basic) }
     var pushEnabled by remember { mutableStateOf(true) }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val notificationPermission = rememberNotificationPermissionState()
+    val canUsePush = notificationPermission.granted || !notificationPermission.runtimeRequired
 
     GDScaffold(title = "알림 설정", onBack = onBack) { modifier ->
         Column(
@@ -48,18 +47,15 @@ fun NotificationSettingsScreen(
             ModeChips(selected = mode, onSelected = { mode = it })
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("푸시 알림 사용")
-                Switch(checked = pushEnabled, onCheckedChange = { pushEnabled = it })
+                Switch(
+                    checked = pushEnabled && canUsePush,
+                    enabled = canUsePush,
+                    onCheckedChange = { pushEnabled = it }
+                )
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Button(
-                    onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Android 알림 권한 허용")
-                }
-            }
+            NotificationPermissionStatus(notificationPermission)
             Button(
-                onClick = { viewModel.updateDefault(mode, pushEnabled) },
+                onClick = { viewModel.updateDefault(mode, pushEnabled && canUsePush) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("저장")
