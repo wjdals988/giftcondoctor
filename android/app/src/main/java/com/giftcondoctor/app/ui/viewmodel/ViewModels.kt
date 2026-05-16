@@ -15,6 +15,7 @@ import com.giftcondoctor.app.data.NotificationRepository
 import com.giftcondoctor.app.data.PushTokenRepository
 import com.giftcondoctor.app.data.RoomRepository
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.data.model.RoomMembership
@@ -106,6 +107,9 @@ class RoomListViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _publicRooms = MutableStateFlow<UiState<List<PublicRoom>>>(UiState.Loading)
+    val publicRooms: StateFlow<UiState<List<PublicRoom>>> = _publicRooms
+
     init {
         viewModelScope.launch {
             repository.observeMemberships()
@@ -114,14 +118,28 @@ class RoomListViewModel(
         }
     }
 
-    fun createRoom(name: String, onCreated: (String) -> Unit) = runAction {
-        val roomId = repository.createRoom(name)
+    fun createRoom(name: String, isPublic: Boolean, password: String, onCreated: (String) -> Unit) = runAction {
+        val roomId = repository.createRoom(name, isPublic, password)
         onCreated(roomId)
     }
 
     fun joinRoom(inviteCode: String, onJoined: (String) -> Unit) = runAction {
         val roomId = repository.joinRoom(inviteCode)
         onJoined(roomId)
+    }
+
+    fun joinPublicRoom(roomId: String, password: String, onJoined: (String) -> Unit) = runAction {
+        val roomIdResult = repository.joinPublicRoom(roomId, password)
+        onJoined(roomIdResult)
+    }
+
+    fun refreshPublicRooms() {
+        viewModelScope.launch {
+            _publicRooms.value = UiState.Loading
+            runCatching { repository.publicRooms() }
+                .onSuccess { _publicRooms.value = UiState.Success(it) }
+                .onFailure { _publicRooms.value = UiState.Error(it.localizedMessage ?: "공개 방 목록을 불러오지 못했습니다.") }
+        }
     }
 
     private fun runAction(block: suspend () -> Unit) {

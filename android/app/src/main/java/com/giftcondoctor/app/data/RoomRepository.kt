@@ -3,6 +3,7 @@ package com.giftcondoctor.app.data
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.data.model.RoomMembership
+import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.toRoom
 import com.giftcondoctor.app.data.model.toRoomMember
 import com.giftcondoctor.app.data.model.toRoomMembership
@@ -62,9 +63,15 @@ class RoomRepository(
         awaitClose { registration.remove() }
     }
 
-    suspend fun createRoom(name: String): String = backend.createRoom(name)
+    suspend fun createRoom(name: String, isPublic: Boolean, password: String): String =
+        backend.createRoom(name, isPublic, password)
 
     suspend fun joinRoom(inviteCode: String): String = backend.joinRoom(inviteCode)
+
+    suspend fun joinPublicRoom(roomId: String, password: String): String =
+        backend.joinPublicRoom(roomId, password)
+
+    suspend fun publicRooms(): List<PublicRoom> = backend.publicRooms()
 
     suspend fun regenerateInvite(roomId: String): String = backend.regenerateInvite(roomId)
 

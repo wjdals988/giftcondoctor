@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.UploadedImage
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,7 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 
@@ -24,14 +26,52 @@ class BackendClient(
     private val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun createRoom(name: String): String {
-        val response = postJson("/api/rooms/create", JSONObject().put("name", name))
+    suspend fun createRoom(name: String, isPublic: Boolean, password: String): String {
+        val response = postJson(
+            "/api/rooms/create",
+            JSONObject()
+                .put("name", name)
+                .put("isPublic", isPublic)
+                .put("password", password)
+        )
         return JSONObject(response).getString("roomId")
     }
 
     suspend fun joinRoom(inviteCode: String): String {
         val response = postJson("/api/rooms/join", JSONObject().put("inviteCode", inviteCode))
         return JSONObject(response).getString("roomId")
+    }
+
+    suspend fun joinPublicRoom(roomId: String, password: String): String {
+        val response = postJson(
+            "/api/rooms/join",
+            JSONObject()
+                .put("roomId", roomId)
+                .put("password", password)
+        )
+        return JSONObject(response).getString("roomId")
+    }
+
+    suspend fun publicRooms(): List<PublicRoom> {
+        val response = authedRequest(
+            Request.Builder()
+                .url("$baseUrl/api/rooms/public")
+                .get()
+        )
+        val rooms = JSONObject(response).optJSONArray("rooms") ?: JSONArray()
+        return buildList {
+            for (index in 0 until rooms.length()) {
+                val item = rooms.optJSONObject(index) ?: continue
+                add(
+                    PublicRoom(
+                        roomId = item.optString("roomId"),
+                        name = item.optString("name"),
+                        memberCount = item.optInt("memberCount"),
+                        alreadyJoined = item.optBoolean("alreadyJoined")
+                    )
+                )
+            }
+        }.filter { it.roomId.isNotBlank() && it.name.isNotBlank() }
     }
 
     suspend fun regenerateInvite(roomId: String): String {

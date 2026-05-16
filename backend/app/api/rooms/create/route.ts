@@ -3,12 +3,15 @@ import { requireUser, userProfile } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { ApiError, json, jsonError, readJson } from "@/lib/http";
 import { createUniqueInviteCode, inviteExpiresAt } from "@/lib/invite";
+import { hashRoomPassword } from "@/lib/roomPassword";
 import { upsertUserProfile } from "@/lib/users";
 
 export const runtime = "nodejs";
 
 type Body = {
   name?: string;
+  isPublic?: boolean;
+  password?: string;
 };
 
 export async function POST(request: Request) {
@@ -16,9 +19,14 @@ export async function POST(request: Request) {
     const token = await requireUser(request);
     const body = await readJson<Body>(request);
     const name = body.name?.trim();
+    const isPublic = body.isPublic === true;
+    const password = body.password?.trim() ?? "";
 
     if (!name || name.length > 40) {
       throw new ApiError(400, "방 이름은 1~40자로 입력해 주세요.");
+    }
+    if (isPublic && (password.length < 4 || password.length > 32)) {
+      throw new ApiError(400, "공개 방 비밀번호는 4~32자로 입력해 주세요.");
     }
 
     await upsertUserProfile(token);
@@ -30,11 +38,15 @@ export async function POST(request: Request) {
     const inviteCode = await createUniqueInviteCode();
     const now = FieldValue.serverTimestamp();
     const profile = userProfile(token);
+    const passwordFields = isPublic ? hashRoomPassword(password) : {};
 
     const batch = db.batch();
     batch.set(roomRef, {
       name,
       ownerUid: token.uid,
+      isPublic,
+      hasPassword: isPublic,
+      memberCount: 1,
       inviteCode,
       inviteExpiresAt: inviteExpiresAt(24),
       defaultNotificationMode: "basic",
@@ -42,6 +54,13 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now
     });
+    if (isPublic) {
+      batch.set(db.doc(`roomSecrets/${roomRef.id}`), {
+        ...passwordFields,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
     batch.set(memberRef, {
       role: "owner",
       displayName: profile.displayName,

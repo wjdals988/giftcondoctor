@@ -21,6 +21,13 @@ data class RoomMembership(
     val role: String
 )
 
+data class PublicRoom(
+    val roomId: String,
+    val name: String,
+    val memberCount: Int,
+    val alreadyJoined: Boolean
+)
+
 data class Room(
     val id: String,
     val name: String,

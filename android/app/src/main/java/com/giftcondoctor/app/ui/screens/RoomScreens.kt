@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +48,7 @@ import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.data.model.RoomMembership
@@ -131,9 +136,14 @@ fun CreateRoomScreen(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     var name by remember { mutableStateOf("") }
+    var publicRoom by remember { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
 
     GDScaffold(title = "방 만들기", onBack = onBack) { modifier ->
-        Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Column(
+            modifier = modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -141,11 +151,35 @@ fun CreateRoomScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("공개 방으로 표시")
+                Switch(checked = publicRoom, onCheckedChange = { publicRoom = it })
+            }
+            Text(
+                "공개 방은 로그인한 사용자가 목록에서 볼 수 있습니다. 입장하려면 아래 비밀번호가 필요합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (publicRoom) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("방 비밀번호") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Text(
+                    "비밀번호는 서버에 원문으로 저장하지 않고 해시로만 저장합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             InlineMessage(message)
             Button(
-                onClick = { viewModel.createRoom(name) { onCreated(it) } },
-                enabled = !busy && name.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                onClick = { viewModel.createRoom(name, publicRoom, password) { onCreated(it) } },
+                enabled = !busy && name.isNotBlank() && (!publicRoom || password.length >= 4),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text("생성하기")
             }
@@ -161,10 +195,19 @@ fun JoinRoomScreen(
 ) {
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val publicRooms by viewModel.publicRooms.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf("") }
+    var selectedRoom by remember { mutableStateOf<PublicRoom?>(null) }
+    var password by remember { mutableStateOf("") }
 
-    GDScaffold(title = "초대코드 입장", onBack = onBack) { modifier ->
-        Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+    LaunchedEffect(Unit) { viewModel.refreshPublicRooms() }
+
+    GDScaffold(title = "방 입장", onBack = onBack) { modifier ->
+        Column(
+            modifier = modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("초대코드로 입장", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = code,
                 onValueChange = { code = it.uppercase() },
@@ -176,9 +219,95 @@ fun JoinRoomScreen(
             Button(
                 onClick = { viewModel.joinRoom(code) { onJoined(it) } },
                 enabled = !busy && code.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text("입장하기")
+            }
+            HorizontalDivider()
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("공개 방", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { viewModel.refreshPublicRooms() }) {
+                    Text("새로고침")
+                }
+            }
+            Text(
+                "공개 방은 목록에서 선택한 뒤 방 비밀번호를 입력해 입장합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            when (val state = publicRooms) {
+                UiState.Loading -> Text("공개 방 목록을 불러오는 중입니다.")
+                is UiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
+                is UiState.Success -> PublicRoomList(
+                    rooms = state.data,
+                    onSelect = {
+                        if (it.alreadyJoined) onJoined(it.roomId) else {
+                            selectedRoom = it
+                            password = ""
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    selectedRoom?.let { room ->
+        AlertDialog(
+            onDismissRequest = { selectedRoom = null },
+            title = { Text(room.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("이 공개 방에 입장하려면 비밀번호가 필요합니다.")
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("방 비밀번호") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && password.isNotBlank(),
+                    onClick = {
+                        viewModel.joinPublicRoom(room.roomId, password) {
+                            selectedRoom = null
+                            onJoined(it)
+                        }
+                    }
+                ) {
+                    Text("입장")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedRoom = null }) {
+                    Text("취소")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun PublicRoomList(rooms: List<PublicRoom>, onSelect: (PublicRoom) -> Unit) {
+    if (rooms.isEmpty()) {
+        Text("아직 공개 방이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(rooms, key = { it.roomId }) { room ->
+            Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(room) }) {
+                ListItem(
+                    headlineContent = { Text(room.name) },
+                    supportingContent = {
+                        Text("멤버 ${room.memberCount}명" + if (room.alreadyJoined) " · 참여 중" else "")
+                    }
+                )
             }
         }
     }
@@ -285,11 +414,21 @@ fun RoomSettingsScreen(
                     }
                     HorizontalDivider()
                     Text("방 기본 알림")
+                    Text(
+                        "알림은 매일 오전 9시(한국시간)에 발송됩니다. 방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     ModeChips(selected = roomMode, onSelected = { roomMode = it })
                     Button(onClick = { settingsViewModel.updateRoom(roomId, roomMode) }, modifier = Modifier.fillMaxWidth()) {
                         Text("방 기본값 저장")
                     }
                     HorizontalDivider()
+                    Text(
+                        "내 방 알림은 방 기본값보다 우선합니다. Android 알림 권한이 꺼져 있으면 저장해도 푸시를 받을 수 없습니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("이 방 알림 받기")
                         Switch(
