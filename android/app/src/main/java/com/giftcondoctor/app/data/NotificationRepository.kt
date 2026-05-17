@@ -8,7 +8,9 @@ import kotlinx.coroutines.tasks.await
 
 class NotificationRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val backend: BackendClient = BackendClient(),
+    private val pushTokenRepository: PushTokenRepository = PushTokenRepository()
 ) {
     suspend fun updateDefault(mode: String, days: List<Int>, pushEnabled: Boolean) {
         val uid = auth.currentUser?.uid ?: return
@@ -21,5 +23,10 @@ class NotificationRepository(
             ),
             SetOptions.merge()
         ).await()
+    }
+
+    suspend fun sendTestPush(): Int {
+        pushTokenRepository.saveCurrentToken()
+        return backend.sendTestPush()
     }
 }

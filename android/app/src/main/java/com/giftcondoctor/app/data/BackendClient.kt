@@ -87,6 +87,11 @@ class BackendClient(
         postJson("/api/rooms/leave", JSONObject().put("roomId", roomId))
     }
 
+    suspend fun sendTestPush(): Int {
+        val response = postJson("/api/notifications/test", JSONObject())
+        return JSONObject(response).optInt("sent", 0)
+    }
+
     suspend fun deleteCoupon(roomId: String, couponId: String) {
         authedRequest(
             Request.Builder()

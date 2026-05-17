@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.ui.components.AppVersionText
+import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
@@ -34,6 +36,9 @@ fun NotificationSettingsScreen(
     viewModel: SettingsViewModel = viewModel(key = "notification-settings")
 ) {
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
+    val testPushBusy by viewModel.testPushBusy.collectAsStateWithLifecycle()
     var mode by remember { mutableStateOf(NotificationMode.Basic) }
     var pushEnabled by remember { mutableStateOf(true) }
     val notificationPermission = rememberNotificationPermissionState()
@@ -63,10 +68,22 @@ fun NotificationSettingsScreen(
             NotificationPermissionStatus(notificationPermission)
             Button(
                 onClick = { viewModel.updateDefault(mode, pushEnabled && canUsePush) },
+                enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.small
             ) {
-                Text("저장")
+                val saving = busyAction == "default"
+                if (saving) ButtonProgressIndicator()
+                Text(if (saving) "저장 중..." else "저장")
+            }
+            OutlinedButton(
+                onClick = { viewModel.sendTestPush() },
+                enabled = canUsePush && !testPushBusy,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small
+            ) {
+                if (testPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                Text(if (testPushBusy) "테스트 푸시 보내는 중..." else "테스트 푸시 보내기")
             }
             InlineMessage(message)
             AppVersionText(modifier = Modifier.padding(top = 8.dp))

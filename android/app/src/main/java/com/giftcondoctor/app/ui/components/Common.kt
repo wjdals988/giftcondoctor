@@ -118,6 +118,16 @@ fun InlineMessage(message: String?) {
 }
 
 @Composable
+fun ButtonProgressIndicator(color: Color = MaterialTheme.colorScheme.onPrimary) {
+    CircularProgressIndicator(
+        modifier = Modifier.size(18.dp),
+        strokeWidth = 2.dp,
+        color = color
+    )
+    Spacer(Modifier.width(8.dp))
+}
+
+@Composable
 fun AppVersionText(modifier: Modifier = Modifier) {
     Text(
         text = "버전 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",

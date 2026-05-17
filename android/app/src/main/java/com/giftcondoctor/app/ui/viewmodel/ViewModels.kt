@@ -374,43 +374,78 @@ class SettingsViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy
+
+    private val _busyAction = MutableStateFlow<String?>(null)
+    val busyAction: StateFlow<String?> = _busyAction
+
+    private val _testPushBusy = MutableStateFlow(false)
+    val testPushBusy: StateFlow<Boolean> = _testPushBusy
+
     fun updateDefault(mode: NotificationMode, pushEnabled: Boolean) {
-        viewModelScope.launch {
-            runCatching { notificationRepository.updateDefault(mode.wire, mode.days, pushEnabled) }
-                .onSuccess { _message.value = "알림 설정을 저장했습니다." }
-                .onFailure { _message.value = it.localizedMessage ?: "알림 설정 저장에 실패했습니다." }
+        runSettingsAction("default") {
+            notificationRepository.updateDefault(mode.wire, mode.days, pushEnabled)
+            _message.value = "알림 설정을 저장했습니다."
         }
     }
 
     fun updateRoom(roomId: String, mode: NotificationMode) {
-        viewModelScope.launch {
-            runCatching { roomRepository.updateRoomNotification(roomId, mode.wire, mode.days) }
-                .onSuccess { _message.value = "방 알림 기본값을 저장했습니다." }
-                .onFailure { _message.value = it.localizedMessage ?: "방 설정 저장에 실패했습니다." }
+        runSettingsAction("room") {
+            roomRepository.updateRoomNotification(roomId, mode.wire, mode.days)
+            _message.value = "방 알림 기본값을 저장했습니다."
         }
     }
 
     fun updateMember(roomId: String, enabled: Boolean, mode: NotificationMode?) {
-        viewModelScope.launch {
-            runCatching { roomRepository.updateMemberNotification(roomId, enabled, mode?.wire, mode?.days) }
-                .onSuccess { _message.value = "내 방 알림 설정을 저장했습니다." }
-                .onFailure { _message.value = it.localizedMessage ?: "방 알림 설정 저장에 실패했습니다." }
+        runSettingsAction("member") {
+            roomRepository.updateMemberNotification(roomId, enabled, mode?.wire, mode?.days)
+            _message.value = "내 방 알림 설정을 저장했습니다."
         }
     }
 
     fun regenerateInvite(roomId: String) {
-        viewModelScope.launch {
-            runCatching { roomRepository.regenerateInvite(roomId) }
-                .onSuccess { _message.value = "초대코드를 새로 만들었습니다: $it" }
-                .onFailure { _message.value = it.localizedMessage ?: "초대코드 재발급에 실패했습니다." }
+        runSettingsAction("invite") {
+            val code = roomRepository.regenerateInvite(roomId)
+            _message.value = "초대코드를 새로 만들었습니다: $code"
         }
     }
 
     fun leaveRoom(roomId: String, onLeft: () -> Unit) {
+        runSettingsAction("leave") {
+            roomRepository.leaveRoom(roomId)
+            onLeft()
+        }
+    }
+
+    fun sendTestPush() {
         viewModelScope.launch {
-            runCatching { roomRepository.leaveRoom(roomId) }
-                .onSuccess { onLeft() }
-                .onFailure { _message.value = it.localizedMessage ?: "방 나가기에 실패했습니다." }
+            _testPushBusy.value = true
+            _message.value = null
+            runCatching { notificationRepository.sendTestPush() }
+                .onSuccess { sent ->
+                    _message.value = if (sent > 0) {
+                        "테스트 푸시를 보냈습니다. 잠시 후 알림을 확인해 주세요."
+                    } else {
+                        "푸시 요청은 처리됐지만 전송된 토큰이 없습니다."
+                    }
+                }
+                .onFailure {
+                    _message.value = it.localizedMessage ?: "테스트 푸시 전송에 실패했습니다."
+                }
+            _testPushBusy.value = false
+        }
+    }
+
+    private fun runSettingsAction(action: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            _busy.value = true
+            _busyAction.value = action
+            _message.value = null
+            runCatching { block() }
+                .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
+            _busyAction.value = null
+            _busy.value = false
         }
     }
 }

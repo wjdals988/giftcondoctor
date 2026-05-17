@@ -1,5 +1,7 @@
 package com.giftcondoctor.app.ui.screens
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,16 +20,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +58,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -58,6 +74,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.daysBeforeExpiry
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
+import com.giftcondoctor.app.data.CouponRepository
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
@@ -73,12 +90,15 @@ import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
+import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -92,6 +112,7 @@ fun RoomListScreen(
     viewModel: RoomListViewModel = viewModel()
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     GDScaffold(
         title = "쿠폰방",
@@ -99,7 +120,7 @@ fun RoomListScreen(
             IconButton(onClick = onOpenNotifications) {
                 Icon(Icons.Default.Notifications, contentDescription = "알림 설정")
             }
-            IconButton(onClick = { sessionViewModel.signOut() }) {
+            IconButton(onClick = { showLogoutDialog = true }) {
                 Icon(Icons.Default.Logout, contentDescription = "로그아웃")
             }
         }
@@ -125,6 +146,29 @@ fun RoomListScreen(
                 is UiState.Success -> RoomList(state.data, onOpenRoom)
             }
         }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("로그아웃") },
+            text = { Text("로그아웃 진행하겠습니까?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        sessionViewModel.signOut()
+                    }
+                ) {
+                    Text("예")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("아니오")
+                }
+            }
+        )
     }
 }
 
@@ -221,7 +265,8 @@ fun CreateRoomScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.small
             ) {
-                Text("방 만들기")
+                if (busy) ButtonProgressIndicator()
+                Text(if (busy) "방 만드는 중..." else "방 만들기")
             }
         }
     }
@@ -259,9 +304,11 @@ fun JoinRoomScreen(
             Button(
                 onClick = { viewModel.joinRoom(code) { onJoined(it) } },
                 enabled = !busy && code.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small
             ) {
-                Text("입장하기")
+                if (busy) ButtonProgressIndicator()
+                Text(if (busy) "입장 중..." else "입장하기")
             }
             HorizontalDivider()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -276,7 +323,14 @@ fun JoinRoomScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             when (val state = publicRooms) {
-                UiState.Loading -> Text("공개 방 목록을 불러오는 중입니다.")
+                UiState.Loading -> Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("공개 방 목록을 불러오는 중입니다.")
+                }
                 is UiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
                 is UiState.Success -> PublicRoomList(
                     rooms = state.data,
@@ -317,7 +371,8 @@ fun JoinRoomScreen(
                         }
                     }
                 ) {
-                    Text("입장")
+                    if (busy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Text(if (busy) "입장 중..." else "입장")
                 }
             },
             dismissButton = {
@@ -389,13 +444,13 @@ fun RoomDetailScreen(
         when (val state = coupons) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> RoomDashboard(state.data, onOpenCoupon, modifier)
+            is UiState.Success -> RoomDashboard(roomId, state.data, onOpenCoupon, modifier)
         }
     }
 }
 
 @Composable
-private fun RoomDashboard(coupons: List<Coupon>, onOpenCoupon: (String) -> Unit, modifier: Modifier) {
+private fun RoomDashboard(roomId: String, coupons: List<Coupon>, onOpenCoupon: (String) -> Unit, modifier: Modifier) {
     val today = seoulToday()
     val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
     val todayCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) == 0 }
@@ -440,20 +495,7 @@ private fun RoomDashboard(coupons: List<Coupon>, onOpenCoupon: (String) -> Unit,
                     supportingContent = {
                         Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${coupon.expiresLocalDate} · ${statusLabel(coupon.status)}")
                     },
-                    leadingContent = {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                coupon.title.firstOrNull()?.toString() ?: "쿠",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    },
+                    leadingContent = { CouponListThumbnail(roomId, coupon) },
                     trailingContent = {
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             GDBadge(couponDdayText(coupon))
@@ -465,6 +507,97 @@ private fun RoomDashboard(coupons: List<Coupon>, onOpenCoupon: (String) -> Unit,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
+    val repository = remember { CouponRepository() }
+    var image by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf<ImageBitmap?>(null) }
+    var loading by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf(false) }
+
+    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath) {
+        image = null
+        if (coupon.imageBlobPath.isBlank()) return@LaunchedEffect
+        loading = true
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val bytes = repository.fetchImage(roomId, coupon.id)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }
+        }.onSuccess {
+            image = it
+        }
+        loading = false
+    }
+
+    val thumbnail = image
+    if (thumbnail != null) {
+        Image(
+            bitmap = thumbnail,
+            contentDescription = "${coupon.title} 썸네일",
+            modifier = Modifier
+                .size(56.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        CouponCategoryThumbnail(coupon, loading)
+    }
+}
+
+@Composable
+private fun CouponCategoryThumbnail(coupon: Coupon, loading: Boolean = false) {
+    val category = couponCategory(coupon)
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .background(category.containerColor, MaterialTheme.shapes.small),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = category.icon,
+            contentDescription = category.label,
+            tint = category.contentColor,
+            modifier = Modifier.size(28.dp)
+        )
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = category.contentColor
+            )
+        }
+    }
+}
+
+private data class CouponCategory(
+    val label: String,
+    val icon: ImageVector,
+    val containerColor: Color,
+    val contentColor: Color
+)
+
+private fun couponCategory(coupon: Coupon): CouponCategory {
+    val source = "${coupon.title} ${coupon.brand}".lowercase()
+    fun containsAny(vararg keywords: String): Boolean = keywords.any { source.contains(it.lowercase()) }
+
+    return when {
+        containsAny("스타벅스", "커피", "카페", "투썸", "이디야", "메가커피", "컴포즈", "빽다방", "할리스") ->
+            CouponCategory("카페", Icons.Default.LocalCafe, Color(0xFFE3F7F2), Color(0xFF008E85))
+        containsAny("치킨", "피자", "버거", "맥도날드", "버거킹", "롯데리아", "교촌", "bbq", "bhc", "도미노", "배민", "요기요") ->
+            CouponCategory("음식", Icons.Default.Restaurant, Color(0xFFFFF0E7), Color(0xFFE86E2F))
+        containsAny("cu", "gs25", "세븐", "이마트24", "편의점") ->
+            CouponCategory("편의점", Icons.Default.Store, Color(0xFFE8F2FF), Color(0xFF2878D8))
+        containsAny("cgv", "메가박스", "롯데시네마", "영화", "시네마") ->
+            CouponCategory("영화", Icons.Default.Theaters, Color(0xFFF1EAFF), Color(0xFF7B52CC))
+        containsAny("항공", "호텔", "여행", "야놀자", "여기어때", "숙박") ->
+            CouponCategory("여행", Icons.Default.Flight, Color(0xFFE7F7FF), Color(0xFF0095D6))
+        containsAny("쿠팡", "네이버", "백화점", "올리브영", "상품권", "쇼핑", "마트") ->
+            CouponCategory("쇼핑", Icons.Default.ShoppingBag, Color(0xFFFFF7D9), Color(0xFFC28A00))
+        else ->
+            CouponCategory("쿠폰", Icons.Default.CardGiftcard, Color(0xFFEAFBF6), Color(0xFF00A89C))
     }
 }
 
@@ -491,6 +624,8 @@ fun RoomSettingsScreen(
     LaunchedEffect(roomId) { roomViewModel.start(roomId) }
     val roomState by roomViewModel.room.collectAsStateWithLifecycle()
     val message by settingsViewModel.message.collectAsStateWithLifecycle()
+    val busy by settingsViewModel.busy.collectAsStateWithLifecycle()
+    val busyAction by settingsViewModel.busyAction.collectAsStateWithLifecycle()
     val notificationPermission = rememberNotificationPermissionState()
     val canUsePush = notificationPermission.granted || !notificationPermission.runtimeRequired
     var roomMode by remember { mutableStateOf(NotificationMode.Basic) }
@@ -512,10 +647,13 @@ fun RoomSettingsScreen(
                     Text("만료: ${room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
                     Button(
                         onClick = { settingsViewModel.regenerateInvite(roomId) },
+                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("초대코드 재발급")
+                        val loading = busyAction == "invite"
+                        if (loading) ButtonProgressIndicator()
+                        Text(if (loading) "처리 중..." else "초대코드 재발급")
                     }
                     HorizontalDivider()
                     Text("방 기본 알림", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -524,10 +662,13 @@ fun RoomSettingsScreen(
                     ModeChips(selected = roomMode, onSelected = { roomMode = it })
                     Button(
                         onClick = { settingsViewModel.updateRoom(roomId, roomMode) },
+                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("방 기본값 저장")
+                        val saving = busyAction == "room"
+                        if (saving) ButtonProgressIndicator()
+                        Text(if (saving) "저장 중..." else "방 기본값 저장")
                     }
                     HorizontalDivider()
                     Text(
@@ -555,17 +696,23 @@ fun RoomSettingsScreen(
                     }
                     Button(
                         onClick = { settingsViewModel.updateMember(roomId, memberEnabled && canUsePush, memberMode) },
+                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("내 방 알림 저장")
+                        val saving = busyAction == "member"
+                        if (saving) ButtonProgressIndicator()
+                        Text(if (saving) "저장 중..." else "내 방 알림 저장")
                     }
                     OutlinedButton(
                         onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },
+                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("방 나가기")
+                        val leaving = busyAction == "leave"
+                        if (leaving) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Text(if (leaving) "처리 중..." else "방 나가기")
                     }
                     InlineMessage(message)
                 }

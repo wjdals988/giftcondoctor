@@ -49,6 +49,7 @@ import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
@@ -130,7 +131,10 @@ fun AddCouponScreen(
                 body = "앱에는 공개 URL을 저장하지 않고, 인증된 멤버만 서버를 통해 이미지를 볼 수 있습니다."
             )
             if (analysisBusy) {
-                Text("이미지를 분석하는 중입니다.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Text("이미지를 분석하는 중입니다.", style = MaterialTheme.typography.bodySmall)
+                }
             }
             analysisMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -188,6 +192,7 @@ fun AddCouponScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.small
             ) {
+                if (busy) ButtonProgressIndicator()
                 Text(if (busy) "추가 중..." else "추가하기")
             }
         }
