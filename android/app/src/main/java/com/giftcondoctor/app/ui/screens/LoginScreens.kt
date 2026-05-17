@@ -3,7 +3,7 @@ package com.giftcondoctor.app.ui.screens
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.Button
@@ -31,14 +33,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.giftcondoctor.app.R
 import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
@@ -66,11 +66,19 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
         verticalArrangement = Arrangement.Center
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            Image(
-                painter = painterResource(R.drawable.ic_launcher),
-                contentDescription = "기프티콘닥터",
-                modifier = Modifier.size(104.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(104.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Notifications,
+                    contentDescription = "기프티콘닥터",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
         }
         Text(
             "쿠폰 함께 쓰고,\n만료 전에 알려드려요",

@@ -54,7 +54,7 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
-            deepLink.hashCode(),
+            deepLink?.hashCode() ?: title.hashCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -73,7 +73,7 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
 
-        NotificationManagerCompat.from(this).notify(deepLink.hashCode(), notification)
+        NotificationManagerCompat.from(this).notify(deepLink?.hashCode() ?: title.hashCode(), notification)
     }
 
     private fun createChannel() {

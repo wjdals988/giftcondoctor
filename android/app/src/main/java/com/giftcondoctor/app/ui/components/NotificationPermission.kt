@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 
 data class NotificationPermissionState(
     val runtimeRequired: Boolean,
@@ -78,6 +79,7 @@ fun RequestNotificationPermissionOnLaunch() {
     LaunchedEffect(permission.runtimeRequired, permission.granted) {
         if (!requested && permission.runtimeRequired && !permission.granted) {
             requested = true
+            delay(500)
             permission.request()
         }
     }
