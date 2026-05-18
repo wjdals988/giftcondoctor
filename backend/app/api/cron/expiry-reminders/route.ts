@@ -98,15 +98,16 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
   const targetDateValues = dates.map((item) => item.targetDate);
   const summary: Summary = { scanned: 0, matched: 0, sent: 0, skipped: 0, errors: [] };
 
-  const coupons = await db
-    .collectionGroup("coupons")
-    .where("status", "in", ["active", "reserved"])
-    .where("expiresLocalDate", "in", targetDateValues)
-    .get();
+  const couponSnapshots = await Promise.all(
+    targetDateValues.map((targetDate) =>
+      db.collectionGroup("coupons").where("expiresLocalDate", "==", targetDate).get()
+    )
+  );
+  const couponDocs = couponSnapshots.flatMap((snapshot) => snapshot.docs);
 
-  summary.scanned = coupons.size;
+  summary.scanned = couponDocs.length;
 
-  for (const coupon of coupons.docs) {
+  for (const coupon of couponDocs) {
     const roomRef = coupon.ref.parent.parent;
     if (!roomRef) {
       summary.skipped += 1;
@@ -116,6 +117,11 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
     const roomId = roomRef.id;
     const couponId = coupon.id;
     const couponData = coupon.data();
+    if (couponData.status !== "active" && couponData.status !== "reserved") {
+      summary.skipped += 1;
+      continue;
+    }
+
     const expiresLocalDate = couponData.expiresLocalDate;
     if (typeof expiresLocalDate !== "string") {
       summary.skipped += 1;
@@ -187,6 +193,11 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
       } catch (error) {
         summary.errors.push(error instanceof Error ? error.message : String(error));
       }
+    }
+
+    if (sentToUids.length === 0) {
+      if (targetMembers.length === 0) summary.skipped += 1;
+      continue;
     }
 
     await logRef.set({
