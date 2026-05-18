@@ -52,6 +52,11 @@ class BackendClient(
         return JSONObject(response).getString("roomId")
     }
 
+    suspend fun joinPushTestRoom(): String {
+        val response = postJson("/api/rooms/join-push-test", JSONObject())
+        return JSONObject(response).getString("roomId")
+    }
+
     suspend fun publicRooms(): List<PublicRoom> {
         val response = authedRequest(
             Request.Builder()

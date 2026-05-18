@@ -71,6 +71,8 @@ class RoomRepository(
     suspend fun joinPublicRoom(roomId: String, password: String): String =
         backend.joinPublicRoom(roomId, password)
 
+    suspend fun joinPushTestRoom(): String = backend.joinPushTestRoom()
+
     suspend fun publicRooms(): List<PublicRoom> = backend.publicRooms()
 
     suspend fun regenerateInvite(roomId: String): String = backend.regenerateInvite(roomId)

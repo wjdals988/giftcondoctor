@@ -115,7 +115,8 @@ fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
                 }
                 composable(
                     route = Routes.RoomDetail,
-                    arguments = listOf(navArgument("roomId") { type = NavType.StringType })
+                    arguments = listOf(navArgument("roomId") { type = NavType.StringType }),
+                    deepLinks = listOf(navDeepLink { uriPattern = "giftcondoctor://rooms/{roomId}" })
                 ) {
                     val roomId = it.arguments?.getString("roomId").orEmpty()
                     RoomDetailScreen(

@@ -133,6 +133,11 @@ class RoomListViewModel(
         onJoined(roomIdResult)
     }
 
+    fun joinPushTestRoom(onJoined: (String) -> Unit) = runAction {
+        val roomId = repository.joinPushTestRoom()
+        onJoined(roomId)
+    }
+
     fun refreshPublicRooms() {
         viewModelScope.launch {
             _publicRooms.value = UiState.Loading

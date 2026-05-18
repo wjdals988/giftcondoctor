@@ -112,6 +112,12 @@ fun RoomListScreen(
     viewModel: RoomListViewModel = viewModel()
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
+    val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    val joinedTestRoom = when (val state = rooms) {
+        is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
+        else -> false
+    }
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     GDScaffold(
@@ -140,6 +146,24 @@ fun RoomListScreen(
                     Text("방 입장")
                 }
             }
+            if (joinedTestRoom) {
+                GDInfoBanner(
+                    title = "푸시 테스트방 참여 중",
+                    body = "매일 오전 9시 실제 cron 경로로 테스트 푸시가 옵니다.",
+                    icon = Icons.Default.Notifications
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { viewModel.joinPushTestRoom(onOpenRoom) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    if (busy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Text(if (busy) "테스트방 참가 중..." else "푸시 테스트방 참가")
+                }
+            }
+            InlineMessage(message)
             when (val state = rooms) {
                 UiState.Loading -> LoadingState()
                 is UiState.Error -> ErrorState(state.message)
@@ -187,7 +211,15 @@ private fun RoomList(rooms: List<RoomMembership>, onOpenRoom: (String) -> Unit) 
             ) {
                 ListItem(
                     headlineContent = { Text(room.name, fontWeight = FontWeight.SemiBold) },
-                    supportingContent = { Text(if (room.role == "owner") "내가 만든 방" else "참여 중") },
+                    supportingContent = {
+                        Text(
+                            when {
+                                room.roomId == AppConstants.PUSH_TEST_ROOM_ID -> "매일 오전 9시 테스트 푸시"
+                                room.role == "owner" -> "내가 만든 방"
+                                else -> "참여 중"
+                            }
+                        )
+                    },
                     leadingContent = {
                         Box(
                             modifier = Modifier.size(44.dp),
@@ -436,8 +468,10 @@ fun RoomDetailScreen(
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "방 설정")
             }
-            IconButton(onClick = onAddCoupon) {
-                Icon(Icons.Default.Add, contentDescription = "쿠폰 추가")
+            if (roomId != AppConstants.PUSH_TEST_ROOM_ID) {
+                IconButton(onClick = onAddCoupon) {
+                    Icon(Icons.Default.Add, contentDescription = "쿠폰 추가")
+                }
             }
         }
     ) { modifier ->
@@ -465,6 +499,15 @@ private fun RoomDashboard(roomId: String, coupons: List<Coupon>, onOpenCoupon: (
         item {
             ReminderTimeBanner()
         }
+        if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
+            item {
+                GDInfoBanner(
+                    title = "이 방은 푸시 확인 전용이에요",
+                    body = "참여 중이면 쿠폰 만료 조건과 별개로 매일 오전 9시에 테스트 알림을 보냅니다.",
+                    icon = Icons.Default.Notifications
+                )
+            }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 GDStatCard("오늘 만료", "${todayCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.error)
@@ -482,7 +525,13 @@ private fun RoomDashboard(roomId: String, coupons: List<Coupon>, onOpenCoupon: (
         }
         if (coupons.isEmpty()) {
             item {
-                EmptyState("아직 등록된 쿠폰이 없습니다.")
+                EmptyState(
+                    if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
+                        "테스트방은 쿠폰을 등록하지 않아도 매일 푸시가 옵니다."
+                    } else {
+                        "아직 등록된 쿠폰이 없습니다."
+                    }
+                )
             }
         }
         items(coupons, key = { it.id }) { coupon ->
@@ -643,32 +692,40 @@ fun RoomSettingsScreen(
                 }
                 Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(room.name, style = MaterialTheme.typography.headlineSmall)
-                    Text("초대코드: ${room.inviteCode ?: "없음"}")
-                    Text("만료: ${room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
-                    Button(
-                        onClick = { settingsViewModel.regenerateInvite(roomId) },
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        val loading = busyAction == "invite"
-                        if (loading) ButtonProgressIndicator()
-                        Text(if (loading) "처리 중..." else "초대코드 재발급")
-                    }
-                    HorizontalDivider()
-                    Text("방 기본 알림", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    ReminderTimeBanner()
-                    Text("방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ModeChips(selected = roomMode, onSelected = { roomMode = it })
-                    Button(
-                        onClick = { settingsViewModel.updateRoom(roomId, roomMode) },
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        val saving = busyAction == "room"
-                        if (saving) ButtonProgressIndicator()
-                        Text(if (saving) "저장 중..." else "방 기본값 저장")
+                    if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
+                        GDInfoBanner(
+                            title = "푸시 확인 전용 방",
+                            body = "이 방 알림 받기가 켜져 있으면 매일 오전 9시에 테스트 푸시가 옵니다.",
+                            icon = Icons.Default.Notifications
+                        )
+                    } else {
+                        Text("초대코드: ${room.inviteCode ?: "없음"}")
+                        Text("만료: ${room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
+                        Button(
+                            onClick = { settingsViewModel.regenerateInvite(roomId) },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            val loading = busyAction == "invite"
+                            if (loading) ButtonProgressIndicator()
+                            Text(if (loading) "처리 중..." else "초대코드 재발급")
+                        }
+                        HorizontalDivider()
+                        Text("방 기본 알림", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        ReminderTimeBanner()
+                        Text("방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ModeChips(selected = roomMode, onSelected = { roomMode = it })
+                        Button(
+                            onClick = { settingsViewModel.updateRoom(roomId, roomMode) },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            val saving = busyAction == "room"
+                            if (saving) ButtonProgressIndicator()
+                            Text(if (saving) "저장 중..." else "방 기본값 저장")
+                        }
                     }
                     HorizontalDivider()
                     Text(
