@@ -20,6 +20,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navDeepLink
 import androidx.navigation.navArgument
+import com.giftcondoctor.app.ui.screens.AppInfoScreen
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponDetailScreen
 import com.giftcondoctor.app.ui.screens.CreateRoomScreen
@@ -40,6 +41,7 @@ object Routes {
     const val CreateRoom = "rooms/create"
     const val JoinRoom = "rooms/join"
     const val Notifications = "settings/notifications"
+    const val AppInfo = "settings/app-info"
     const val RoomDetail = "rooms/{roomId}"
     const val AddCoupon = "rooms/{roomId}/coupons/add"
     const val CouponDetail = "rooms/{roomId}/coupons/{couponId}"
@@ -111,7 +113,13 @@ fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
                     )
                 }
                 composable(Routes.Notifications) {
-                    NotificationSettingsScreen(onBack = { navController.popBackStack() })
+                    NotificationSettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenAppInfo = { navController.navigate(Routes.AppInfo) }
+                    )
+                }
+                composable(Routes.AppInfo) {
+                    AppInfoScreen(onBack = { navController.popBackStack() })
                 }
                 composable(
                     route = Routes.RoomDetail,

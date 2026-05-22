@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,11 +22,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,10 +42,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
@@ -276,12 +283,13 @@ private fun CouponDetailContent(
     onEdit: (String, String, String, String, String) -> Unit
 ) {
     var editMode by remember(coupon.id) { mutableStateOf(false) }
+    var expandedImage by remember(coupon.id) { mutableStateOf<ImageBitmap?>(null) }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CouponImage(imageState)
+        CouponImage(imageState, onOpenImage = { expandedImage = it })
         if (editMode) {
             EditCouponForm(coupon = coupon, onSave = { title, brand, expires, visibility, notifyTarget ->
                 onEdit(title, brand, expires, visibility, notifyTarget)
@@ -317,10 +325,14 @@ private fun CouponDetailContent(
             }
         }
     }
+
+    expandedImage?.let { bitmap ->
+        CouponImageDialog(bitmap = bitmap, onDismiss = { expandedImage = null })
+    }
 }
 
 @Composable
-private fun CouponImage(imageState: UiState<ByteArray>) {
+private fun CouponImage(imageState: UiState<ByteArray>, onOpenImage: (ImageBitmap) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 480.dp)) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             when (imageState) {
@@ -333,14 +345,54 @@ private fun CouponImage(imageState: UiState<ByteArray>) {
                     if (bitmap == null) {
                         Text("이미지를 표시할 수 없습니다.")
                     } else {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = "쿠폰 이미지",
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.Fit
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth().clickable { onOpenImage(bitmap) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "쿠폰 이미지",
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Fit
+                            )
+                            Text(
+                                "탭해서 크게 보기",
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .background(Color.Black.copy(alpha = 0.58f), MaterialTheme.shapes.small)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CouponImageDialog(bitmap: ImageBitmap, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.94f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = "확대된 쿠폰 이미지",
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                contentScale = ContentScale.Fit
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "닫기", tint = Color.White)
             }
         }
     }
