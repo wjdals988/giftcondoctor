@@ -10,6 +10,13 @@ android/build/
 android/app/build/
 android/local.properties
 android/app/google-services.json
+android/keystore.properties
+android/app/*.jks
+android/app/*.keystore
+android/app/*.p12
+*.jks
+*.keystore
+*.p12
 
 # Node / Vercel
 backend/node_modules/

@@ -1,0 +1,294 @@
+name: Android Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      overwrite_existing_release:
+        description: "기존 v{versionName} Release와 tag를 삭제하고 다시 만들지 여부"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+env:
+  PROJECT_SLUG: gifticon-doctor
+  DASHBOARD_REPO: wjdals988/mydashboard
+  DASHBOARD_DATA_FILE: src/lib/projects.json
+  BUILD_TOOLS_VERSION: 35.0.0
+  DEFAULT_API_BASE_URL: https://giftcondoctor.vercel.app
+
+jobs:
+  release:
+    name: Build, release, and update dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate required secrets
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_GOOGLE_WEB_CLIENT_ID: ${{ secrets.ANDROID_GOOGLE_WEB_CLIENT_ID }}
+          DASHBOARD_UPDATE_TOKEN: ${{ secrets.DASHBOARD_UPDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            GOOGLE_SERVICES_JSON_BASE64 \
+            ANDROID_RELEASE_KEYSTORE_BASE64 \
+            ANDROID_RELEASE_STORE_PASSWORD \
+            ANDROID_RELEASE_KEY_ALIAS \
+            ANDROID_RELEASE_KEY_PASSWORD \
+            ANDROID_GOOGLE_WEB_CLIENT_ID \
+            DASHBOARD_UPDATE_TOKEN
+          do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;${BUILD_TOOLS_VERSION}"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Restore Firebase and signing files
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_API_BASE_URL: ${{ vars.ANDROID_API_BASE_URL }}
+          ANDROID_GOOGLE_WEB_CLIENT_ID: ${{ secrets.ANDROID_GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p android/app
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+
+          keystore_path="$RUNNER_TEMP/giftcondoctor-release.jks"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          echo "ANDROID_RELEASE_KEYSTORE=$keystore_path" >> "$GITHUB_ENV"
+
+          api_base_url="${ANDROID_API_BASE_URL:-$DEFAULT_API_BASE_URL}"
+          cat > android/local.properties <<EOF
+          sdk.dir=$ANDROID_HOME
+          apiBaseUrl=$api_base_url
+          googleWebClientId=$ANDROID_GOOGLE_WEB_CLIENT_ID
+          EOF
+
+      - name: Read Android version
+        id: version
+        run: |
+          set -euo pipefail
+          version_name="$(grep -E 'versionName\s*=' android/app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          version_code="$(grep -E 'versionCode\s*=' android/app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')"
+          release_tag="v${version_name}"
+
+          if [ -z "$version_name" ] || [ -z "$version_code" ]; then
+            echo "Could not read versionName/versionCode from android/app/build.gradle.kts"
+            exit 1
+          fi
+
+          {
+            echo "version_name=$version_name"
+            echo "version_code=$version_code"
+            echo "release_tag=$release_tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Apply release overwrite policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          OVERWRITE_EXISTING_RELEASE: ${{ inputs.overwrite_existing_release }}
+        run: |
+          set -euo pipefail
+
+          release_exists=false
+          tag_exists=false
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_exists=true
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            tag_exists=true
+          fi
+
+          if [ "$OVERWRITE_EXISTING_RELEASE" != "true" ] && { [ "$release_exists" = "true" ] || [ "$tag_exists" = "true" ]; }; then
+            echo "Release or tag already exists: $RELEASE_TAG"
+            echo "Run this workflow with overwrite_existing_release=true to delete and recreate it."
+            exit 1
+          fi
+
+          if [ "$OVERWRITE_EXISTING_RELEASE" = "true" ]; then
+            if [ "$release_exists" = "true" ]; then
+              gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes
+            fi
+            if [ "$tag_exists" = "true" ]; then
+              git push origin ":refs/tags/$RELEASE_TAG"
+            fi
+          fi
+
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Build release APK
+        run: |
+          gradle -p android :app:assembleRelease --no-daemon
+
+      - name: Sign release APK and prepare metadata
+        id: metadata
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          source_apk="android/app/build/outputs/apk/release/giftcondoctor-${VERSION_NAME}-${VERSION_CODE}-release.apk"
+          asset_name="giftcondoctor-${VERSION_NAME}-${VERSION_CODE}-release-signed.apk"
+          asset_path="dist/$asset_name"
+          aligned_apk="dist/giftcondoctor-${VERSION_NAME}-${VERSION_CODE}-release-aligned.apk"
+
+          if [ ! -f "$source_apk" ]; then
+            echo "Release APK not found: $source_apk"
+            exit 1
+          fi
+
+          mkdir -p dist
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" -p -f 4 "$source_apk" "$aligned_apk"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" sign \
+            --ks "$ANDROID_RELEASE_KEYSTORE" \
+            --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_RELEASE_STORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
+            --out "$asset_path" \
+            "$aligned_apk"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$asset_path"
+
+          size_bytes="$(stat -c%s "$asset_path")"
+          size_label="$(node -e "console.log(Number(process.argv[1]).toLocaleString('en-US') + ' bytes')" "$size_bytes")"
+          sha256="$(sha256sum "$asset_path" | awk '{print $1}')"
+          release_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${asset_name}"
+
+          {
+            echo "asset_name=$asset_name"
+            echo "asset_path=$asset_path"
+            echo "size_bytes=$size_bytes"
+            echo "size_label=$size_label"
+            echo "sha256=$sha256"
+            echo "release_url=$release_url"
+            echo "download_url=$download_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          ASSET_PATH: ${{ steps.metadata.outputs.asset_path }}
+          ASSET_NAME: ${{ steps.metadata.outputs.asset_name }}
+          SHA256: ${{ steps.metadata.outputs.sha256 }}
+          SIZE_LABEL: ${{ steps.metadata.outputs.size_label }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          기프티콘닥터 Android release APK입니다.
+
+          - versionName: ${VERSION_NAME}
+          - versionCode: ${VERSION_CODE}
+          - fileName: ${ASSET_NAME}
+          - size: ${SIZE_LABEL}
+          - SHA256: ${SHA256}
+          EOF
+
+          gh release create "$RELEASE_TAG" "$ASSET_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "기프티콘닥터 ${RELEASE_TAG}" \
+            --notes-file release-notes.md
+
+      - name: Checkout dashboard repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DASHBOARD_REPO }}
+          token: ${{ secrets.DASHBOARD_UPDATE_TOKEN }}
+          path: dashboard
+
+      - name: Update dashboard project APK data
+        working-directory: dashboard
+        run: |
+          set -euo pipefail
+          npm run update:apk -- \
+            --slug "${{ env.PROJECT_SLUG }}" \
+            --url "${{ steps.metadata.outputs.download_url }}" \
+            --fileName "${{ steps.metadata.outputs.asset_name }}" \
+            --version "${{ steps.version.outputs.version_name }}" \
+            --versionCode "${{ steps.version.outputs.version_code }}" \
+            --size "${{ steps.metadata.outputs.size_label }}" \
+            --sha256 "${{ steps.metadata.outputs.sha256 }}" \
+            --releaseUrl "${{ steps.metadata.outputs.release_url }}"
+
+      - name: Commit dashboard update
+        working-directory: dashboard
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- "${{ env.DASHBOARD_DATA_FILE }}"; then
+            echo "Dashboard data already up to date."
+            exit 0
+          fi
+
+          git add "${{ env.DASHBOARD_DATA_FILE }}"
+          git commit -m "Update gifticon-doctor APK to ${{ steps.version.outputs.release_tag }}"
+          git push
+
+      - name: Release summary
+        run: |
+          {
+            echo "## Android release"
+            echo "- Tag: ${{ steps.version.outputs.release_tag }}"
+            echo "- APK: ${{ steps.metadata.outputs.download_url }}"
+            echo "- SHA256: ${{ steps.metadata.outputs.sha256 }}"
+            echo "- Dashboard repo: ${{ env.DASHBOARD_REPO }}"
+          } >> "$GITHUB_STEP_SUMMARY"

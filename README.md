@@ -56,6 +56,24 @@ gradle :app:assembleDebug
 
 이 저장소에는 secret 파일을 포함하지 않습니다.
 
+## Android Release 자동화
+
+GitHub Actions의 `Android Release APK` workflow는 현재 `versionName` 기준으로 `v{versionName}` 태그를 만들고 signed release APK를 GitHub Release asset으로 업로드한 뒤, `wjdals988/mydashboard`의 `src/lib/projects.json` APK 메타데이터를 갱신합니다.
+
+앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
+
+- `GOOGLE_SERVICES_JSON_BASE64`: `android/app/google-services.json`의 base64 값
+- `ANDROID_GOOGLE_WEB_CLIENT_ID`: Android Google 로그인 Web client ID
+- `ANDROID_RELEASE_KEYSTORE_BASE64`: release keystore `.jks`의 base64 값
+- `ANDROID_RELEASE_STORE_PASSWORD`: keystore 비밀번호
+- `ANDROID_RELEASE_KEY_ALIAS`: release key alias
+- `ANDROID_RELEASE_KEY_PASSWORD`: release key 비밀번호
+- `DASHBOARD_UPDATE_TOKEN`: `wjdals988/mydashboard` contents read/write 권한 토큰
+
+선택 값으로 GitHub Actions Variables의 `ANDROID_API_BASE_URL`을 설정할 수 있습니다. 없으면 `https://giftcondoctor.vercel.app`를 사용합니다.
+
+동일한 release tag가 이미 있으면 기본 정책은 실패입니다. workflow 수동 실행 시 `overwrite_existing_release=true`를 선택하면 기존 Release와 tag를 삭제한 뒤 다시 생성합니다.
+
 ## 보안 원칙
 
 - 쿠폰 이미지는 Vercel Blob Private Storage에 저장합니다.
