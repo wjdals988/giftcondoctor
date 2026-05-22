@@ -21,6 +21,9 @@ class RoomRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val backend: BackendClient = BackendClient()
 ) {
+    val currentUid: String?
+        get() = auth.currentUser?.uid
+
     fun observeMemberships(): Flow<List<RoomMembership>> = callbackFlow {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -78,6 +81,8 @@ class RoomRepository(
     suspend fun regenerateInvite(roomId: String): String = backend.regenerateInvite(roomId)
 
     suspend fun leaveRoom(roomId: String) = backend.leaveRoom(roomId)
+
+    suspend fun deleteRoom(roomId: String) = backend.deleteRoom(roomId)
 
     suspend fun removeMember(roomId: String, targetUid: String) = backend.removeMember(roomId, targetUid)
 

@@ -15,6 +15,7 @@ import com.giftcondoctor.app.data.NotificationRepository
 import com.giftcondoctor.app.data.PushTokenRepository
 import com.giftcondoctor.app.data.RoomRepository
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
@@ -175,6 +176,9 @@ class RoomDetailViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    val currentUid: String?
+        get() = roomRepository.currentUid
+
     fun start(roomId: String) {
         if (roomJob != null) return
         roomJob = viewModelScope.launch {
@@ -278,15 +282,25 @@ class CouponDetailViewModel(
     private val repository: CouponRepository = CouponRepository()
 ) : ViewModel() {
     private var couponJob: Job? = null
+    private var commentsJob: Job? = null
 
     private val _coupon = MutableStateFlow<UiState<Coupon>>(UiState.Loading)
     val coupon: StateFlow<UiState<Coupon>> = _coupon
+
+    private val _comments = MutableStateFlow<UiState<List<CouponComment>>>(UiState.Loading)
+    val comments: StateFlow<UiState<List<CouponComment>>> = _comments
 
     private val _imageBytes = MutableStateFlow<UiState<ByteArray>>(UiState.Loading)
     val imageBytes: StateFlow<UiState<ByteArray>> = _imageBytes
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
+
+    private val _commentBusy = MutableStateFlow(false)
+    val commentBusy: StateFlow<Boolean> = _commentBusy
+
+    val currentUid: String?
+        get() = repository.currentUid
 
     fun start(roomId: String, couponId: String) {
         if (couponJob != null) return
@@ -296,6 +310,11 @@ class CouponDetailViewModel(
                 .collect { coupon ->
                     _coupon.value = coupon?.let { UiState.Success(it) } ?: UiState.Error("쿠폰을 찾을 수 없습니다.")
                 }
+        }
+        commentsJob = viewModelScope.launch {
+            repository.observeComments(roomId, couponId)
+                .catch { _comments.value = UiState.Error(it.localizedMessage ?: "댓글을 불러오지 못했습니다.") }
+                .collect { _comments.value = UiState.Success(it) }
         }
         refreshImage(roomId, couponId)
     }
@@ -315,6 +334,24 @@ class CouponDetailViewModel(
     fun delete(roomId: String, couponId: String, onDeleted: () -> Unit) = runAction {
         repository.deleteCoupon(roomId, couponId)
         onDeleted()
+    }
+
+    fun addComment(roomId: String, couponId: String, body: String) {
+        viewModelScope.launch {
+            _commentBusy.value = true
+            _message.value = null
+            runCatching { repository.addComment(roomId, couponId, body) }
+                .onFailure { _message.value = it.localizedMessage ?: "댓글을 등록하지 못했습니다." }
+            _commentBusy.value = false
+        }
+    }
+
+    fun deleteComment(roomId: String, couponId: String, commentId: String) {
+        viewModelScope.launch {
+            _message.value = null
+            runCatching { repository.deleteComment(roomId, couponId, commentId) }
+                .onFailure { _message.value = it.localizedMessage ?: "댓글을 삭제하지 못했습니다." }
+        }
     }
 
     fun edit(
@@ -442,6 +479,13 @@ class SettingsViewModel(
         runSettingsAction("leave") {
             roomRepository.leaveRoom(roomId)
             onLeft()
+        }
+    }
+
+    fun deleteRoom(roomId: String, onDeleted: () -> Unit) {
+        runSettingsAction("deleteRoom") {
+            roomRepository.deleteRoom(roomId)
+            onDeleted()
         }
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
@@ -455,6 +457,8 @@ fun RoomDetailScreen(
     val room by viewModel.room.collectAsStateWithLifecycle()
     val coupons by viewModel.coupons.collectAsStateWithLifecycle()
     val title = (room as? UiState.Success<Room>)?.data?.name ?: "쿠폰방"
+    val roomData = (room as? UiState.Success<Room>)?.data
+    val isOwner = roomData?.ownerUid == viewModel.currentUid
 
     GDScaffold(
         title = title,
@@ -476,13 +480,19 @@ fun RoomDetailScreen(
         when (val state = coupons) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> RoomDashboard(roomId, state.data, onOpenCoupon, modifier)
+            is UiState.Success -> RoomDashboard(roomId, state.data, isOwner, onOpenCoupon, modifier)
         }
     }
 }
 
 @Composable
-private fun RoomDashboard(roomId: String, coupons: List<Coupon>, onOpenCoupon: (String) -> Unit, modifier: Modifier) {
+private fun RoomDashboard(
+    roomId: String,
+    coupons: List<Coupon>,
+    isOwner: Boolean,
+    onOpenCoupon: (String) -> Unit,
+    modifier: Modifier
+) {
     val today = seoulToday()
     val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
     val todayCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) == 0 }
@@ -494,6 +504,25 @@ private fun RoomDashboard(roomId: String, coupons: List<Coupon>, onOpenCoupon: (
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                ListItem(
+                    headlineContent = { Text(if (isOwner) "내가 방장인 방" else "멤버로 참여 중") },
+                    supportingContent = {
+                        Text(if (isOwner) "멤버 관리와 방 설정을 변경할 수 있습니다." else "방장은 멤버와 방 설정을 관리할 수 있습니다.")
+                    },
+                    leadingContent = {
+                        Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    trailingContent = {
+                        GDBadge(if (isOwner) "방장" else "멤버")
+                    }
+                )
+            }
+        }
         item {
             ReminderTimeBanner()
         }
@@ -674,6 +703,7 @@ fun RoomSettingsScreen(
     val message by settingsViewModel.message.collectAsStateWithLifecycle()
     val busy by settingsViewModel.busy.collectAsStateWithLifecycle()
     val busyAction by settingsViewModel.busyAction.collectAsStateWithLifecycle()
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     GDScaffold(title = "방 설정", onBack = onBack) { modifier ->
         when (val state = roomState) {
@@ -681,8 +711,16 @@ fun RoomSettingsScreen(
             is UiState.Error -> ErrorState(state.message)
             is UiState.Success -> {
                 val room = state.data
+                val isOwner = room.ownerUid == roomViewModel.currentUid
                 Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(room.name, style = MaterialTheme.typography.headlineSmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(room.name, style = MaterialTheme.typography.headlineSmall)
+                        GDBadge(if (isOwner) "방장" else "멤버")
+                    }
                     if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
                         GDInfoBanner(
                             title = "푸시 확인 전용 방",
@@ -718,18 +756,67 @@ fun RoomSettingsScreen(
                     }
                     OutlinedButton(
                         onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },
-                        enabled = !busy,
+                        enabled = !busy && !isOwner,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
                         val leaving = busyAction == "leave"
                         if (leaving) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Text(if (leaving) "처리 중..." else "방 나가기")
+                        Text(
+                            when {
+                                leaving -> "처리 중..."
+                                isOwner -> "방장은 방 삭제를 사용해 주세요"
+                                else -> "방 나가기"
+                            }
+                        )
+                    }
+                    if (isOwner && roomId != AppConstants.PUSH_TEST_ROOM_ID) {
+                        Button(
+                            onClick = { showDeleteDialog = true },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            val deleting = busyAction == "deleteRoom"
+                            if (deleting) ButtonProgressIndicator()
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Text(if (deleting) "삭제 중..." else "방 삭제", modifier = Modifier.padding(start = 6.dp))
+                        }
+                        Text(
+                            "방을 삭제하면 멤버, 쿠폰, 댓글, 쿠폰 이미지가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                     InlineMessage(message)
                 }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("방 삭제") },
+            text = { Text("이 방과 등록된 쿠폰, 댓글, 이미지를 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.") },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        showDeleteDialog = false
+                        settingsViewModel.deleteRoom(roomId, onLeft)
+                    }
+                ) {
+                    Text("삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("취소")
+                }
+            }
+        )
     }
 }
 

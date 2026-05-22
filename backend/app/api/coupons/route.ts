@@ -1,6 +1,7 @@
 import { del } from "@vercel/blob";
 import { assertPublicCouponDeleteAllowed, requireCouponAccess, requireUser } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -21,7 +22,11 @@ export async function DELETE(request: Request) {
 
     const blobPath = coupon.get("imageBlobPath");
     const db = getAdminDb();
-    await db.doc(`rooms/${roomId}/coupons/${couponId}`).delete();
+    const comments = await db.collection(`rooms/${roomId}/coupons/${couponId}/comments`).get();
+    await deleteDocumentRefs(db, [
+      ...comments.docs.map((doc) => doc.ref),
+      db.doc(`rooms/${roomId}/coupons/${couponId}`)
+    ]);
 
     if (typeof blobPath === "string" && blobPath.length > 0) {
       await del(blobPath);

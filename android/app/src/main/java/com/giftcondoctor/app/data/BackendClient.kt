@@ -92,6 +92,10 @@ class BackendClient(
         postJson("/api/rooms/leave", JSONObject().put("roomId", roomId))
     }
 
+    suspend fun deleteRoom(roomId: String) {
+        postJson("/api/rooms/delete", JSONObject().put("roomId", roomId))
+    }
+
     suspend fun sendTestPush(): Int {
         val response = postJson("/api/notifications/test", JSONObject())
         return JSONObject(response).optInt("sent", 0)

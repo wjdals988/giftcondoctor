@@ -18,6 +18,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/rooms/$(roomId);
     }
 
+    function couponPath(roomId, couponId) {
+      return /databases/$(database)/documents/rooms/$(roomId)/coupons/$(couponId);
+    }
+
     function isRoomMember(roomId) {
       return signedIn() && exists(memberPath(roomId, request.auth.uid));
     }
@@ -30,6 +34,11 @@ service cloud.firestore {
 
     function visibleCoupon(data) {
       return data.visibility == "room" || data.ownerUid == request.auth.uid;
+    }
+
+    function visibleParentCoupon(roomId, couponId) {
+      return exists(couponPath(roomId, couponId))
+        && visibleCoupon(get(couponPath(roomId, couponId)).data);
     }
 
     function immutableCouponFields() {
@@ -117,6 +126,27 @@ service cloud.firestore {
           && visibleCoupon(resource.data)
           && (ownerCanEditCoupon() || memberCanReserve() || memberCanCancelReservation() || memberCanMarkUsed());
         allow delete: if false;
+
+        match /comments/{commentId} {
+          allow read: if isRoomMember(roomId) && visibleParentCoupon(roomId, couponId);
+          allow create: if isRoomMember(roomId)
+            && visibleParentCoupon(roomId, couponId)
+            && request.resource.data.keys().hasOnly([
+              "authorUid", "authorName", "authorPhotoUrl", "body", "createdAt", "updatedAt"
+            ])
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorName is string
+            && (request.resource.data.authorPhotoUrl == null || request.resource.data.authorPhotoUrl is string)
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 500
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time;
+          allow update: if false;
+          allow delete: if isRoomMember(roomId)
+            && visibleParentCoupon(roomId, couponId)
+            && (resource.data.authorUid == request.auth.uid || isRoomOwner(roomId));
+        }
       }
     }
 

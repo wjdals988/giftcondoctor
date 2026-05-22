@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -56,6 +58,7 @@ import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDInfoBanner
@@ -67,8 +70,10 @@ import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun AddCouponScreen(
@@ -246,8 +251,11 @@ fun CouponDetailScreen(
 ) {
     LaunchedEffect(roomId, couponId) { viewModel.start(roomId, couponId) }
     val couponState by viewModel.coupon.collectAsStateWithLifecycle()
+    val commentsState by viewModel.comments.collectAsStateWithLifecycle()
     val imageState by viewModel.imageBytes.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val commentBusy by viewModel.commentBusy.collectAsStateWithLifecycle()
+    val currentUid = viewModel.currentUid
 
     GDScaffold(title = "쿠폰 상세", onBack = onBack) { modifier ->
         when (val state = couponState) {
@@ -257,11 +265,16 @@ fun CouponDetailScreen(
                 modifier = modifier,
                 coupon = state.data,
                 imageState = imageState,
+                commentsState = commentsState,
+                currentUid = currentUid,
+                commentBusy = commentBusy,
                 message = message,
                 onReserve = { viewModel.reserve(roomId, couponId) },
                 onCancelReservation = { viewModel.cancelReservation(roomId, couponId) },
                 onUsed = { viewModel.markUsed(roomId, couponId) },
                 onDelete = { viewModel.delete(roomId, couponId, onDeleted) },
+                onAddComment = { body -> viewModel.addComment(roomId, couponId, body) },
+                onDeleteComment = { commentId -> viewModel.deleteComment(roomId, couponId, commentId) },
                 onEdit = { title, brand, expires, visibility, notifyTarget ->
                     viewModel.edit(roomId, couponId, title, brand, expires, visibility, notifyTarget)
                 }
@@ -275,11 +288,16 @@ private fun CouponDetailContent(
     modifier: Modifier,
     coupon: Coupon,
     imageState: UiState<ByteArray>,
+    commentsState: UiState<List<CouponComment>>,
+    currentUid: String?,
+    commentBusy: Boolean,
     message: String?,
     onReserve: () -> Unit,
     onCancelReservation: () -> Unit,
     onUsed: () -> Unit,
     onDelete: () -> Unit,
+    onAddComment: (String) -> Unit,
+    onDeleteComment: (String) -> Unit,
     onEdit: (String, String, String, String, String) -> Unit
 ) {
     var editMode by remember(coupon.id) { mutableStateOf(false) }
@@ -324,10 +342,106 @@ private fun CouponDetailContent(
                 Text("삭제")
             }
         }
+        HorizontalDivider()
+        CouponCommentsSection(
+            commentsState = commentsState,
+            currentUid = currentUid,
+            commentBusy = commentBusy,
+            onAddComment = onAddComment,
+            onDeleteComment = onDeleteComment
+        )
     }
 
     expandedImage?.let { bitmap ->
         CouponImageDialog(bitmap = bitmap, onDismiss = { expandedImage = null })
+    }
+}
+
+@Composable
+private fun CouponCommentsSection(
+    commentsState: UiState<List<CouponComment>>,
+    currentUid: String?,
+    commentBusy: Boolean,
+    onAddComment: (String) -> Unit,
+    onDeleteComment: (String) -> Unit
+) {
+    var body by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("댓글", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "방 멤버들이 이 쿠폰에 대해 메모를 남길 수 있습니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = body,
+            onValueChange = { if (it.length <= 500) body = it },
+            label = { Text("댓글 입력") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+            supportingText = {
+                Text("${body.length}/500")
+            }
+        )
+        Button(
+            onClick = {
+                val text = body
+                onAddComment(text)
+                body = ""
+            },
+            enabled = !commentBusy && body.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small
+        ) {
+            if (commentBusy) ButtonProgressIndicator()
+            Text(if (commentBusy) "등록 중..." else "댓글 등록")
+        }
+
+        when (commentsState) {
+            UiState.Loading -> Text("댓글을 불러오는 중입니다", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is UiState.Error -> Text(commentsState.message, color = MaterialTheme.colorScheme.error)
+            is UiState.Success -> {
+                if (commentsState.data.isEmpty()) {
+                    Text("아직 댓글이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    commentsState.data.forEach { comment ->
+                        CommentRow(
+                            comment = comment,
+                            canDelete = comment.authorUid == currentUid,
+                            onDelete = { onDeleteComment(comment.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentRow(comment: CouponComment, canDelete: Boolean, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(comment.authorName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        formatCommentTime(comment.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (canDelete) {
+                    TextButton(onClick = onDelete) {
+                        Text("삭제")
+                    }
+                }
+            }
+            Text(comment.body, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
@@ -397,6 +511,12 @@ private fun CouponImageDialog(bitmap: ImageBitmap, onDismiss: () -> Unit) {
         }
     }
 }
+
+private val commentTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.of(AppConstants.SEOUL_TIME_ZONE))
+
+private fun formatCommentTime(createdAt: Instant?): String =
+    createdAt?.let { commentTimeFormatter.format(it) } ?: "방금 전"
 
 @Composable
 private fun EditCouponForm(

@@ -65,6 +65,15 @@ data class Coupon(
     val notifyTarget: String
 )
 
+data class CouponComment(
+    val id: String,
+    val authorUid: String,
+    val authorName: String,
+    val authorPhotoUrl: String?,
+    val body: String,
+    val createdAt: Instant?
+)
+
 data class UploadedImage(
     val blobPath: String,
     val imageWidth: Int?,
@@ -123,6 +132,17 @@ fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
         usedByUid = getString("usedByUid"),
         visibility = getString("visibility") ?: "room",
         notifyTarget = getString("notifyTarget") ?: "allMembers"
+    )
+}
+
+fun DocumentSnapshot.toCouponComment(): CouponComment? {
+    return CouponComment(
+        id = id,
+        authorUid = getString("authorUid") ?: return null,
+        authorName = getString("authorName") ?: "이름 없음",
+        authorPhotoUrl = getString("authorPhotoUrl"),
+        body = getString("body") ?: return null,
+        createdAt = getTimestamp("createdAt")?.toDate()?.toInstant()
     )
 }
 

@@ -4,11 +4,14 @@ import android.content.Context
 import android.net.Uri
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
 import com.giftcondoctor.app.data.model.toCoupon
+import com.giftcondoctor.app.data.model.toCouponComment
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -20,6 +23,9 @@ class CouponRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val backend: BackendClient = BackendClient()
 ) {
+    val currentUid: String?
+        get() = auth.currentUser?.uid
+
     fun observeCoupons(roomId: String): Flow<List<Coupon>> = callbackFlow {
         val uid = auth.currentUser?.uid
         val coupons = mutableMapOf<String, Coupon>()
@@ -83,6 +89,20 @@ class CouponRepository(
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.toCoupon(roomId))
+            }
+        awaitClose { registration.remove() }
+    }
+
+    fun observeComments(roomId: String, couponId: String): Flow<List<CouponComment>> = callbackFlow {
+        val registration = firestore.collection("rooms/$roomId/coupons/$couponId/comments")
+            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .limit(100)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.documents?.mapNotNull { it.toCouponComment() }.orEmpty())
             }
         awaitClose { registration.remove() }
     }
@@ -208,6 +228,29 @@ class CouponRepository(
 
     suspend fun deleteCoupon(roomId: String, couponId: String) {
         backend.deleteCoupon(roomId, couponId)
+    }
+
+    suspend fun addComment(roomId: String, couponId: String, body: String) {
+        val user = auth.currentUser ?: error("로그인이 필요합니다.")
+        val trimmed = body.trim()
+        require(trimmed.isNotEmpty()) { "댓글 내용을 입력해 주세요." }
+        require(trimmed.length <= 500) { "댓글은 500자까지 입력할 수 있습니다." }
+
+        val now = FieldValue.serverTimestamp()
+        firestore.collection("rooms/$roomId/coupons/$couponId/comments").add(
+            mapOf(
+                "authorUid" to user.uid,
+                "authorName" to (user.displayName ?: user.email ?: "이름 없음"),
+                "authorPhotoUrl" to user.photoUrl?.toString(),
+                "body" to trimmed,
+                "createdAt" to now,
+                "updatedAt" to now
+            )
+        ).await()
+    }
+
+    suspend fun deleteComment(roomId: String, couponId: String, commentId: String) {
+        firestore.document("rooms/$roomId/coupons/$couponId/comments/$commentId").delete().await()
     }
 
     suspend fun fetchImage(roomId: String, couponId: String): ByteArray =

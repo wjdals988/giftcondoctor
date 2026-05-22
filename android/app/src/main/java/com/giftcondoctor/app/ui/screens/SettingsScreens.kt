@@ -162,6 +162,14 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium)
             ChangeLogEntry(
+                version = "0.1.13",
+                changes = listOf(
+                    "쿠폰 상세 화면에 댓글 작성과 삭제 기능을 추가했습니다.",
+                    "방 상세와 방 설정에서 방장/멤버 표시를 더 명확하게 정리했습니다.",
+                    "방장 전용 방 삭제 플로우를 추가하고 쿠폰, 댓글, 이미지까지 함께 정리되도록 했습니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.12",
                 changes = listOf(
                     "설정 하단에 앱 정보와 버전별 변경사항 화면을 추가했습니다.",
