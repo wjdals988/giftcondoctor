@@ -97,6 +97,11 @@ class BackendClient(
         return JSONObject(response).optInt("sent", 0)
     }
 
+    suspend fun sendExpiryReminderTestPush(): Int {
+        val response = postJson("/api/notifications/test-expiry", JSONObject())
+        return JSONObject(response).optInt("sent", 0)
+    }
+
     suspend fun deleteCoupon(roomId: String, couponId: String) {
         authedRequest(
             Request.Builder()

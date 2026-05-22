@@ -88,10 +88,8 @@ import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.GDStatCard
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
-import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
-import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
@@ -666,6 +664,7 @@ private fun couponDdayText(coupon: Coupon): String {
 fun RoomSettingsScreen(
     roomId: String,
     onBack: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onLeft: () -> Unit,
     roomViewModel: RoomDetailViewModel = viewModel(key = "room-settings-room-$roomId"),
     settingsViewModel: SettingsViewModel = viewModel(key = "room-settings-$roomId")
@@ -675,11 +674,6 @@ fun RoomSettingsScreen(
     val message by settingsViewModel.message.collectAsStateWithLifecycle()
     val busy by settingsViewModel.busy.collectAsStateWithLifecycle()
     val busyAction by settingsViewModel.busyAction.collectAsStateWithLifecycle()
-    val notificationPermission = rememberNotificationPermissionState()
-    val canUsePush = notificationPermission.granted || !notificationPermission.runtimeRequired
-    var roomMode by remember { mutableStateOf(NotificationMode.Basic) }
-    var memberEnabled by remember { mutableStateOf(true) }
-    var memberMode by remember { mutableStateOf(NotificationMode.Basic) }
 
     GDScaffold(title = "방 설정", onBack = onBack) { modifier ->
         when (val state = roomState) {
@@ -687,15 +681,12 @@ fun RoomSettingsScreen(
             is UiState.Error -> ErrorState(state.message)
             is UiState.Success -> {
                 val room = state.data
-                LaunchedEffect(room.defaultNotificationMode) {
-                    roomMode = NotificationMode.fromWire(room.defaultNotificationMode)
-                }
                 Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(room.name, style = MaterialTheme.typography.headlineSmall)
                     if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
                         GDInfoBanner(
                             title = "푸시 확인 전용 방",
-                            body = "이 방 알림 받기가 켜져 있으면 매일 오전 9시에 테스트 푸시가 옵니다.",
+                            body = "전체 푸시 알림이 켜져 있으면 매일 오전 9시에 테스트 푸시가 옵니다.",
                             icon = Icons.Default.Notifications
                         )
                     } else {
@@ -711,55 +702,19 @@ fun RoomSettingsScreen(
                             if (loading) ButtonProgressIndicator()
                             Text(if (loading) "처리 중..." else "초대코드 재발급")
                         }
-                        HorizontalDivider()
-                        Text("방 기본 알림", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        ReminderTimeBanner()
-                        Text("방 기본값은 이 방의 멤버 알림 설정이 비어 있을 때 적용됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        ModeChips(selected = roomMode, onSelected = { roomMode = it })
-                        Button(
-                            onClick = { settingsViewModel.updateRoom(roomId, roomMode) },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            val saving = busyAction == "room"
-                            if (saving) ButtonProgressIndicator()
-                            Text(if (saving) "저장 중..." else "방 기본값 저장")
-                        }
                     }
                     HorizontalDivider()
-                    Text(
-                        "내 방 알림은 방 기본값보다 우선합니다. Android 알림 권한이 꺼져 있으면 저장해도 푸시를 받을 수 없습니다.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    GDInfoBanner(
+                        title = "알림은 개인 설정으로 통합됐어요",
+                        body = "모든 방의 만료 푸시는 쿠폰방 목록 우측 상단 알림 설정에서 한 번에 관리합니다.",
+                        icon = Icons.Default.Notifications
                     )
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("이 방 알림 받기")
-                        Switch(
-                            checked = memberEnabled && canUsePush,
-                            enabled = canUsePush,
-                            onCheckedChange = { memberEnabled = it }
-                        )
-                    }
-                    NotificationPermissionStatus(notificationPermission)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NotificationMode.entries.forEach { mode ->
-                            FilterChip(
-                                selected = memberMode == mode,
-                                onClick = { memberMode = mode },
-                                label = { Text(mode.label) }
-                            )
-                        }
-                    }
-                    Button(
-                        onClick = { settingsViewModel.updateMember(roomId, memberEnabled && canUsePush, memberMode) },
-                        enabled = !busy,
+                    OutlinedButton(
+                        onClick = onOpenNotifications,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        val saving = busyAction == "member"
-                        if (saving) ButtonProgressIndicator()
-                        Text(if (saving) "저장 중..." else "내 방 알림 저장")
+                        Text("전체 알림 설정 열기")
                     }
                     OutlinedButton(
                         onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },

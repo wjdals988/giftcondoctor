@@ -388,9 +388,30 @@ class SettingsViewModel(
     private val _testPushBusy = MutableStateFlow(false)
     val testPushBusy: StateFlow<Boolean> = _testPushBusy
 
+    private val _expiryTestPushBusy = MutableStateFlow(false)
+    val expiryTestPushBusy: StateFlow<Boolean> = _expiryTestPushBusy
+
+    private val _defaultMode = MutableStateFlow(NotificationMode.Basic)
+    val defaultMode: StateFlow<NotificationMode> = _defaultMode
+
+    private val _defaultPushEnabled = MutableStateFlow(true)
+    val defaultPushEnabled: StateFlow<Boolean> = _defaultPushEnabled
+
+    fun loadDefaultSettings() {
+        viewModelScope.launch {
+            runCatching { notificationRepository.currentDefault() }
+                .onSuccess {
+                    _defaultMode.value = NotificationMode.fromWire(it.mode)
+                    _defaultPushEnabled.value = it.pushEnabled
+                }
+        }
+    }
+
     fun updateDefault(mode: NotificationMode, pushEnabled: Boolean) {
         runSettingsAction("default") {
             notificationRepository.updateDefault(mode.wire, mode.days, pushEnabled)
+            _defaultMode.value = mode
+            _defaultPushEnabled.value = pushEnabled
             _message.value = "알림 설정을 저장했습니다."
         }
     }
@@ -439,6 +460,25 @@ class SettingsViewModel(
                     _message.value = it.localizedMessage ?: "테스트 푸시 전송에 실패했습니다."
                 }
             _testPushBusy.value = false
+        }
+    }
+
+    fun sendExpiryReminderTestPush() {
+        viewModelScope.launch {
+            _expiryTestPushBusy.value = true
+            _message.value = null
+            runCatching { notificationRepository.sendExpiryReminderTestPush() }
+                .onSuccess { sent ->
+                    _message.value = if (sent > 0) {
+                        "10초 뒤 실제 만료 알림 형식의 푸시를 보냈습니다. 알림 도착 여부를 확인해 주세요."
+                    } else {
+                        "요청은 처리됐지만 전송된 토큰이 없습니다."
+                    }
+                }
+                .onFailure {
+                    _message.value = it.localizedMessage ?: "만료 알림 테스트 전송에 실패했습니다."
+                }
+            _expiryTestPushBusy.value = false
         }
     }
 

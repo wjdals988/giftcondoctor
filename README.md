@@ -52,6 +52,8 @@ cd android
 gradle :app:assembleDebug
 ```
 
+디버그 APK는 `android/app/build/outputs/apk/debug/giftcondoctor-{versionName}-{versionCode}-debug.apk` 형식으로 생성됩니다.
+
 이 저장소에는 secret 파일을 포함하지 않습니다.
 
 ## 보안 원칙

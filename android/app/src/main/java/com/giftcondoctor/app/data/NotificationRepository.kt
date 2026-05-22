@@ -12,6 +12,22 @@ class NotificationRepository(
     private val backend: BackendClient = BackendClient(),
     private val pushTokenRepository: PushTokenRepository = PushTokenRepository()
 ) {
+    data class DefaultNotificationSettings(
+        val mode: String,
+        val days: List<Int>,
+        val pushEnabled: Boolean
+    )
+
+    suspend fun currentDefault(): DefaultNotificationSettings {
+        val uid = auth.currentUser?.uid ?: return DefaultNotificationSettings("basic", listOf(7, 3, 1, 0), true)
+        val user = firestore.document("users/$uid").get().await()
+        return DefaultNotificationSettings(
+            mode = user.getString("defaultNotificationMode") ?: "basic",
+            days = user.getLongList("defaultNotificationDays") ?: listOf(7, 3, 1, 0),
+            pushEnabled = user.getBoolean("pushEnabled") ?: true
+        )
+    }
+
     suspend fun updateDefault(mode: String, days: List<Int>, pushEnabled: Boolean) {
         val uid = auth.currentUser?.uid ?: return
         firestore.document("users/$uid").set(
@@ -29,4 +45,19 @@ class NotificationRepository(
         pushTokenRepository.saveCurrentToken()
         return backend.sendTestPush()
     }
+
+    suspend fun sendExpiryReminderTestPush(): Int {
+        pushTokenRepository.saveCurrentToken()
+        return backend.sendExpiryReminderTestPush()
+    }
 }
+
+@Suppress("UNCHECKED_CAST")
+private fun com.google.firebase.firestore.DocumentSnapshot.getLongList(field: String): List<Int>? =
+    (get(field) as? List<*>)?.mapNotNull {
+        when (it) {
+            is Long -> it.toInt()
+            is Int -> it
+            else -> null
+        }
+    }

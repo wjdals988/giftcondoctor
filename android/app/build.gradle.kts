@@ -1,3 +1,4 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
 import java.util.Properties
 
 plugins {
@@ -22,8 +23,8 @@ android {
         applicationId = "com.giftcondoctor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 11
+        versionName = "0.1.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val apiBaseUrl = localProperties.getProperty("apiBaseUrl", "http://10.0.2.2:3000")
@@ -40,6 +41,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    applicationVariants.all {
+        outputs.all {
+            val output = this as BaseVariantOutputImpl
+            output.outputFileName = "giftcondoctor-${versionName}-${versionCode}-${buildType.name}.apk"
+        }
     }
 }
 

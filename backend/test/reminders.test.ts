@@ -35,24 +35,22 @@ describe("reminder date logic", () => {
 });
 
 describe("reminder settings", () => {
-  it("prefers member override, then room, then user, then basic defaults", () => {
+  it("uses personal global settings only", () => {
     expect(resolveReminderDays({ defaultNotificationMode: "careful" })).toEqual([7, 5, 3, 2, 1, 0]);
     expect(resolveReminderDays(
       { defaultNotificationMode: "careful" },
       { defaultNotificationMode: "minimal" }
-    )).toEqual([3, 0]);
+    )).toEqual([7, 5, 3, 2, 1, 0]);
     expect(resolveReminderDays(
       { defaultNotificationMode: "careful" },
       { defaultNotificationMode: "minimal" },
       { notificationDays: [7, 1, 0] }
-    )).toEqual([7, 1, 0]);
+    )).toEqual([7, 5, 3, 2, 1, 0]);
   });
 
-  it("honors push and member disabled flags", () => {
-    expect(shouldNotify(3, { notificationEnabled: false })).toBe(false);
-    expect(shouldNotify(3, {}, {}, { notificationEnabled: false })).toBe(false);
-    expect(shouldNotify(3, {}, {}, { notificationMode: "minimal" })).toBe(true);
-    expect(shouldNotify(7, {}, {}, { notificationMode: "minimal" })).toBe(false);
+  it("matches days from the personal mode", () => {
+    expect(shouldNotify(3, { defaultNotificationMode: "minimal" })).toBe(true);
+    expect(shouldNotify(7, { defaultNotificationMode: "minimal" })).toBe(false);
   });
 });
 

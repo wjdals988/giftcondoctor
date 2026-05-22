@@ -53,7 +53,6 @@ export function targetDates(today = seoulLocalDate()) {
 }
 
 type SettingSource = {
-  notificationEnabled?: boolean;
   notificationDays?: unknown;
   notificationMode?: unknown;
   defaultNotificationDays?: unknown;
@@ -61,14 +60,6 @@ type SettingSource = {
 };
 
 export function resolveReminderDays(user?: SettingSource, room?: SettingSource, member?: SettingSource) {
-  const memberDays = normalizeDays(member?.notificationDays);
-  if (memberDays.length > 0) return memberDays;
-  if (member?.notificationMode) return daysForMode(member.notificationMode);
-
-  const roomDays = normalizeDays(room?.defaultNotificationDays);
-  if (roomDays.length > 0) return roomDays;
-  if (room?.defaultNotificationMode) return daysForMode(room.defaultNotificationMode);
-
   const userDays = normalizeDays(user?.defaultNotificationDays);
   if (userDays.length > 0) return userDays;
   if (user?.defaultNotificationMode) return daysForMode(user.defaultNotificationMode);
@@ -77,8 +68,6 @@ export function resolveReminderDays(user?: SettingSource, room?: SettingSource, 
 }
 
 export function shouldNotify(daysBefore: number, user?: SettingSource, room?: SettingSource, member?: SettingSource) {
-  if (user && user.notificationEnabled === false) return false;
-  if (member && member.notificationEnabled === false) return false;
   return resolveReminderDays(user, room, member).includes(daysBefore);
 }
 

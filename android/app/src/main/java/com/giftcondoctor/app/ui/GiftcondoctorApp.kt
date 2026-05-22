@@ -168,6 +168,7 @@ fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
                     RoomSettingsScreen(
                         roomId = roomId,
                         onBack = { navController.popBackStack() },
+                        onOpenNotifications = { navController.navigate(Routes.Notifications) },
                         onLeft = { navController.navigate(Routes.Rooms) { popUpTo(Routes.Rooms) { inclusive = true } } }
                     )
                 }

@@ -114,7 +114,7 @@ async function runDailyPushTestRoom(today: string): Promise<Pick<Summary, "match
   for (const member of members.docs) {
     const uid = member.id;
     const user = await db.doc(`users/${uid}`).get();
-    if (!user.exists || user.get("pushEnabled") === false || member.get("notificationEnabled") === false) {
+    if (!user.exists || user.get("pushEnabled") === false) {
       summary.skipped += 1;
       continue;
     }
@@ -200,10 +200,10 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
     const logId = notificationLogId(roomId, couponId, daysBefore, expiresLocalDate);
     const logRef = db.doc(`notificationLogs/${logId}`);
     const existingLog = await logRef.get();
-    if (existingLog.exists) {
-      summary.skipped += 1;
-      continue;
-    }
+    const existingSentToUids = existingLog.exists ? existingLog.get("sentToUids") : undefined;
+    const alreadySentUids = new Set(
+      (existingSentToUids as unknown[] | undefined)?.filter((value): value is string => typeof value === "string") ?? []
+    );
 
     const room = await roomRef.get();
     if (!room.exists) {
@@ -229,13 +229,18 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
     const sentToUids: string[] = [];
     for (const member of targetMembers) {
       const uid = member.id;
+      if (alreadySentUids.has(uid)) {
+        summary.skipped += 1;
+        continue;
+      }
+
       const user = await db.doc(`users/${uid}`).get();
       if (!user.exists || user.get("pushEnabled") === false) {
         summary.skipped += 1;
         continue;
       }
 
-      if (!shouldNotify(daysBefore, user.data(), room.data(), member.data())) {
+      if (!shouldNotify(daysBefore, user.data())) {
         summary.skipped += 1;
         continue;
       }
@@ -268,9 +273,9 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
       couponId,
       daysBefore,
       targetDate: expiresLocalDate,
-      sentToUids,
+      sentToUids: FieldValue.arrayUnion(...sentToUids),
       sentAt: FieldValue.serverTimestamp()
-    });
+    }, { merge: true });
   }
 
   const testRoomSummary = await runDailyPushTestRoom(today);
