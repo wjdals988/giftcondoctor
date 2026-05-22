@@ -98,7 +98,7 @@ class BackendClient(
     }
 
     suspend fun sendExpiryReminderTestPush(): Int {
-        val response = postJson("/api/notifications/test-expiry", JSONObject())
+        val response = postJson("/api/notifications/test", JSONObject().put("kind", "expiryReminder"))
         return JSONObject(response).optInt("sent", 0)
     }
 

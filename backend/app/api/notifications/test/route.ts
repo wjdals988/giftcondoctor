@@ -1,7 +1,8 @@
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { requireUser } from "@/lib/auth";
 import { ApiError, json, jsonError } from "@/lib/http";
-import { isInvalidFcmTokenCode } from "@/lib/reminders";
+import { PUSH_TEST_ROOM_ID, joinPushTestRoom } from "@/lib/pushTestRoom";
+import { isInvalidFcmTokenCode, notificationBody, notificationTitle, shouldNotify } from "@/lib/reminders";
 
 export const runtime = "nodejs";
 
@@ -20,22 +21,49 @@ async function tokenDocsForUid(uid: string): Promise<TokenDoc[]> {
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    const payload = await request.json().catch(() => ({}));
+    const kind = typeof payload?.kind === "string" ? payload.kind : "device";
+    const expiryTest = kind === "expiryReminder";
+
+    if (expiryTest) {
+      const user = await getAdminDb().doc(`users/${token.uid}`).get();
+      if (!user.exists || user.get("pushEnabled") === false) {
+        throw new ApiError(400, "전체 푸시 알림이 꺼져 있습니다. 알림 설정에서 푸시 알림 사용을 켠 뒤 다시 시도해 주세요.");
+      }
+      if (!shouldNotify(0, user.data())) {
+        throw new ApiError(400, "현재 알림 설정은 당일 만료 알림을 받지 않도록 되어 있습니다.");
+      }
+      await joinPushTestRoom(token);
+    }
+
     const tokenDocs = await tokenDocsForUid(token.uid);
     if (tokenDocs.length === 0) {
       throw new ApiError(404, "저장된 푸시 토큰이 없습니다. 앱을 다시 실행한 뒤 시도해 주세요.");
     }
 
+    const title = expiryTest ? notificationTitle("기프티콘닥터", 0) : "테스트 푸시가 도착했어요";
+    const body = expiryTest ? notificationBody("테스트 만료 쿠폰", "오늘", 0) : "기프티콘닥터 알림 설정이 정상입니다.";
+    const data: Record<string, string> = expiryTest
+      ? {
+          title,
+          body,
+          roomId: PUSH_TEST_ROOM_ID,
+          couponId: "expiry-reminder-test",
+          daysBefore: "0",
+          deepLink: `giftcondoctor://rooms/${PUSH_TEST_ROOM_ID}`,
+          type: "expiry_reminder_test",
+          delaySeconds: "10"
+        }
+      : {
+          title,
+          body,
+          type: "test_push"
+        };
+
     const response = await getAdminMessaging().sendEachForMulticast({
       tokens: tokenDocs.map((doc) => doc.token),
-      notification: {
-        title: "테스트 푸시가 도착했어요",
-        body: "기프티콘닥터 알림 설정이 정상입니다."
-      },
-      data: {
-        title: "테스트 푸시가 도착했어요",
-        body: "기프티콘닥터 알림 설정이 정상입니다.",
-        type: "test_push"
-      },
+      notification: { title, body },
+      data,
       android: {
         priority: "high",
         notification: {

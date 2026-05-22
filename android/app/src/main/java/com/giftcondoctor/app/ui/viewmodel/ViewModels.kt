@@ -23,6 +23,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -467,6 +468,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             _expiryTestPushBusy.value = true
             _message.value = null
+            delay(10_000)
             runCatching { notificationRepository.sendExpiryReminderTestPush() }
                 .onSuccess { sent ->
                     _message.value = if (sent > 0) {
