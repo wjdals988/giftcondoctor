@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.BuildConfig
+import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.NotificationMode
+import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.GDScaffold
@@ -41,12 +43,14 @@ import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
+import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 
 @Composable
 fun NotificationSettingsScreen(
     onBack: () -> Unit,
     onOpenAppInfo: () -> Unit,
-    viewModel: SettingsViewModel = viewModel(key = "notification-settings")
+    viewModel: SettingsViewModel = viewModel(key = "notification-settings"),
+    roomListViewModel: RoomListViewModel = viewModel(key = "notification-push-test-room")
 ) {
     val message by viewModel.message.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
@@ -55,10 +59,17 @@ fun NotificationSettingsScreen(
     val expiryTestPushBusy by viewModel.expiryTestPushBusy.collectAsStateWithLifecycle()
     val savedMode by viewModel.defaultMode.collectAsStateWithLifecycle()
     val savedPushEnabled by viewModel.defaultPushEnabled.collectAsStateWithLifecycle()
+    val rooms by roomListViewModel.rooms.collectAsStateWithLifecycle()
+    val testRoomBusy by roomListViewModel.busy.collectAsStateWithLifecycle()
+    val testRoomMessage by roomListViewModel.message.collectAsStateWithLifecycle()
     var mode by remember { mutableStateOf(NotificationMode.Basic) }
     var pushEnabled by remember { mutableStateOf(true) }
     val notificationPermission = rememberNotificationPermissionState()
     val canUsePush = notificationPermission.granted || !notificationPermission.runtimeRequired
+    val joinedTestRoom = when (val state = rooms) {
+        is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
+        else -> false
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadDefaultSettings()
@@ -101,6 +112,12 @@ fun NotificationSettingsScreen(
                 if (saving) ButtonProgressIndicator()
                 Text(if (saving) "저장 중..." else "저장")
             }
+            Text("푸시 연결 확인", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "알림 권한 → FCM 기기 등록 → 서버 전송 순서로 확인합니다. 실패한 단계와 해결 방법을 바로 표시해요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             OutlinedButton(
                 onClick = { viewModel.sendTestPush() },
                 enabled = canUsePush && !testPushBusy,
@@ -108,7 +125,7 @@ fun NotificationSettingsScreen(
                 shape = MaterialTheme.shapes.small
             ) {
                 if (testPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                Text(if (testPushBusy) "단말 테스트 보내는 중..." else "단말 푸시 알림 설정 테스트")
+                Text(if (testPushBusy) "3단계 확인 중..." else "푸시 연결 진단")
             }
             OutlinedButton(
                 onClick = { viewModel.sendExpiryReminderTestPush() },
@@ -124,6 +141,23 @@ fun NotificationSettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (joinedTestRoom) {
+                Text(
+                    "매일 오전 9시 cron 푸시 테스트에 참여 중입니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { roomListViewModel.joinPushTestRoom { } },
+                    enabled = canUsePush && !testRoomBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (testRoomBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Text(if (testRoomBusy) "참여 중..." else "매일 오전 9시 cron 푸시도 확인")
+                }
+            }
+            InlineMessage(testRoomMessage)
             InlineMessage(message)
             HorizontalDivider()
             Card(
@@ -169,7 +203,9 @@ fun AppInfoScreen(onBack: () -> Unit) {
                     "방장 전용 방 삭제 플로우를 추가하고 쿠폰, 댓글, 이미지까지 함께 정리되도록 했습니다.",
                     "만료 푸시 문구를 짧게 정리하고 알림 형식 테스트를 즉시 전송하도록 개선했습니다.",
                     "앱 시작 시 만료 알림 채널을 준비해 첫 푸시 수신 안정성을 높였습니다.",
-                    "멤버 수와 쿠폰 예약 상태의 동시 변경 정합성을 보강했습니다."
+                    "멤버 수와 쿠폰 예약 상태의 동시 변경 정합성을 보강했습니다.",
+                    "첫 쿠폰방과 쿠폰 등록 흐름을 단계형으로 단순화했습니다.",
+                    "푸시 연결 실패 단계를 구분해 해결 방법을 안내합니다."
                 )
             )
             ChangeLogEntry(

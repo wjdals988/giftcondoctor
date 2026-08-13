@@ -501,9 +501,9 @@ class SettingsViewModel(
             runCatching { notificationRepository.sendTestPush() }
                 .onSuccess { sent ->
                     _message.value = if (sent > 0) {
-                        "테스트 푸시를 보냈습니다. 잠시 후 알림을 확인해 주세요."
+                        "권한·FCM 등록·서버 전송을 확인했습니다. 잠시 후 알림을 확인해 주세요."
                     } else {
-                        "푸시 요청은 처리됐지만 전송된 토큰이 없습니다."
+                        "서버 요청은 처리됐지만 유효한 FCM 토큰으로 전송되지 않았습니다."
                     }
                 }
                 .onFailure {

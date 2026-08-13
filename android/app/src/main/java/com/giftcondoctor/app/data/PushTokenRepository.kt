@@ -16,7 +16,21 @@ class PushTokenRepository(
     private val messaging: FirebaseMessaging = FirebaseMessaging.getInstance()
 ) {
     suspend fun saveCurrentToken() {
-        saveToken(messaging.token.await())
+        val token = runCatching { messaging.token.await() }
+            .getOrElse {
+                throw IllegalStateException(
+                    "FCM 기기 등록에 실패했습니다. 인터넷 연결, DNS, Google Play 서비스를 확인해 주세요.",
+                    it
+                )
+            }
+        check(token.isNotBlank()) { "FCM에서 빈 기기 토큰을 반환했습니다. 잠시 후 다시 시도해 주세요." }
+        runCatching { saveToken(token) }
+            .getOrElse {
+                throw IllegalStateException(
+                    "FCM 토큰을 서버 계정에 저장하지 못했습니다. 로그인과 네트워크 상태를 확인해 주세요.",
+                    it
+                )
+            }
     }
 
     suspend fun saveToken(token: String) {
