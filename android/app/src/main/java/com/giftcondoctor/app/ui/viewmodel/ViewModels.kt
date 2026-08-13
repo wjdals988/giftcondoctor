@@ -24,7 +24,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -289,10 +288,12 @@ class AddCouponViewModel(
 }
 
 class CouponDetailViewModel(
-    private val repository: CouponRepository = CouponRepository()
+    private val repository: CouponRepository = CouponRepository(),
+    private val roomRepository: RoomRepository = RoomRepository()
 ) : ViewModel() {
     private var couponJob: Job? = null
     private var commentsJob: Job? = null
+    private var roomJob: Job? = null
 
     private val _coupon = MutableStateFlow<UiState<Coupon>>(UiState.Loading)
     val coupon: StateFlow<UiState<Coupon>> = _coupon
@@ -308,6 +309,9 @@ class CouponDetailViewModel(
 
     private val _commentBusy = MutableStateFlow(false)
     val commentBusy: StateFlow<Boolean> = _commentBusy
+
+    private val _roomOwnerUid = MutableStateFlow<String?>(null)
+    val roomOwnerUid: StateFlow<String?> = _roomOwnerUid
 
     val currentUid: String?
         get() = repository.currentUid
@@ -325,6 +329,11 @@ class CouponDetailViewModel(
             repository.observeComments(roomId, couponId)
                 .catch { _comments.value = UiState.Error(it.localizedMessage ?: "댓글을 불러오지 못했습니다.") }
                 .collect { _comments.value = UiState.Success(it) }
+        }
+        roomJob = viewModelScope.launch {
+            roomRepository.observeRoom(roomId)
+                .catch { _roomOwnerUid.value = null }
+                .collect { _roomOwnerUid.value = it?.ownerUid }
         }
         refreshImage(roomId, couponId)
     }
@@ -464,20 +473,6 @@ class SettingsViewModel(
         }
     }
 
-    fun updateRoom(roomId: String, mode: NotificationMode) {
-        runSettingsAction("room") {
-            roomRepository.updateRoomNotification(roomId, mode.wire, mode.days)
-            _message.value = "방 알림 기본값을 저장했습니다."
-        }
-    }
-
-    fun updateMember(roomId: String, enabled: Boolean, mode: NotificationMode?) {
-        runSettingsAction("member") {
-            roomRepository.updateMemberNotification(roomId, enabled, mode?.wire, mode?.days)
-            _message.value = "내 방 알림 설정을 저장했습니다."
-        }
-    }
-
     fun regenerateInvite(roomId: String) {
         runSettingsAction("invite") {
             val code = roomRepository.regenerateInvite(roomId)
@@ -522,11 +517,10 @@ class SettingsViewModel(
         viewModelScope.launch {
             _expiryTestPushBusy.value = true
             _message.value = null
-            delay(10_000)
             runCatching { notificationRepository.sendExpiryReminderTestPush() }
                 .onSuccess { sent ->
                     _message.value = if (sent > 0) {
-                        "10초 뒤 실제 만료 알림 형식의 푸시를 보냈습니다. 알림 도착 여부를 확인해 주세요."
+                        "만료 알림 형식의 테스트 푸시를 보냈습니다."
                     } else {
                         "요청은 처리됐지만 전송된 토큰이 없습니다."
                     }

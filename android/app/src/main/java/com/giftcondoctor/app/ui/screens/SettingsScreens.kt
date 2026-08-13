@@ -117,10 +117,10 @@ fun NotificationSettingsScreen(
                 shape = MaterialTheme.shapes.small
             ) {
                 if (expiryTestPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                Text(if (expiryTestPushBusy) "10초 뒤 만료 알림 테스트 중..." else "만료 알림 10초 테스트")
+                Text(if (expiryTestPushBusy) "만료 알림 테스트 중..." else "만료 알림 형식 테스트")
             }
             Text(
-                "두 번째 테스트는 실제 만료 알림과 같은 형식으로 서버가 10초 뒤 푸시를 보냅니다.",
+                "두 번째 테스트는 실제 만료 알림과 같은 짧은 형식으로 즉시 전송합니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -166,7 +166,10 @@ fun AppInfoScreen(onBack: () -> Unit) {
                 changes = listOf(
                     "쿠폰 상세 화면에 댓글 작성과 삭제 기능을 추가했습니다.",
                     "방 상세와 방 설정에서 방장/멤버 표시를 더 명확하게 정리했습니다.",
-                    "방장 전용 방 삭제 플로우를 추가하고 쿠폰, 댓글, 이미지까지 함께 정리되도록 했습니다."
+                    "방장 전용 방 삭제 플로우를 추가하고 쿠폰, 댓글, 이미지까지 함께 정리되도록 했습니다.",
+                    "만료 푸시 문구를 짧게 정리하고 알림 형식 테스트를 즉시 전송하도록 개선했습니다.",
+                    "앱 시작 시 만료 알림 채널을 준비해 첫 푸시 수신 안정성을 높였습니다.",
+                    "멤버 수와 쿠폰 예약 상태의 동시 변경 정합성을 보강했습니다."
                 )
             )
             ChangeLogEntry(

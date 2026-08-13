@@ -15,6 +15,7 @@
 - Firebase App Check와 IP 기반 abuse 방어
 - 쿠폰 목록 썸네일 API·캐시·paging으로 이미지 메모리 사용량 개선
 - Cron 알림 발송 lease/outbox와 삭제 cleanup 재시도 구조
+- 방 탈퇴 전 쿠폰 소유권 이전 플로우
 
 ## 완료된 기반 작업
 

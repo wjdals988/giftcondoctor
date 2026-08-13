@@ -60,9 +60,16 @@ type SettingSource = {
 };
 
 export function resolveReminderDays(user?: SettingSource, room?: SettingSource, member?: SettingSource) {
+  if (user?.defaultNotificationMode === "minimal" ||
+      user?.defaultNotificationMode === "basic" ||
+      user?.defaultNotificationMode === "careful") {
+    return daysForMode(user.defaultNotificationMode);
+  }
+
   const userDays = normalizeDays(user?.defaultNotificationDays);
-  if (userDays.length > 0) return userDays;
-  if (user?.defaultNotificationMode) return daysForMode(user.defaultNotificationMode);
+  if (userDays.length > 0 && userDays.every((day) => REMINDER_SCAN_DAYS.includes(day as typeof REMINDER_SCAN_DAYS[number]))) {
+    return userDays;
+  }
 
   return NOTIFICATION_MODE_DAYS.basic;
 }
@@ -71,24 +78,17 @@ export function shouldNotify(daysBefore: number, user?: SettingSource, room?: Se
   return resolveReminderDays(user, room, member).includes(daysBefore);
 }
 
-export function notificationTitle(brand: unknown, daysBefore: number) {
-  const brandText = typeof brand === "string" && brand.trim().length > 0 ? brand.trim() : "";
-
-  if (daysBefore === 0) {
-    return "오늘 만료되는 쿠폰이 있어요";
-  }
-  if (daysBefore === 1) {
-    return brandText ? `${brandText} 쿠폰이 내일 만료돼요` : "내일 만료되는 쿠폰이 있어요";
-  }
-  return `${daysBefore}일 뒤 만료되는 쿠폰이 있어요`;
+export function notificationTitle(_brand: unknown, daysBefore: number) {
+  if (daysBefore === 0) return "쿠폰 만료 D-Day";
+  return `쿠폰 만료 D-${daysBefore}`;
 }
 
 export function notificationBody(title: unknown, expiresLocalDate: unknown, daysBefore?: number) {
   const couponTitle = typeof title === "string" && title.trim().length > 0 ? title.trim() : "쿠폰";
   const date = typeof expiresLocalDate === "string" ? expiresLocalDate : "";
-  if (daysBefore === 0) return `${couponTitle} · 오늘까지 사용할 수 있어요.`;
-  if (daysBefore === 1) return `${couponTitle} · 내일까지 사용하세요.`;
-  if (typeof daysBefore === "number" && daysBefore > 1) return `${couponTitle} · ${daysBefore}일 남았어요.`;
+  if (daysBefore === 0) return `${couponTitle} · 오늘까지`;
+  if (daysBefore === 1) return `${couponTitle} · 내일까지`;
+  if (typeof daysBefore === "number" && daysBefore > 1) return `${couponTitle} · ${daysBefore}일 남음`;
   return date ? `${couponTitle} · ${date}` : couponTitle;
 }
 

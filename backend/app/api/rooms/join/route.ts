@@ -38,31 +38,33 @@ export async function POST(request: Request) {
     const profile = userProfile(token);
     const now = FieldValue.serverTimestamp();
     const memberRef = db.doc(`rooms/${roomId}/members/${token.uid}`);
-    const alreadyMember = await memberRef.get();
+    const membershipRef = db.doc(`users/${token.uid}/roomMemberships/${roomId}`);
+    await db.runTransaction(async (transaction) => {
+      const freshRoom = await transaction.get(room.ref);
+      const members = await transaction.get(room.ref.collection("members"));
+      if (!freshRoom.exists) throw new ApiError(404, "방을 찾을 수 없습니다.");
 
-    const batch = db.batch();
-    batch.set(memberRef, {
-      role: "member",
-      displayName: profile.displayName,
-      joinedAt: now,
-      notificationEnabled: true,
-      notificationMode: null,
-      notificationDays: null
-    }, { merge: true });
-    batch.set(db.doc(`users/${token.uid}/roomMemberships/${roomId}`), {
-      roomId,
-      name: room.get("name"),
-      role: room.get("ownerUid") === token.uid ? "owner" : "member",
-      joinedAt: now,
-      updatedAt: now
-    }, { merge: true });
-    if (!alreadyMember.exists) {
-      batch.update(room.ref, {
-        memberCount: FieldValue.increment(1),
+      const alreadyMember = members.docs.some((member) => member.id === token.uid);
+      transaction.set(memberRef, {
+        role: freshRoom.get("ownerUid") === token.uid ? "owner" : "member",
+        displayName: profile.displayName,
+        joinedAt: now,
+        notificationEnabled: true,
+        notificationMode: null,
+        notificationDays: null
+      }, { merge: true });
+      transaction.set(membershipRef, {
+        roomId,
+        name: freshRoom.get("name"),
+        role: freshRoom.get("ownerUid") === token.uid ? "owner" : "member",
+        joinedAt: now,
+        updatedAt: now
+      }, { merge: true });
+      transaction.update(room.ref, {
+        memberCount: members.size + (alreadyMember ? 0 : 1),
         updatedAt: now
       });
-    }
-    await batch.commit();
+    });
 
     return json({ roomId, name: room.get("name") });
   } catch (error) {

@@ -56,6 +56,16 @@ cd android
 
 디버그 APK는 `android/app/build/outputs/apk/debug/giftcondoctor-{versionName}-{versionCode}-debug.apk` 형식으로 생성됩니다.
 
+에뮬레이터에서 푸시 token이 생성되지 않고 `Firebase Installations Service is unavailable`이 보이면 앱 설정보다 DNS를 먼저 확인합니다.
+
+```bash
+adb -s emulator-5556 shell ping -c 1 8.8.8.8
+adb -s emulator-5556 shell ping -c 1 firebaseinstallations.googleapis.com
+adb -s emulator-5556 logcat -d | rg "FirebaseMessaging|FirebaseInstallations|SERVICE_NOT_AVAILABLE"
+```
+
+IP 연결은 되고 도메인만 실패하면 AVD를 정상 DNS로 재시작한 뒤 FCM token 생성을 다시 확인합니다.
+
 이 저장소에는 secret 파일을 포함하지 않습니다.
 
 ## Android Release 자동화

@@ -27,11 +27,30 @@ export async function POST(request: Request) {
     }
 
     const db = getAdminDb();
-    const batch = db.batch();
-    batch.delete(db.doc(`rooms/${roomId}/members/${targetUid}`));
-    batch.delete(db.doc(`users/${targetUid}/roomMemberships/${roomId}`));
-    batch.update(db.doc(`rooms/${roomId}`), { updatedAt: FieldValue.serverTimestamp() });
-    await batch.commit();
+    const roomRef = db.doc(`rooms/${roomId}`);
+    const memberRef = db.doc(`rooms/${roomId}/members/${targetUid}`);
+    const membershipRef = db.doc(`users/${targetUid}/roomMemberships/${roomId}`);
+    await db.runTransaction(async (transaction) => {
+      const freshRoom = await transaction.get(roomRef);
+      const members = await transaction.get(roomRef.collection("members"));
+      const ownedCoupons = await transaction.get(
+        roomRef.collection("coupons").where("ownerUid", "==", targetUid).limit(1)
+      );
+
+      if (!freshRoom.exists || !members.docs.some((item) => item.id === targetUid)) {
+        throw new ApiError(404, "제거할 멤버를 찾을 수 없습니다.");
+      }
+      if (!ownedCoupons.empty) {
+        throw new ApiError(409, "이 멤버가 등록한 쿠폰이 남아 있어 제거할 수 없습니다. 쿠폰을 먼저 정리해 주세요.");
+      }
+
+      transaction.delete(memberRef);
+      transaction.delete(membershipRef);
+      transaction.update(roomRef, {
+        memberCount: Math.max(0, members.size - 1),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    });
 
     return json({ ok: true });
   } catch (error) {

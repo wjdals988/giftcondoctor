@@ -53,6 +53,7 @@ beforeEach(async () => {
       ownerUid: "member-1"
     });
     await setDoc(doc(context.firestore(), "rooms/room-1/members/member-1"), { role: "owner" });
+    await setDoc(doc(context.firestore(), "rooms/room-1/members/member-2"), { role: "member" });
   });
 });
 
@@ -90,6 +91,42 @@ describe("coupon security rules", () => {
     await assertFails(updateDoc(couponRef, { title: "x".repeat(101) }));
   });
 
+  it("blocks a different member from using a reserved coupon", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "reserved",
+        reservedByUid: "member-1"
+      });
+    });
+    const db = testEnvironment.authenticatedContext("member-2").firestore();
+    await assertFails(updateDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
+      status: "used",
+      reservedByUid: null,
+      usedByUid: "member-2",
+      usedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }));
+  });
+
+  it("lets the reserver mark a coupon used and clears the reservation", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "reserved",
+        reservedByUid: "member-2"
+      });
+    });
+    const db = testEnvironment.authenticatedContext("member-2").firestore();
+    await assertSucceeds(updateDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
+      status: "used",
+      reservedByUid: null,
+      usedByUid: "member-2",
+      usedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }));
+  });
+
   it("blocks a non-member from reading a coupon", async () => {
     await testEnvironment.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), validCoupon());
@@ -111,6 +148,17 @@ describe("push token security rules", () => {
       createdAt: serverTimestamp(),
       lastSeenAt: serverTimestamp(),
       admin: true
+    }));
+  });
+});
+
+describe("notification setting security rules", () => {
+  it("rejects reminder days outside the cron scan policy", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(setDoc(doc(db, "users/member-1"), {
+      defaultNotificationMode: "basic",
+      defaultNotificationDays: [10, 0],
+      pushEnabled: true
     }));
   });
 });

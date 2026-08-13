@@ -98,11 +98,20 @@ service cloud.firestore {
     }
 
     function memberCanMarkUsed() {
-      return (resource.data.status == "active" || resource.data.status == "reserved")
+      return (resource.data.status == "active"
+          || (resource.data.status == "reserved" && resource.data.reservedByUid == request.auth.uid))
         && request.resource.data.status == "used"
+        && request.resource.data.reservedByUid == null
         && request.resource.data.usedByUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["status", "usedByUid", "usedAt", "updatedAt"]);
+          .hasOnly(["status", "reservedByUid", "usedByUid", "usedAt", "updatedAt"]);
+    }
+
+    function validGlobalNotificationSettings(data) {
+      return data.get("defaultNotificationMode", "basic") in ["minimal", "basic", "careful"]
+        && data.get("defaultNotificationDays", [7, 3, 1, 0]) is list
+        && data.get("defaultNotificationDays", [7, 3, 1, 0]).hasOnly([7, 5, 3, 2, 1, 0])
+        && data.get("pushEnabled", true) is bool;
     }
 
     match /users/{uid} {
@@ -111,7 +120,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "displayName", "email", "photoUrl", "defaultNotificationMode",
           "defaultNotificationDays", "pushEnabled", "createdAt", "updatedAt"
-        ]);
+        ])
+        && validGlobalNotificationSettings(request.resource.data);
       allow delete: if false;
 
       match /pushTokens/{tokenId} {

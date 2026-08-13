@@ -86,7 +86,8 @@ async function sendToUid(params: {
         channelId: "coupon_expiry",
         clickAction: "OPEN_COUPON_DETAIL",
         color: "#00B4A6",
-        icon: "ic_stat_gd_notification"
+        icon: "ic_stat_gd_notification",
+        visibility: "private"
       }
     }
   });
@@ -126,8 +127,8 @@ async function runDailyPushTestRoom(today: string): Promise<Pick<Summary, "match
         roomId: PUSH_TEST_ROOM_ID,
         couponId: "daily-push-test",
         daysBefore: 0,
-        title: "푸시 테스트방 알림이에요",
-        body: "매일 오전 9시 실제 알림 경로가 정상인지 확인하고 있어요.",
+        title: "푸시 상태 확인",
+        body: "정기 알림 경로가 정상입니다.",
         deepLink: `giftcondoctor://rooms/${PUSH_TEST_ROOM_ID}`,
         type: "daily_push_test"
       });
@@ -290,7 +291,12 @@ async function runExpiryReminders(now = new Date()): Promise<Summary> {
 async function handle(request: Request) {
   try {
     requireCronSecret(request);
-    return json(await runExpiryReminders());
+    const summary = await runExpiryReminders();
+    if (summary.errors.length > 0) {
+      console.error("expiry-reminders completed with errors", summary);
+      return json(summary, { status: 500 });
+    }
+    return json(summary);
   } catch (error) {
     if (error instanceof ApiError) return jsonError(error);
     return jsonError(error);

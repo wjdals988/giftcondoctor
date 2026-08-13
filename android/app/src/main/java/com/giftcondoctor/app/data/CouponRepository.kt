@@ -189,8 +189,12 @@ class CouponRepository(
             val snapshot = transaction.get(ref)
             val status = snapshot.getString("status")
             if (status != "active" && status != "reserved") error("사용 처리할 수 없는 쿠폰입니다.")
+            if (status == "reserved" && snapshot.getString("reservedByUid") != uid) {
+                error("예약한 멤버만 사용 완료로 변경할 수 있습니다.")
+            }
             transaction.update(ref, mapOf(
                 "status" to "used",
+                "reservedByUid" to null,
                 "usedByUid" to uid,
                 "usedAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()

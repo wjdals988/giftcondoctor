@@ -255,6 +255,7 @@ fun CouponDetailScreen(
     val imageState by viewModel.imageBytes.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val commentBusy by viewModel.commentBusy.collectAsStateWithLifecycle()
+    val roomOwnerUid by viewModel.roomOwnerUid.collectAsStateWithLifecycle()
     val currentUid = viewModel.currentUid
 
     GDScaffold(title = "쿠폰 상세", onBack = onBack) { modifier ->
@@ -267,6 +268,7 @@ fun CouponDetailScreen(
                 imageState = imageState,
                 commentsState = commentsState,
                 currentUid = currentUid,
+                roomOwnerUid = roomOwnerUid,
                 commentBusy = commentBusy,
                 message = message,
                 onReserve = { viewModel.reserve(roomId, couponId) },
@@ -290,6 +292,7 @@ private fun CouponDetailContent(
     imageState: UiState<ByteArray>,
     commentsState: UiState<List<CouponComment>>,
     currentUid: String?,
+    roomOwnerUid: String?,
     commentBusy: Boolean,
     message: String?,
     onReserve: () -> Unit,
@@ -327,19 +330,27 @@ private fun CouponDetailContent(
             if (coupon.status == "active") {
                 Button(onClick = onReserve, modifier = Modifier.weight(1f)) { Text("예약") }
             }
-            if (coupon.status == "reserved") {
+            if (coupon.status == "reserved" &&
+                (coupon.reservedByUid == currentUid || coupon.ownerUid == currentUid)
+            ) {
                 OutlinedButton(onClick = onCancelReservation, modifier = Modifier.weight(1f)) { Text("예약 취소") }
             }
-            if (coupon.status == "active" || coupon.status == "reserved") {
+            if (coupon.status == "active" ||
+                (coupon.status == "reserved" && coupon.reservedByUid == currentUid)
+            ) {
                 Button(onClick = onUsed, modifier = Modifier.weight(1f)) { Text("사용 완료") }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { editMode = !editMode }, modifier = Modifier.weight(1f)) {
-                Text(if (editMode) "수정 취소" else "수정")
-            }
-            OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
-                Text("삭제")
+        if (coupon.ownerUid == currentUid || roomOwnerUid == currentUid) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (coupon.ownerUid == currentUid) {
+                    OutlinedButton(onClick = { editMode = !editMode }, modifier = Modifier.weight(1f)) {
+                        Text(if (editMode) "수정 취소" else "수정")
+                    }
+                }
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                    Text("삭제")
+                }
             }
         }
         HorizontalDivider()

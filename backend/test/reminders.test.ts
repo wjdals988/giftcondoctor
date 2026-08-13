@@ -52,19 +52,24 @@ describe("reminder settings", () => {
     expect(shouldNotify(3, { defaultNotificationMode: "minimal" })).toBe(true);
     expect(shouldNotify(7, { defaultNotificationMode: "minimal" })).toBe(false);
   });
+
+  it("ignores unsupported legacy custom days that the cron never scans", () => {
+    expect(resolveReminderDays({ defaultNotificationDays: [30, 10] })).toEqual([7, 3, 1, 0]);
+    expect(resolveReminderDays({ defaultNotificationDays: [7, 1, 0] })).toEqual([7, 1, 0]);
+  });
 });
 
 describe("notification payload helpers", () => {
   it("uses Korean titles for D-day, tomorrow, and future reminders", () => {
-    expect(notificationTitle("스타벅스", 0)).toBe("오늘 만료되는 쿠폰이 있어요");
-    expect(notificationTitle("스타벅스", 1)).toBe("스타벅스 쿠폰이 내일 만료돼요");
-    expect(notificationTitle("", 7)).toBe("7일 뒤 만료되는 쿠폰이 있어요");
+    expect(notificationTitle("스타벅스", 0)).toBe("쿠폰 만료 D-Day");
+    expect(notificationTitle("스타벅스", 1)).toBe("쿠폰 만료 D-1");
+    expect(notificationTitle("", 7)).toBe("쿠폰 만료 D-7");
   });
 
   it("uses friendly reminder bodies", () => {
-    expect(notificationBody("아메리카노 Tall", "2026-05-17", 0)).toBe("아메리카노 Tall · 오늘까지 사용할 수 있어요.");
-    expect(notificationBody("아메리카노 Tall", "2026-05-18", 1)).toBe("아메리카노 Tall · 내일까지 사용하세요.");
-    expect(notificationBody("아메리카노 Tall", "2026-05-24", 7)).toBe("아메리카노 Tall · 7일 남았어요.");
+    expect(notificationBody("아메리카노 Tall", "2026-05-17", 0)).toBe("아메리카노 Tall · 오늘까지");
+    expect(notificationBody("아메리카노 Tall", "2026-05-18", 1)).toBe("아메리카노 Tall · 내일까지");
+    expect(notificationBody("아메리카노 Tall", "2026-05-24", 7)).toBe("아메리카노 Tall · 7일 남음");
   });
 
   it("builds deterministic log ids", () => {
