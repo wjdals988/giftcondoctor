@@ -20,11 +20,13 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -35,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.giftcondoctor.app.BuildConfig
 
@@ -44,10 +47,12 @@ fun GDScaffold(
     title: String,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    floatingActionButton: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        floatingActionButton = floatingActionButton,
         topBar = {
             TopAppBar(
                 title = { Text(title) },
@@ -85,13 +90,56 @@ fun LoadingState(message: String = "불러오는 중입니다") {
 }
 
 @Composable
-fun EmptyState(message: String) {
+fun EmptyState(
+    message: String,
+    title: String? = null,
+    icon: ImageVector? = null,
+    primaryActionLabel: String? = null,
+    onPrimaryAction: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
+) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 40.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(message, style = MaterialTheme.typography.bodyLarge)
+        if (icon != null) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
+            }
+        }
+        if (title != null) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = if (icon == null) 0.dp else 16.dp)
+            )
+        }
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = if (title == null && icon == null) 0.dp else 6.dp)
+        )
+        if (primaryActionLabel != null && onPrimaryAction != null) {
+            Button(onClick = onPrimaryAction, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                Text(primaryActionLabel)
+            }
+        }
+        if (secondaryActionLabel != null && onSecondaryAction != null) {
+            OutlinedButton(onClick = onSecondaryAction, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(secondaryActionLabel)
+            }
+        }
     }
 }
 
