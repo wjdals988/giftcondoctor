@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { requireRoomMember, requireUser } from "@/lib/auth";
-import { couponBlobPrefix } from "@/lib/blobPath";
+import { couponBlobPrefix, requireCouponBlobPath } from "@/lib/blobPath";
 import { ApiError, json, jsonError } from "@/lib/http";
 import { detectSupportedImage, MAX_IMAGE_SIZE } from "@/lib/imageUpload";
 import { enforceUserRateLimit } from "@/lib/rateLimit";
@@ -45,6 +45,23 @@ export async function POST(request: Request) {
       contentType: detected.contentType,
       size: image.size
     });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const token = await requireUser(request);
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId")?.trim();
+    const couponId = url.searchParams.get("couponId")?.trim();
+    const blobPath = url.searchParams.get("blobPath")?.trim();
+    if (!roomId || !couponId) throw new ApiError(400, "roomId와 couponId가 필요합니다.");
+
+    await requireRoomMember(roomId, token.uid);
+    await del(requireCouponBlobPath(blobPath, roomId, couponId));
+    return json({ ok: true });
   } catch (error) {
     return jsonError(error);
   }

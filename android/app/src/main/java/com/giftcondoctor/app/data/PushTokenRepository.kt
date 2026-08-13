@@ -1,6 +1,7 @@
 package com.giftcondoctor.app.data
 
 import android.os.Build
+import com.giftcondoctor.app.BuildConfig
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -25,11 +26,28 @@ class PushTokenRepository(
             "token" to token,
             "platform" to "android",
             "deviceName" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
-            "appVersion" to "0.1.0",
+            "appVersion" to BuildConfig.VERSION_NAME,
             "createdAt" to FieldValue.serverTimestamp(),
             "lastSeenAt" to FieldValue.serverTimestamp()
         )
         firestore.document("users/$uid/pushTokens/$tokenId").set(data, SetOptions.merge()).await()
+    }
+
+    suspend fun deleteCurrentToken() {
+        val uid = auth.currentUser?.uid
+        val token = runCatching { messaging.token.await() }.getOrNull()
+        var cleanupFailure: Throwable? = null
+
+        if (uid != null && token != null) {
+            runCatching {
+                firestore.document("users/$uid/pushTokens/${sha256(token)}").delete().await()
+            }.onFailure { cleanupFailure = it }
+        }
+
+        runCatching { messaging.deleteToken().await() }
+            .onFailure { if (cleanupFailure == null) cleanupFailure = it }
+
+        cleanupFailure?.let { throw it }
     }
 }
 

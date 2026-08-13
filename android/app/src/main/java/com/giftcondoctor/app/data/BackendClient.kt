@@ -164,6 +164,19 @@ class BackendClient(
             }
         }
 
+    suspend fun discardCouponImage(roomId: String, couponId: String, blobPath: String) {
+        authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/upload-image" +
+                        "?roomId=${Uri.encode(roomId)}" +
+                        "&couponId=${Uri.encode(couponId)}" +
+                        "&blobPath=${Uri.encode(blobPath)}"
+                )
+                .delete()
+        )
+    }
+
     private suspend fun postJson(path: String, body: JSONObject): String {
         return authedRequest(
             Request.Builder()

@@ -83,7 +83,15 @@ class SessionViewModel(
     }
 
     fun signOut() {
-        authRepository.signOut()
+        viewModelScope.launch {
+            _busy.value = true
+            val cleanup = runCatching { pushTokenRepository.deleteCurrentToken() }
+            authRepository.signOut()
+            cleanup.onFailure {
+                _message.value = "로그아웃했지만 알림 토큰 정리가 지연될 수 있습니다."
+            }
+            _busy.value = false
+        }
     }
 
     private fun runAuth(block: suspend () -> Unit) {

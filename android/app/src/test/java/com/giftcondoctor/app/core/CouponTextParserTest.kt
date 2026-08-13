@@ -37,4 +37,18 @@ class CouponTextParserTest {
         assertEquals("뿌링클+콜라 1.25L", suggestion.title)
         assertEquals(LocalDate.of(2026, 12, 31), suggestion.expiresLocalDate)
     }
+
+    @Test
+    fun prefersLabelledExpiryOverEarlierOrderDate() {
+        val suggestion = parseCouponText(
+            text = """
+                주문일 2026.05.17
+                스타벅스 아메리카노
+                유효기간 2026.06.30 까지
+            """.trimIndent(),
+            today = LocalDate.of(2026, 5, 17)
+        )
+
+        assertEquals(LocalDate.of(2026, 6, 30), suggestion.expiresLocalDate)
+    }
 }

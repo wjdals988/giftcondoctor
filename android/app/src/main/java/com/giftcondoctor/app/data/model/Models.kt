@@ -116,6 +116,7 @@ fun DocumentSnapshot.toRoomMember(): RoomMember? {
 
 fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
     val expires = getString("expiresLocalDate") ?: return null
+    val expiresLocalDate = runCatching { LocalDate.parse(expires) }.getOrNull() ?: return null
     return Coupon(
         id = id,
         roomId = roomId,
@@ -125,7 +126,7 @@ fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
         imageBlobPath = getString("imageBlobPath") ?: "",
         imageWidth = getLong("imageWidth")?.toInt(),
         imageHeight = getLong("imageHeight")?.toInt(),
-        expiresLocalDate = LocalDate.parse(expires),
+        expiresLocalDate = expiresLocalDate,
         timezone = getString("timezone") ?: "Asia/Seoul",
         status = getString("status") ?: "active",
         reservedByUid = getString("reservedByUid"),
