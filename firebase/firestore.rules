@@ -72,9 +72,10 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt;
     }
 
-    function ownerCanEditCoupon() {
+    function ownerCanEditCoupon(roomId, couponId) {
       return resource.data.ownerUid == request.auth.uid
         && immutableCouponFields()
+        && validCouponSchema(roomId, couponId)
         && visibleCoupon(request.resource.data);
     }
 
@@ -162,7 +163,7 @@ service cloud.firestore {
           && visibleCoupon(request.resource.data);
         allow update: if isRoomMember(roomId)
           && visibleCoupon(resource.data)
-          && (ownerCanEditCoupon() || memberCanReserve() || memberCanCancelReservation() || memberCanMarkUsed());
+          && (ownerCanEditCoupon(roomId, couponId) || memberCanReserve() || memberCanCancelReservation() || memberCanMarkUsed());
         allow delete: if false;
 
         match /comments/{commentId} {

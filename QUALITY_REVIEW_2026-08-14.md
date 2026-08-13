@@ -34,8 +34,8 @@
 
 | 항목 | 작업 전 | 작업 후 |
 |---|---:|---:|
-| 자동 테스트 | 17개 | 31개 |
-| Firestore Rules 테스트 | 0개 | 5개 |
+| 자동 테스트 | 17개 | 32개 |
+| Firestore Rules 테스트 | 0개 | 6개 |
 | 프로덕션 High/Critical npm 취약점 | 11개 | 0개 |
 | 전체 프로덕션 npm 취약점 | 18개 | 6개 Moderate |
 | PR/main CI | 0개 | Backend·Android 2개 job |

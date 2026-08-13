@@ -4,7 +4,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
@@ -81,6 +81,13 @@ describe("coupon security rules", () => {
       expiresLocalDate: "31/12/2026",
       injected: true
     }));
+  });
+
+  it("rejects an invalid owner edit after creation", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const couponRef = doc(db, "rooms/room-1/coupons/coupon-1");
+    await assertSucceeds(setDoc(couponRef, validCoupon()));
+    await assertFails(updateDoc(couponRef, { title: "x".repeat(101) }));
   });
 
   it("blocks a non-member from reading a coupon", async () => {
