@@ -32,12 +32,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
+enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
+
 class SessionViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val pushTokenRepository: PushTokenRepository = PushTokenRepository()
 ) : ViewModel() {
-    private val _isLoggedIn = MutableStateFlow(false)
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
+    private val _authState = MutableStateFlow(SessionAuthState.Loading)
+    val authState: StateFlow<SessionAuthState> = _authState
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
@@ -51,7 +53,7 @@ class SessionViewModel(
     init {
         viewModelScope.launch {
             authRepository.authState().collect {
-                _isLoggedIn.value = it
+                _authState.value = if (it) SessionAuthState.Authenticated else SessionAuthState.Unauthenticated
                 if (it) runCatching { pushTokenRepository.saveCurrentToken() }
             }
         }

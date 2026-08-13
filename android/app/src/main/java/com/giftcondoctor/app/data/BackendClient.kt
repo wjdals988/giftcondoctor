@@ -21,8 +21,11 @@ import java.io.IOException
 
 class BackendClient(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = sharedHttpClient
 ) {
+    companion object {
+        private val sharedHttpClient = OkHttpClient()
+    }
     private val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 

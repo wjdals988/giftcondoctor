@@ -1,5 +1,6 @@
 package com.giftcondoctor.app.ui
 
+import android.net.Uri
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
+import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -34,6 +36,7 @@ import com.giftcondoctor.app.ui.screens.RoomSettingsScreen
 import com.giftcondoctor.app.ui.components.RequestNotificationPermissionOnLaunch
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
+import com.giftcondoctor.app.ui.viewmodel.SessionAuthState
 
 object Routes {
     const val Login = "login"
@@ -50,21 +53,30 @@ object Routes {
 }
 
 @Composable
-fun GiftcondoctorApp(sessionViewModel: SessionViewModel = viewModel()) {
+fun GiftcondoctorApp(
+    sessionViewModel: SessionViewModel = viewModel(),
+    deepLink: Uri? = null,
+    onDeepLinkHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val loggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle()
+    val authState by sessionViewModel.authState.collectAsStateWithLifecycle()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
-    LaunchedEffect(loggedIn, currentRoute) {
-        if (loggedIn && currentRoute == Routes.Login) {
+    LaunchedEffect(authState, currentRoute, deepLink) {
+        if (authState == SessionAuthState.Loading) return@LaunchedEffect
+
+        if (authState == SessionAuthState.Authenticated && deepLink != null) {
+            navController.navigate(NavDeepLinkRequest.Builder.fromUri(deepLink).build())
+            onDeepLinkHandled()
+        } else if (authState == SessionAuthState.Authenticated && currentRoute == Routes.Login) {
             navController.navigate(Routes.Rooms) {
                 popUpTo(Routes.Login) { inclusive = true }
                 launchSingleTop = true
             }
-        } else if (!loggedIn && currentRoute != null && currentRoute != Routes.Login) {
+        } else if (authState == SessionAuthState.Unauthenticated && currentRoute != null && currentRoute != Routes.Login) {
             navController.navigate(Routes.Login) {
                 popUpTo(Routes.Rooms) { inclusive = true }
                 launchSingleTop = true

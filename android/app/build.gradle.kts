@@ -38,6 +38,15 @@ android {
         buildConfig = true
     }
 
+    buildTypes {
+        getByName("debug") {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
+        getByName("release") {
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
