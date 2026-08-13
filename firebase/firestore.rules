@@ -114,7 +114,20 @@ service cloud.firestore {
       allow delete: if false;
 
       match /pushTokens/{tokenId} {
-        allow read, create, update, delete: if isSelf(uid);
+        allow read, delete: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && tokenId.matches('^[a-f0-9]{64}$')
+          && request.resource.data.keys().hasOnly([
+            "token", "platform", "deviceName", "appVersion", "createdAt", "lastSeenAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 20
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform == "android"
+          && request.resource.data.deviceName is string
+          && request.resource.data.deviceName.size() <= 200
+          && request.resource.data.appVersion is string
+          && request.resource.data.appVersion.size() <= 30;
       }
 
       match /roomMemberships/{roomId} {

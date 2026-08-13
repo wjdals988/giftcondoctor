@@ -22,15 +22,19 @@ class PushTokenRepository(
     suspend fun saveToken(token: String) {
         val uid = auth.currentUser?.uid ?: return
         val tokenId = sha256(token)
-        val data = mapOf(
-            "token" to token,
-            "platform" to "android",
-            "deviceName" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
-            "appVersion" to BuildConfig.VERSION_NAME,
-            "createdAt" to FieldValue.serverTimestamp(),
-            "lastSeenAt" to FieldValue.serverTimestamp()
-        )
-        firestore.document("users/$uid/pushTokens/$tokenId").set(data, SetOptions.merge()).await()
+        val ref = firestore.document("users/$uid/pushTokens/$tokenId")
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(ref)
+            val data = mutableMapOf<String, Any>(
+                "token" to token,
+                "platform" to "android",
+                "deviceName" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+                "appVersion" to BuildConfig.VERSION_NAME,
+                "lastSeenAt" to FieldValue.serverTimestamp()
+            )
+            if (!existing.exists()) data["createdAt"] = FieldValue.serverTimestamp()
+            transaction.set(ref, data, SetOptions.merge())
+        }.await()
     }
 
     suspend fun deleteCurrentToken() {

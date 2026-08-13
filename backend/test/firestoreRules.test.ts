@@ -1,0 +1,109 @@
+import {
+  assertFails,
+  assertSucceeds,
+  initializeTestEnvironment,
+  type RulesTestEnvironment
+} from "@firebase/rules-unit-testing";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { readFileSync } from "node:fs";
+import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
+
+const projectId = "demo-giftcondoctor";
+let testEnvironment: RulesTestEnvironment;
+
+function validCoupon() {
+  return {
+    title: "아메리카노",
+    brand: "스타벅스",
+    ownerUid: "member-1",
+    imageBlobPath: "rooms/room-1/coupons/coupon-1/image.jpg",
+    imageWidth: null,
+    imageHeight: null,
+    expiresLocalDate: "2026-12-31",
+    expiresAtUtc: serverTimestamp(),
+    timezone: "Asia/Seoul",
+    status: "active",
+    reservedByUid: null,
+    usedByUid: null,
+    usedAt: null,
+    visibility: "room",
+    notifyTarget: "allMembers",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+}
+
+beforeAll(async () => {
+  const [host, portText] = (process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080").split(":");
+  testEnvironment = await initializeTestEnvironment({
+    projectId,
+    firestore: {
+      host,
+      port: Number(portText),
+      rules: readFileSync("../firebase/firestore.rules", "utf8")
+    }
+  });
+});
+
+beforeEach(async () => {
+  await testEnvironment.clearFirestore();
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "rooms/room-1"), {
+      name: "테스트방",
+      ownerUid: "member-1"
+    });
+    await setDoc(doc(context.firestore(), "rooms/room-1/members/member-1"), { role: "owner" });
+  });
+});
+
+afterAll(async () => {
+  await testEnvironment.cleanup();
+});
+
+describe("coupon security rules", () => {
+  it("allows a member to create a schema-valid coupon", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertSucceeds(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), validCoupon()));
+  });
+
+  it("rejects a Blob path owned by another coupon", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/other/image.jpg"
+    }));
+  });
+
+  it("rejects malformed dates and unknown fields", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
+      ...validCoupon(),
+      expiresLocalDate: "31/12/2026",
+      injected: true
+    }));
+  });
+
+  it("blocks a non-member from reading a coupon", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), validCoupon());
+    });
+    const db = testEnvironment.authenticatedContext("outsider").firestore();
+    await assertFails(getDoc(doc(db, "rooms/room-1/coupons/coupon-1")));
+  });
+});
+
+describe("push token security rules", () => {
+  it("rejects unexpected fields in a user push token", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const tokenId = "a".repeat(64);
+    await assertFails(setDoc(doc(db, `users/member-1/pushTokens/${tokenId}`), {
+      token: "x".repeat(32),
+      platform: "android",
+      deviceName: "test device",
+      appVersion: "0.1.13",
+      createdAt: serverTimestamp(),
+      lastSeenAt: serverTimestamp(),
+      admin: true
+    }));
+  });
+});
