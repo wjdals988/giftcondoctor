@@ -1,5 +1,6 @@
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { requireUser } from "@/lib/auth";
+import { enforceUserRateLimit } from "@/lib/rateLimit";
 import { ApiError, json, jsonError } from "@/lib/http";
 import { PUSH_TEST_ROOM_ID, joinPushTestRoom } from "@/lib/pushTestRoom";
 import { isInvalidFcmTokenCode, notificationBody, notificationTitle, shouldNotify } from "@/lib/reminders";
@@ -21,6 +22,7 @@ async function tokenDocsForUid(uid: string): Promise<TokenDoc[]> {
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    await enforceUserRateLimit(token.uid, { action: "notification-test", limit: 5, windowSeconds: 600 });
     const payload = await request.json().catch(() => ({}));
     const kind = typeof payload?.kind === "string" ? payload.kind : "device";
     const expiryTest = kind === "expiryReminder";

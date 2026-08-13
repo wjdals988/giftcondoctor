@@ -1,5 +1,6 @@
 import { BlobNotFoundError, get } from "@vercel/blob";
 import { requireCouponAccess, requireUser } from "@/lib/auth";
+import { requireCouponBlobPath } from "@/lib/blobPath";
 import { ApiError, jsonError } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -16,10 +17,7 @@ export async function GET(request: Request) {
     }
 
     const coupon = await requireCouponAccess(roomId, couponId, token.uid);
-    const blobPath = coupon.get("imageBlobPath");
-    if (!blobPath || typeof blobPath !== "string") {
-      throw new ApiError(404, "쿠폰 이미지가 없습니다.");
-    }
+    const blobPath = requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, couponId);
 
     const privateBlob = await get(blobPath, { access: "private", useCache: false });
     if (!privateBlob || privateBlob.statusCode !== 200 || !privateBlob.stream) {

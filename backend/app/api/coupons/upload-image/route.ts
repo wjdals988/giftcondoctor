@@ -1,20 +1,17 @@
 import { randomUUID } from "crypto";
 import { put } from "@vercel/blob";
-import { imageSize } from "image-size";
 import { requireRoomMember, requireUser } from "@/lib/auth";
+import { couponBlobPrefix } from "@/lib/blobPath";
 import { ApiError, json, jsonError } from "@/lib/http";
+import { detectSupportedImage, MAX_IMAGE_SIZE } from "@/lib/imageUpload";
+import { enforceUserRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
-
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-
-function safeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "coupon-image";
-}
 
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    await enforceUserRateLimit(token.uid, { action: "coupon-image-upload", limit: 20, windowSeconds: 3600 });
     const form = await request.formData();
     const roomId = String(form.get("roomId") ?? "").trim();
     const couponId = String(form.get("couponId") ?? "").trim();
@@ -26,9 +23,7 @@ export async function POST(request: Request) {
     if (!(image instanceof File)) {
       throw new ApiError(400, "이미지 파일이 필요합니다.");
     }
-    if (!image.type.startsWith("image/")) {
-      throw new ApiError(400, "이미지 파일만 업로드할 수 있습니다.");
-    }
+    if (image.size === 0) throw new ApiError(400, "빈 이미지는 업로드할 수 없습니다.");
     if (image.size > MAX_IMAGE_SIZE) {
       throw new ApiError(413, "이미지는 최대 10MB까지 업로드할 수 있습니다.");
     }
@@ -36,18 +31,18 @@ export async function POST(request: Request) {
     await requireRoomMember(roomId, token.uid);
 
     const buffer = Buffer.from(await image.arrayBuffer());
-    const dimensions = imageSize(buffer);
-    const path = `rooms/${roomId}/coupons/${couponId}/${randomUUID()}-${safeFileName(image.name)}`;
+    const detected = detectSupportedImage(buffer);
+    const path = `${couponBlobPrefix(roomId, couponId)}${randomUUID()}.${detected.extension}`;
     const blob = await put(path, buffer, {
       access: "private",
-      contentType: image.type
+      contentType: detected.contentType
     });
 
     return json({
       blobPath: blob.pathname ?? path,
-      imageWidth: dimensions.width ?? null,
-      imageHeight: dimensions.height ?? null,
-      contentType: image.type,
+      imageWidth: null,
+      imageHeight: null,
+      contentType: detected.contentType,
       size: image.size
     });
   } catch (error) {

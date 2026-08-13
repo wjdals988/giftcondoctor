@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requireUser, userProfile } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { ApiError, json, jsonError, readJson } from "@/lib/http";
+import { enforceUserRateLimit } from "@/lib/rateLimit";
 import { createUniqueInviteCode, inviteExpiresAt } from "@/lib/invite";
 import { hashRoomPassword } from "@/lib/roomPassword";
 import { upsertUserProfile } from "@/lib/users";
@@ -17,6 +18,7 @@ type Body = {
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    await enforceUserRateLimit(token.uid, { action: "room-create", limit: 5, windowSeconds: 3600 });
     const body = await readJson<Body>(request);
     const name = body.name?.trim();
     const isPublic = body.isPublic === true;
