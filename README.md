@@ -26,8 +26,10 @@ Android-first MVP for Korean users to manage shared gifticon/coupon images in ro
 
 ```bash
 cd backend
-npm install
-npm run test
+npm ci
+npm test
+npm run test:rules
+npm run typecheck
 npm run build
 ```
 
@@ -45,11 +47,11 @@ googleWebClientId=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 ```
 
 3. `android/app/google-services.json`을 배치합니다.
-4. Android Studio에서 Gradle Sync 후 앱을 실행합니다. CLI 빌드는 Android Studio가 생성한/설치한 Gradle을 사용합니다.
+4. Android Studio에서 Gradle Sync 후 앱을 실행합니다. CLI 빌드는 저장소의 Gradle Wrapper를 사용합니다.
 
 ```bash
 cd android
-gradle :app:assembleDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
 디버그 APK는 `android/app/build/outputs/apk/debug/giftcondoctor-{versionName}-{versionCode}-debug.apk` 형식으로 생성됩니다.
@@ -58,7 +60,7 @@ gradle :app:assembleDebug
 
 ## Android Release 자동화
 
-GitHub Actions의 `Android Release APK` workflow는 현재 `versionName` 기준으로 `v{versionName}` 태그를 만들고 signed release APK를 GitHub Release asset으로 업로드한 뒤, `wjdals988/mydashboard`의 `src/lib/projects.json` APK 메타데이터를 갱신합니다.
+GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니다. 테스트·빌드·서명 검증을 먼저 끝낸 뒤 `v{versionName}` GitHub Release를 발행하고, 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
 
 앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
 
@@ -72,7 +74,15 @@ GitHub Actions의 `Android Release APK` workflow는 현재 `versionName` 기준�
 
 선택 값으로 GitHub Actions Variables의 `ANDROID_API_BASE_URL`을 설정할 수 있습니다. 없으면 `https://giftcondoctor.vercel.app`를 사용합니다.
 
-동일한 release tag가 이미 있으면 기본 정책은 실패입니다. workflow 수동 실행 시 `overwrite_existing_release=true`를 선택하면 기존 Release와 tag를 삭제한 뒤 다시 생성합니다.
+동일한 Release 또는 tag가 있으면 실패합니다. 공개 버전은 덮어쓰거나 이동하지 않으며, 정정이 필요하면 `versionName`과 `versionCode`를 모두 증가시켜 새 버전으로 발행합니다. `production` environment에 승인 규칙을 설정하는 것을 권장합니다.
+
+## CI 검증
+
+PR과 `main` push에서는 다음 항목을 자동 검증합니다.
+
+- Backend 단위 테스트, Firestore Rules Emulator 테스트, TypeScript 검사, 프로덕션 빌드
+- 프로덕션 의존성의 High/Critical 취약점 차단
+- Android Gradle Wrapper 검증, 단위 테스트, debug APK 빌드
 
 ## 보안 원칙
 
@@ -80,4 +90,6 @@ GitHub Actions의 `Android Release APK` workflow는 현재 `versionName` 기준�
 - Firestore에는 Blob path와 메타데이터만 저장합니다.
 - Android 클라이언트는 이미지 URL을 직접 받지 않고, Firebase ID token이 포함된 인증 API를 통해 이미지를 읽습니다.
 - Firestore rules는 비멤버의 room/coupon 접근을 차단합니다.
-- Firebase Storage, Firebase Cloud Functions, OCR, SMS는 MVP에서 사용하지 않습니다.
+- 이미지 업로드는 JPEG, PNG, WebP magic byte를 검증하고 쿠폰별 Blob 경로에 묶습니다.
+- OCR은 Android ML Kit의 한국어 텍스트 인식을 사용하며, 인식 결과는 사용자가 확인·수정한 뒤 저장합니다.
+- Firebase Storage, Firebase Cloud Functions, SMS는 MVP에서 사용하지 않습니다.
