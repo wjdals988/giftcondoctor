@@ -54,6 +54,7 @@ data class Coupon(
     val brand: String,
     val ownerUid: String,
     val imageBlobPath: String,
+    val thumbnailBlobPath: String?,
     val imageWidth: Int?,
     val imageHeight: Int?,
     val expiresLocalDate: LocalDate,
@@ -76,6 +77,7 @@ data class CouponComment(
 
 data class UploadedImage(
     val blobPath: String,
+    val thumbnailBlobPath: String?,
     val imageWidth: Int?,
     val imageHeight: Int?,
     val contentType: String,
@@ -124,6 +126,7 @@ fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
         brand = getString("brand") ?: "",
         ownerUid = getString("ownerUid") ?: return null,
         imageBlobPath = getString("imageBlobPath") ?: "",
+        thumbnailBlobPath = getString("thumbnailBlobPath"),
         imageWidth = getLong("imageWidth")?.toInt(),
         imageHeight = getLong("imageHeight")?.toInt(),
         expiresLocalDate = expiresLocalDate,
