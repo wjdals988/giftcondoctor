@@ -71,6 +71,11 @@ class CouponRepository(
         }
     }
 
+    fun couponPager(
+        roomId: String,
+        pageSize: Int = DEFAULT_COUPON_PAGE_SIZE_PER_VISIBILITY
+    ): CouponPager = CouponPager(roomId, currentUid, firestore, pageSize)
+
     fun observeCoupon(roomId: String, couponId: String): Flow<Coupon?> = callbackFlow {
         val registration = firestore.document("rooms/$roomId/coupons/$couponId")
             .addSnapshotListener { snapshot, error ->

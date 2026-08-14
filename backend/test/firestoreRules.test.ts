@@ -4,9 +4,23 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  startAfter,
+  updateDoc,
+  where
+} from "firebase/firestore";
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const projectId = "demo-giftcondoctor";
 let testEnvironment: RulesTestEnvironment;
@@ -158,6 +172,53 @@ describe("coupon security rules", () => {
     });
     const db = testEnvironment.authenticatedContext("outsider").firestore();
     await assertFails(getDoc(doc(db, "rooms/room-1/coupons/coupon-1")));
+  });
+
+  it("allows bounded cursor queries but rejects another owner's private coupon query", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/coupon-1"), validCoupon());
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/coupon-2"), {
+        ...validCoupon(),
+        imageBlobPath: "rooms/room-1/coupons/coupon-2/image.jpg",
+        expiresLocalDate: "2027-01-01"
+      });
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/coupon-3"), {
+        ...validCoupon(),
+        imageBlobPath: "rooms/room-1/coupons/coupon-3/image.jpg",
+        visibility: "private"
+      });
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/coupon-4"), {
+        ...validCoupon(),
+        ownerUid: "member-2",
+        imageBlobPath: "rooms/room-1/coupons/coupon-4/image.jpg",
+        visibility: "private"
+      });
+    });
+
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const coupons = collection(db, "rooms/room-1/coupons");
+    const roomPage = query(
+      coupons,
+      where("visibility", "==", "room"),
+      orderBy("expiresLocalDate"),
+      orderBy(documentId()),
+      limit(2)
+    );
+    const firstPage = await assertSucceeds(getDocs(roomPage));
+    expect(firstPage.size).toBe(2);
+    await assertSucceeds(getDocs(query(roomPage, startAfter(firstPage.docs[0]), limit(1))));
+
+    const ownPrivatePage = query(
+      coupons,
+      where("visibility", "==", "private"),
+      where("ownerUid", "==", "member-1"),
+      orderBy("expiresLocalDate"),
+      orderBy(documentId()),
+      limit(2)
+    );
+    await assertSucceeds(getDocs(ownPrivatePage));
+    await assertFails(getDocs(query(coupons, where("visibility", "==", "private"), limit(2))));
   });
 });
 
