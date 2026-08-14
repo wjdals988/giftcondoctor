@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
+import com.giftcondoctor.app.core.trustedAppDeepLink
 import com.giftcondoctor.app.notifications.NotificationChannels
 import com.giftcondoctor.app.ui.GiftcondoctorApp
 
@@ -15,7 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NotificationChannels.create(this)
-        pendingDeepLink.value = intent?.data
+        pendingDeepLink.value = extractDeepLink(intent)
         setContent {
             GiftcondoctorApp(
                 deepLink = pendingDeepLink.value,
@@ -27,6 +28,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pendingDeepLink.value = intent.data
+        pendingDeepLink.value = extractDeepLink(intent)
     }
+
+    private fun extractDeepLink(intent: Intent?): Uri? = trustedAppDeepLink(
+        intent?.data?.toString(),
+        intent?.getStringExtra("deepLink")
+    )?.let(Uri::parse)
 }
