@@ -37,6 +37,7 @@ npm run build
 
 Vercel Cron은 `backend/vercel.json`의 `0 0 * * *` 스케줄을 사용합니다. UTC 00:00은 Asia/Seoul 기준 09:00입니다.
 같은 날짜의 중복 실행은 Firestore `cronLeases`의 6분 lease로 차단하고, 수신자별 알림은 결정적 ID의 `notificationOutbox`에 먼저 기록합니다. 전송은 2분 lease로 claim하며 일시적 FCM 실패를 최대 5회 지수 backoff 후 dead letter 처리합니다. 클라이언트는 lease/outbox 문서를 읽거나 쓸 수 없습니다.
+서버 운영자는 `CRON_SECRET` 인증이 필요한 `GET /api/notifications/status`에서 상태별 건수, 즉시 처리 대상, 만료된 send lease, 가장 오래 기다린 시간과 최근 Cron 결과를 확인할 수 있습니다. 완료된 outbox와 기존 notification log는 일 1회 최대 각 200개씩 30일 보존 기준으로 정리합니다.
 
 ## Android 실행
 
@@ -75,7 +76,7 @@ IP 연결은 되고 도메인만 실패하면 AVD를 정상 DNS로 재시작한 
 
 GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니다. 테스트·빌드·서명 검증을 먼저 끝낸 뒤 `v{versionName}` GitHub Release를 발행하고, 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
 
-현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.18 (19)`는 기존 쿠폰 썸네일 백필, cursor paging, 수신자별 알림 outbox/재시도까지 포함한 성능·신뢰성 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
+현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.19 (20)`는 기존 쿠폰 썸네일 백필, cursor paging, 수신자별 알림 outbox/재시도·운영 상태 조회까지 포함한 성능·신뢰성 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
 
 앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
 

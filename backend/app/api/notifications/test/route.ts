@@ -2,6 +2,7 @@ import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { requireUser } from "@/lib/auth";
 import { enforceUserRateLimit } from "@/lib/rateLimit";
 import { ApiError, json, jsonError } from "@/lib/http";
+import { MAX_TOKENS_PER_USER } from "@/lib/notificationDelivery";
 import { PUSH_TEST_ROOM_ID, joinPushTestRoom } from "@/lib/pushTestRoom";
 import { isInvalidFcmTokenCode, notificationBody, notificationTitle, shouldNotify } from "@/lib/reminders";
 
@@ -13,7 +14,7 @@ type TokenDoc = {
 };
 
 async function tokenDocsForUid(uid: string): Promise<TokenDoc[]> {
-  const tokens = await getAdminDb().collection(`users/${uid}/pushTokens`).get();
+  const tokens = await getAdminDb().collection(`users/${uid}/pushTokens`).limit(MAX_TOKENS_PER_USER).get();
   return tokens.docs
     .map((doc) => ({ id: doc.id, token: doc.get("token") }))
     .filter((doc): doc is TokenDoc => typeof doc.token === "string" && doc.token.length > 0);

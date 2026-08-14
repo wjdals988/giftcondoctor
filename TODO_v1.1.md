@@ -6,7 +6,8 @@
 - `main` branch protection과 Backend·Android 필수 check 강제
 - Firestore Rules·Indexes rollback 경로 자동화
 - [x] Cron 6분 lease, 수신자별 outbox, 2분 delivery claim, 일시 실패 최대 5회 지수 backoff
-- notificationOutbox의 retry/deadLetter 비율과 최장 대기시간 운영 지표·경보
+- [x] notificationOutbox 상태별 건수, retry/deadLetter, 최장 대기시간, 최근 Cron 결과 조회와 30일 보존 정리
+- notificationOutbox `warning/critical` 상태를 외부 운영 경보 채널로 전달
 - Firebase App Check와 UID+IP 기반 abuse 방어
 
 ## P1 — 실제 사용 신뢰성

@@ -8,16 +8,19 @@ import {
 } from "firebase-admin/firestore";
 import type { BatchResponse } from "firebase-admin/messaging";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
+import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError, requireCronSecret } from "@/lib/http";
 import {
   CRON_LEASE_MS,
   DELIVERY_LEASE_MS,
   MAX_DELIVERY_ATTEMPTS,
+  MAX_TOKENS_PER_USER,
   decideDelivery,
   isDueDelivery,
   notificationOutboxId,
   retryDelayMs
 } from "@/lib/notificationDelivery";
+import { notificationRetentionCutoff } from "@/lib/notificationObservability";
 import { PUSH_TEST_ROOM_ID, ensurePushTestRoom } from "@/lib/pushTestRoom";
 import {
   daysBetweenLocalDates,
@@ -35,7 +38,7 @@ export const maxDuration = 300;
 
 const OUTBOX_BATCH_SIZE = 200;
 const OUTBOX_CONCURRENCY = 10;
-const MAX_TOKENS_PER_USER = 20;
+const CLEANUP_BATCH_SIZE = 200;
 
 type Summary = {
   runId: string;
@@ -51,6 +54,8 @@ type Summary = {
   retried: number;
   deadLetters: number;
   backlog: number;
+  cleanedOutbox: number;
+  cleanedLogs: number;
   errors: string[];
 };
 
@@ -143,6 +148,8 @@ async function finishDailyLease(
         retried: summary.retried,
         deadLetters: summary.deadLetters,
         backlog: summary.backlog,
+        cleanedOutbox: summary.cleanedOutbox,
+        cleanedLogs: summary.cleanedLogs,
         errorCount: summary.errors.length
       },
       updatedAt: FieldValue.serverTimestamp()
@@ -462,6 +469,27 @@ async function processDueDeliveries(runId: string, now: Date, summary: Summary) 
   summary.backlog = remainingDue.size + remainingExpired.size;
 }
 
+async function cleanupNotificationHistory(now: Date, summary: Summary) {
+  const db = getAdminDb();
+  const cutoff = Timestamp.fromDate(notificationRetentionCutoff(now));
+  const [outbox, logs] = await Promise.all([
+    db.collection("notificationOutbox")
+      .where("completedAt", "<", cutoff)
+      .limit(CLEANUP_BATCH_SIZE)
+      .get(),
+    db.collection("notificationLogs")
+      .where("sentAt", "<", cutoff)
+      .limit(CLEANUP_BATCH_SIZE)
+      .get()
+  ]);
+  await deleteDocumentRefs(db, [
+    ...outbox.docs.map((doc) => doc.ref),
+    ...logs.docs.map((doc) => doc.ref)
+  ]);
+  summary.cleanedOutbox = outbox.size;
+  summary.cleanedLogs = logs.size;
+}
+
 async function legacySentUids(roomId: string, couponId: string, daysBefore: number, targetDate: string) {
   const id = notificationLogId(roomId, couponId, daysBefore, targetDate);
   const snapshot = await getAdminDb().doc(`notificationLogs/${id}`).get();
@@ -597,6 +625,8 @@ async function runExpiryReminders(now = new Date()) {
     retried: 0,
     deadLetters: 0,
     backlog: 0,
+    cleanedOutbox: 0,
+    cleanedLogs: 0,
     errors: []
   };
   if (lease.lease !== "acquired") return summary;
@@ -605,6 +635,7 @@ async function runExpiryReminders(now = new Date()) {
     await enqueueExpiryReminders(now, summary);
     await enqueueDailyPushTest(runDate, now, summary);
     await processDueDeliveries(lease.runId, now, summary);
+    await cleanupNotificationHistory(now, summary);
     await finishDailyLease(
       lease.ref,
       lease.runId,
@@ -629,6 +660,7 @@ async function handle(request: Request) {
       console.error("expiry-reminders completed partially", summary);
       return json(summary, { status: 500 });
     }
+    console.info("expiry-reminders completed", summary);
     return json(summary);
   } catch (error) {
     if (error instanceof ApiError) return jsonError(error);

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { GET as notificationStatus } from "../app/api/notifications/status/route";
 import { couponBlobPrefix, requireCouponBlobPath } from "../lib/blobPath";
 import { ApiError, requireCronSecret } from "../lib/http";
 import { detectSupportedImage } from "../lib/imageUpload";
@@ -28,6 +29,16 @@ describe("cron authentication", () => {
     expect(() => requireCronSecret(new Request("https://example.test", {
       headers: { authorization: "Bearer configured-secret" }
     }))).not.toThrow();
+  });
+
+  it("keeps notification metrics private before accessing Firestore", async () => {
+    delete process.env.CRON_SECRET;
+    const missing = await notificationStatus(new Request("https://example.test/api/notifications/status"));
+    expect(missing.status).toBe(503);
+
+    process.env.CRON_SECRET = "configured-secret";
+    const invalid = await notificationStatus(new Request("https://example.test/api/notifications/status"));
+    expect(invalid.status).toBe(401);
   });
 });
 
