@@ -144,13 +144,22 @@ fun EmptyState(
 }
 
 @Composable
-fun ErrorState(message: String) {
+fun ErrorState(
+    message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(message, color = MaterialTheme.colorScheme.error)
+        Text(message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+        if (actionLabel != null && onAction != null) {
+            Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp)) {
+                Text(actionLabel)
+            }
+        }
     }
 }
 
