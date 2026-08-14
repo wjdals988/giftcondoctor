@@ -5,7 +5,8 @@
 - 물리 디바이스 푸시 6개 상태 조합과 A→B 교차 계정 개인정보 회귀 검증
 - `main` branch protection과 Backend·Android 필수 check 강제
 - Firestore Rules·Indexes rollback 경로 자동화
-- Cron 알림 발송 lease/outbox와 중복·유실 관측 지표
+- [x] Cron 6분 lease, 수신자별 outbox, 2분 delivery claim, 일시 실패 최대 5회 지수 backoff
+- notificationOutbox의 retry/deadLetter 비율과 최장 대기시간 운영 지표·경보
 - Firebase App Check와 UID+IP 기반 abuse 방어
 
 ## P1 — 실제 사용 신뢰성
