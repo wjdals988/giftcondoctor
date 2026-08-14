@@ -7,6 +7,7 @@ import com.giftcondoctor.app.core.bitmapSampleSize
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.InputStream
 
 object CouponImageLoader {
     private val repository by lazy { CouponRepository() }
@@ -45,6 +46,22 @@ object CouponImageLoader {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
+    fun decodeSampledBitmap(
+        streamProvider: () -> InputStream?,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        streamProvider()?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = bitmapSampleSize(bounds.outWidth, bounds.outHeight, targetWidth, targetHeight)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return streamProvider()?.use { BitmapFactory.decodeStream(it, null, options) }
     }
 
     private fun cacheSizeBytes(): Int {

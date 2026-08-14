@@ -1,7 +1,6 @@
 package com.giftcondoctor.app.ui.screens
 
 import android.net.Uri
-import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -266,13 +265,19 @@ fun AddCouponScreen(
 @Composable
 private fun SelectedImagePreview(imageUri: Uri) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val targetWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val targetHeight = with(density) { 360.dp.roundToPx() }
     var bitmap by remember(imageUri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
 
-    LaunchedEffect(imageUri) {
+    LaunchedEffect(imageUri, targetWidth, targetHeight) {
         bitmap = withContext(Dispatchers.IO) {
-            context.contentResolver.openInputStream(imageUri)?.use { input ->
-                BitmapFactory.decodeStream(input)?.asImageBitmap()
-            }
+            CouponImageLoader.decodeSampledBitmap(
+                streamProvider = { context.contentResolver.openInputStream(imageUri) },
+                targetWidth = targetWidth,
+                targetHeight = targetHeight
+            )?.asImageBitmap()
         }
     }
 
