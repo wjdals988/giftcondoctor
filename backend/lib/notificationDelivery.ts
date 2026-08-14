@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 export const CRON_LEASE_MS = 6 * 60 * 1_000;
 export const DELIVERY_LEASE_MS = 2 * 60 * 1_000;
 export const MAX_DELIVERY_ATTEMPTS = 5;
+export const MAX_TOKENS_PER_USER = 20;
 
 export type DeliveryStatus =
   | "pending"
