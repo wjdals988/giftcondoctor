@@ -9,6 +9,8 @@ Android-first MVP for Korean users to manage shared gifticon/coupon images in ro
 - `firebase/`: Firestore rules/indexes
 - `QA_CHECKLIST.md`: 수동 QA 체크리스트
 - `TODO_v1.1.md`: MVP 이후 작업 목록
+- `UX_BENCHMARK_2026-08-14.md`: 유사 앱 비교, 정량 UX 목표, P0~P2 우선순위
+- `QUALITY_REVIEW_2026-08-14.md`: 코드 품질 점수와 출시 차단 위험
 
 ## 필수 준비물
 
