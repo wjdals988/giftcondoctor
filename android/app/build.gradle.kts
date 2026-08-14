@@ -23,8 +23,8 @@ android {
         applicationId = "com.giftcondoctor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.1.19"
+        versionCode = 21
+        versionName = "0.1.20"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val apiBaseUrl = localProperties.getProperty("apiBaseUrl", "http://10.0.2.2:3000")
@@ -44,7 +44,31 @@ android {
         }
         getByName("release") {
             manifestPlaceholders["usesCleartextTraffic"] = "false"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+        create("baselineProfile") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            matchingFallbacks += listOf("release")
+        }
+    }
+
+    sourceSets.getByName("benchmark") {
+        java.srcDir("src/performance/java")
+        manifest.srcFile("src/performance/AndroidManifest.xml")
+    }
+    sourceSets.getByName("baselineProfile") {
+        java.srcDir("src/performance/java")
+        manifest.srcFile("src/performance/AndroidManifest.xml")
     }
 
     compileOptions {
@@ -73,6 +97,7 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
@@ -87,6 +112,7 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    implementation("com.google.zxing:core:3.5.4")
 
     implementation("androidx.credentials:credentials:1.3.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
@@ -94,12 +120,14 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

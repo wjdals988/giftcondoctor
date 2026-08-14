@@ -1,6 +1,7 @@
-import { del } from "@vercel/blob";
 import { assertPublicCouponDeleteAllowed, requireCouponAccess, requireUser } from "@/lib/auth";
 import { requireCouponBlobPath } from "@/lib/blobPath";
+import { enqueueBlobCleanup } from "@/lib/blobCleanupQueue";
+import { deleteCouponImages } from "@/lib/couponImageStorage";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError } from "@/lib/http";
@@ -26,6 +27,7 @@ export async function DELETE(request: Request) {
     if (thumbnailBlobPath) {
       blobPaths.push(requireCouponBlobPath(thumbnailBlobPath, roomId, couponId));
     }
+    const cleanupJob = await enqueueBlobCleanup(roomId, couponId, blobPaths);
     const db = getAdminDb();
     const comments = await db.collection(`rooms/${roomId}/coupons/${couponId}/comments`).get();
     await deleteDocumentRefs(db, [
@@ -33,9 +35,17 @@ export async function DELETE(request: Request) {
       db.doc(`rooms/${roomId}/coupons/${couponId}`)
     ]);
 
-    await del(blobPaths);
+    let cleanupPending = false;
+    try {
+      await deleteCouponImages(blobPaths);
+      await cleanupJob.delete().catch((error) => {
+        console.error("failed to remove completed coupon cleanup job", { roomId, couponId, error });
+      });
+    } catch {
+      cleanupPending = true;
+    }
 
-    return json({ ok: true });
+    return json({ ok: true, cleanupPending });
   } catch (error) {
     return jsonError(error);
   }

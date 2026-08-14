@@ -1,5 +1,6 @@
 package com.giftcondoctor.app.ui.screens
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -30,16 +32,21 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,13 +55,19 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,19 +81,28 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.core.barcodeValuePreview
+import com.giftcondoctor.app.core.renderCouponBarcode
 import com.giftcondoctor.app.core.UiState
+import com.giftcondoctor.app.core.clampZoomOffset
 import com.giftcondoctor.app.core.statusLabel
+import com.giftcondoctor.app.core.shouldLoadOriginalImage
+import com.giftcondoctor.app.core.zoomOffsetForDoubleTap
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.CouponImageLoader
@@ -89,10 +111,14 @@ import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
+import com.giftcondoctor.app.ui.components.KeepScreenBrightWhileVisible
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
+import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
+import com.giftcondoctor.app.ui.viewmodel.CouponOriginalImageState
+import com.giftcondoctor.app.ui.viewmodel.shouldCancelOriginalImageLoad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -100,6 +126,16 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val manualBarcodeFormats = listOf(
+    "CODE_128" to "CODE 128",
+    "QR_CODE" to "QR",
+    "EAN_13" to "EAN-13",
+    "CODE_39" to "CODE 39",
+    "PDF_417" to "PDF417",
+    "DATA_MATRIX" to "Data Matrix"
+)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -114,11 +150,15 @@ fun AddCouponScreen(
     val analysisBusy by viewModel.analysisBusy.collectAsStateWithLifecycle()
     val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
     val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
+    val barcode by viewModel.barcode.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var title by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
+    var barcodeValue by remember { mutableStateOf("") }
+    var barcodeFormat by remember { mutableStateOf<String?>(null) }
+    var manualBarcodeEntry by remember { mutableStateOf(false) }
     var expires by remember {
         mutableStateOf(LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)).plusDays(7).toString())
     }
@@ -141,6 +181,12 @@ fun AddCouponScreen(
         data.expiresLocalDate?.let { expires = it.toString() }
     }
 
+    LaunchedEffect(barcode, imageUri) {
+        barcodeValue = barcode?.value.orEmpty()
+        barcodeFormat = barcode?.format
+        manualBarcodeEntry = false
+    }
+
     GDScaffold(title = "쿠폰 등록", onBack = onBack) { modifier ->
         Column(
             modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -156,7 +202,9 @@ fun AddCouponScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 148.dp)
-                    .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    .clickable(enabled = !busy) {
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
             ) {
@@ -192,6 +240,62 @@ fun AddCouponScreen(
                 }
                 analysisMessage?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val detectedBarcodeFormat = barcodeFormat
+                if (detectedBarcodeFormat != null) {
+                    GDInfoBanner(
+                        title = if (manualBarcodeEntry) {
+                            "바코드 직접 입력 · $detectedBarcodeFormat"
+                        } else {
+                            "바코드 감지 · $detectedBarcodeFormat"
+                        },
+                        body = if (barcodeValue.isBlank()) {
+                            "이미지에 표시된 바코드 값을 입력해 주세요."
+                        } else {
+                            "${barcodeValuePreview(barcodeValue)} · 저장 후 계산대용 큰 화면으로 열 수 있어요."
+                        }
+                    )
+                    if (manualBarcodeEntry) {
+                        Text("바코드 형식", style = MaterialTheme.typography.labelLarge)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            manualBarcodeFormats.forEach { (format, label) ->
+                                FilterChip(
+                                    selected = detectedBarcodeFormat == format,
+                                    onClick = { barcodeFormat = format },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = barcodeValue,
+                        onValueChange = { value -> if (value.length <= 2048) barcodeValue = value },
+                        label = { Text(if (manualBarcodeEntry) "바코드 값" else "바코드 값 확인") },
+                        supportingText = { Text("이미지에 적힌 값과 같은지 확인해 주세요.") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    TextButton(
+                        onClick = {
+                            barcodeValue = ""
+                            barcodeFormat = null
+                            manualBarcodeEntry = false
+                        }
+                    ) {
+                        Text("바코드 저장 안 함")
+                    }
+                } else if (!analysisBusy) {
+                    OutlinedButton(
+                        onClick = {
+                            barcodeValue = ""
+                            barcodeFormat = "CODE_128"
+                            manualBarcodeEntry = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.QrCode2, contentDescription = null)
+                        Text("바코드 직접 입력")
+                    }
                 }
                 Text("쿠폰 정보 확인", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(
@@ -250,26 +354,7 @@ fun AddCouponScreen(
                 }
                 InlineMessage(message)
                 if (busy) {
-                    val uploadPercent = uploadState.percent
-                    val statusText = when (uploadState.stage) {
-                        CouponUploadStage.Uploading -> uploadPercent?.let { "이미지 업로드 $it%" }
-                            ?: "이미지를 업로드하는 중이에요"
-                        CouponUploadStage.Saving -> "쿠폰 정보를 안전하게 저장하는 중이에요"
-                        CouponUploadStage.Idle -> "쿠폰 등록을 준비하는 중이에요"
-                    }
-                    if (uploadPercent != null && uploadState.stage == CouponUploadStage.Uploading) {
-                        LinearProgressIndicator(
-                            progress = { uploadPercent.coerceIn(0, 100) / 100f },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                    Text(
-                        statusText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    CouponUploadProgress(uploadState, viewModel::cancelUpload)
                 }
                 Button(
                     enabled = !busy && !analysisBusy,
@@ -283,6 +368,8 @@ fun AddCouponScreen(
                             expiresLocalDate = expires,
                             visibility = if (privateCoupon) "private" else "room",
                             notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
+                            barcodeValue = barcodeValue.takeIf { it.isNotBlank() },
+                            barcodeFormat = barcodeFormat,
                             onAdded = onAdded
                         )
                     },
@@ -292,6 +379,8 @@ fun AddCouponScreen(
                     Text(
                         when {
                             !busy -> "쿠폰 등록하기"
+                            uploadState.stage == CouponUploadStage.Preparing -> "이미지 최적화 중..."
+                            uploadState.stage == CouponUploadStage.Cancelling -> "정리 중..."
                             uploadState.stage == CouponUploadStage.Saving -> "저장 중..."
                             uploadState.percent != null -> "업로드 ${uploadState.percent}%"
                             else -> "업로드 중..."
@@ -301,6 +390,53 @@ fun AddCouponScreen(
             }
         }
     }
+}
+
+@Composable
+internal fun CouponUploadProgress(uploadState: CouponUploadState, onCancel: () -> Unit) {
+    val uploadPercent = uploadState.percent
+    val optimizationSummary = uploadState.optimizationSummary()
+    val statusText = when (uploadState.stage) {
+        CouponUploadStage.Preparing -> "빠른 업로드를 위해 이미지를 최적화하는 중이에요"
+        CouponUploadStage.Uploading -> listOfNotNull(
+            optimizationSummary,
+            uploadPercent?.let { "업로드 $it%" } ?: "업로드 중"
+        ).joinToString(" · ")
+        CouponUploadStage.Cancelling -> "업로드를 중단하고 임시 파일을 정리하는 중이에요"
+        CouponUploadStage.Saving -> "쿠폰 정보를 안전하게 저장하는 중이에요"
+        CouponUploadStage.Idle -> "쿠폰 등록을 준비하는 중이에요"
+    }
+    if (uploadPercent != null && uploadState.stage == CouponUploadStage.Uploading) {
+        LinearProgressIndicator(
+            progress = { uploadPercent.coerceIn(0, 100) / 100f },
+            modifier = Modifier.fillMaxWidth()
+        )
+    } else {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+    Text(
+        statusText,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    if (uploadState.stage in setOf(CouponUploadStage.Preparing, CouponUploadStage.Uploading)) {
+        TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+            Text("업로드 취소")
+        }
+    }
+}
+
+private fun CouponUploadState.optimizationSummary(): String? {
+    val original = originalBytes ?: return null
+    val upload = uploadBytes ?: return null
+    if (upload >= original) return null
+    return "이미지 ${formatImageBytes(original)} → ${formatImageBytes(upload)}"
+}
+
+private fun formatImageBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> String.format(Locale.KOREA, "%.1fMB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> String.format(Locale.KOREA, "%.0fKB", bytes / 1024.0)
+    else -> "${bytes}B"
 }
 
 @Composable
@@ -345,56 +481,149 @@ fun CouponDetailScreen(
     couponId: String,
     onBack: () -> Unit,
     onDeleted: () -> Unit,
+    showAddedFeedback: Boolean = false,
+    onAddedFeedbackConsumed: () -> Unit = {},
+    onAddAnother: () -> Unit = {},
     viewModel: CouponDetailViewModel = viewModel(key = "coupon-$roomId-$couponId")
 ) {
+    val context = LocalContext.current
     LaunchedEffect(roomId, couponId) { viewModel.start(roomId, couponId) }
     val couponState by viewModel.coupon.collectAsStateWithLifecycle()
     val commentsState by viewModel.comments.collectAsStateWithLifecycle()
-    val imageState by viewModel.imageBytes.collectAsStateWithLifecycle()
+    val imageState by viewModel.originalImage.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val commentBusy by viewModel.commentBusy.collectAsStateWithLifecycle()
     val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
+    val imageReplaceState by viewModel.imageReplaceState.collectAsStateWithLifecycle()
     val roomOwnerUid by viewModel.roomOwnerUid.collectAsStateWithLifecycle()
     val currentUid = viewModel.currentUid
+    val snackbarHostState = remember { SnackbarHostState() }
+    var usedFeedbackVersion by rememberSaveable(couponId) { mutableIntStateOf(0) }
 
-    GDScaffold(title = "쿠폰 상세", onBack = onBack) { modifier ->
+    CouponAddedFeedbackEffect(
+        showAddedFeedback = showAddedFeedback,
+        couponId = couponId,
+        snackbarHostState = snackbarHostState,
+        onConsumed = onAddedFeedbackConsumed,
+        onAddAnother = onAddAnother
+    )
+    CouponUsedFeedbackEffect(
+        feedbackVersion = usedFeedbackVersion,
+        couponId = couponId,
+        snackbarHostState = snackbarHostState,
+        onUndo = { viewModel.undoMarkUsed(roomId, couponId) }
+    )
+
+    GDScaffold(
+        title = "쿠폰 상세",
+        onBack = onBack,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { modifier ->
         when (val state = couponState) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> CouponDetailContent(
-                modifier = modifier,
-                coupon = state.data,
-                imageState = imageState,
-                commentsState = commentsState,
-                currentUid = currentUid,
-                roomOwnerUid = roomOwnerUid,
-                commentBusy = commentBusy,
-                busyAction = busyAction,
-                message = message,
-                onReserve = { viewModel.reserve(roomId, couponId) },
-                onCancelReservation = { viewModel.cancelReservation(roomId, couponId) },
-                onUsed = { viewModel.markUsed(roomId, couponId) },
-                onDelete = { viewModel.delete(roomId, couponId, onDeleted) },
-                onAddComment = { body, onAdded -> viewModel.addComment(roomId, couponId, body, onAdded) },
-                onDeleteComment = { commentId -> viewModel.deleteComment(roomId, couponId, commentId) },
-                onEdit = { title, brand, expires, visibility, notifyTarget, onSaved ->
-                    viewModel.edit(roomId, couponId, title, brand, expires, visibility, notifyTarget, onSaved)
+            is UiState.Success -> {
+                LaunchedEffect(state.data.id, state.data.thumbnailBlobPath) {
+                    if (shouldLoadOriginalImage(hasThumbnail = state.data.thumbnailBlobPath != null)) {
+                        viewModel.loadOriginalImage(context, roomId, couponId)
+                    }
                 }
-            )
+                CouponDetailContent(
+                    modifier = modifier,
+                    roomId = roomId,
+                    coupon = state.data,
+                    imageState = imageState,
+                    commentsState = commentsState,
+                    currentUid = currentUid,
+                    roomOwnerUid = roomOwnerUid,
+                    commentBusy = commentBusy,
+                    busyAction = busyAction,
+                    imageReplaceState = imageReplaceState,
+                    message = message,
+                    onReserve = { viewModel.reserve(roomId, couponId) },
+                    onCancelReservation = { viewModel.cancelReservation(roomId, couponId) },
+                    onUsed = {
+                        viewModel.markUsed(roomId, couponId) {
+                            usedFeedbackVersion += 1
+                        }
+                    },
+                    onDelete = { viewModel.delete(roomId, couponId, onDeleted) },
+                    onAddComment = { body, onAdded -> viewModel.addComment(roomId, couponId, body, onAdded) },
+                    onDeleteComment = { commentId -> viewModel.deleteComment(roomId, couponId, commentId) },
+                    onReplaceImage = { uri, onReplaced ->
+                        viewModel.replaceImage(context, roomId, couponId, uri, onReplaced)
+                    },
+                    onPrepareReplacementImage = { uri ->
+                        viewModel.prepareReplacementImage(context, uri)
+                    },
+                    onDiscardReplacementImage = viewModel::discardReplacementImage,
+                    onRequestImage = { viewModel.loadOriginalImage(context, roomId, couponId) },
+                    onCancelImageRequest = viewModel::cancelOriginalImageLoad,
+                    onRetryImage = { viewModel.loadOriginalImage(context, roomId, couponId, force = true) },
+                    onEdit = { title, brand, expires, visibility, notifyTarget, onSaved ->
+                        viewModel.edit(roomId, couponId, title, brand, expires, visibility, notifyTarget, onSaved)
+                    }
+                )
+            }
         }
+    }
+}
+
+@Composable
+internal fun CouponAddedFeedbackEffect(
+    showAddedFeedback: Boolean,
+    couponId: String,
+    snackbarHostState: SnackbarHostState,
+    onConsumed: () -> Unit,
+    onAddAnother: () -> Unit
+) {
+    LaunchedEffect(showAddedFeedback, couponId) {
+        if (!showAddedFeedback) return@LaunchedEffect
+        var result: SnackbarResult? = null
+        try {
+            result = snackbarHostState.showSnackbar(
+                message = "쿠폰을 등록했어요. 상세 정보를 확인해 주세요.",
+                actionLabel = "하나 더 등록",
+                withDismissAction = true
+            )
+        } finally {
+            onConsumed()
+        }
+        if (result == SnackbarResult.ActionPerformed) onAddAnother()
+    }
+}
+
+@Composable
+internal fun CouponUsedFeedbackEffect(
+    feedbackVersion: Int,
+    couponId: String,
+    snackbarHostState: SnackbarHostState,
+    onUndo: () -> Unit
+) {
+    LaunchedEffect(feedbackVersion, couponId) {
+        if (feedbackVersion <= 0) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "사용 완료로 변경했어요.",
+            actionLabel = "실행 취소",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndo()
     }
 }
 
 @Composable
 private fun CouponDetailContent(
     modifier: Modifier,
+    roomId: String,
     coupon: Coupon,
-    imageState: UiState<ByteArray>,
+    imageState: CouponOriginalImageState,
     commentsState: UiState<List<CouponComment>>,
     currentUid: String?,
     roomOwnerUid: String?,
     commentBusy: Boolean,
     busyAction: String?,
+    imageReplaceState: com.giftcondoctor.app.ui.viewmodel.CouponUploadState,
     message: String?,
     onReserve: () -> Unit,
     onCancelReservation: () -> Unit,
@@ -402,19 +631,147 @@ private fun CouponDetailContent(
     onDelete: () -> Unit,
     onAddComment: (String, () -> Unit) -> Unit,
     onDeleteComment: (String) -> Unit,
+    onReplaceImage: (Uri, () -> Unit) -> Unit,
+    onPrepareReplacementImage: (Uri) -> Unit,
+    onDiscardReplacementImage: () -> Unit,
+    onRequestImage: () -> Unit,
+    onCancelImageRequest: () -> Unit,
+    onRetryImage: () -> Unit,
     onEdit: (String, String, String, String, String, () -> Unit) -> Unit
 ) {
     var editMode by remember(coupon.id) { mutableStateOf(false) }
     var expandedImage by remember(coupon.id) { mutableStateOf<ImageBitmap?>(null) }
     var showMarkUsedDialog by remember(coupon.id) { mutableStateOf(false) }
     var showDeleteDialog by remember(coupon.id) { mutableStateOf(false) }
+    var showBarcodeDialog by remember(coupon.id) { mutableStateOf(false) }
+    var replacementImageUri by remember(coupon.id) { mutableStateOf<Uri?>(null) }
+    val replacementPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let {
+            replacementImageUri = it
+            onPrepareReplacementImage(it)
+        }
+    }
     val actionBusy = busyAction != null
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CouponImage(imageState, onOpenImage = { expandedImage = it })
+        CouponImage(
+            roomId = roomId,
+            coupon = coupon,
+            imageState = imageState,
+            onRequestImage = onRequestImage,
+            onOpenImage = { expandedImage = it }
+        )
+        val barcodeValue = coupon.barcodeValue
+        val barcodeFormat = coupon.barcodeFormat
+        if (barcodeValue != null && barcodeFormat != null) {
+            Card(onClick = { showBarcodeDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                ListItem(
+                    leadingContent = {
+                        Icon(Icons.Default.QrCode2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    headlineContent = { Text("계산대용 바코드 크게 보기") },
+                    supportingContent = {
+                        Text("$barcodeFormat · ${barcodeValuePreview(barcodeValue)} · 최대 밝기로 표시")
+                    }
+                )
+            }
+        }
+        if (coupon.ownerUid == currentUid) {
+            val replacement = replacementImageUri
+            if (replacement == null) {
+                OutlinedButton(
+                    onClick = {
+                        replacementPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    enabled = !actionBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                    Text("이미지 교체")
+                }
+            } else {
+                Text("새 이미지 미리보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                SelectedImagePreview(replacement)
+                GDInfoBanner(
+                    title = "확인 후 교체해 주세요",
+                    body = "쿠폰 정보와 예약 상태는 유지됩니다. 잘못된 코드 표시를 막기 위해 기존 자동 감지 바코드는 해제됩니다."
+                )
+                if (busyAction == null && imageReplaceState.stage == CouponUploadStage.Preparing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "새 이미지를 빠르게 올릴 수 있도록 미리 준비하는 중이에요",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (
+                    busyAction == null &&
+                    imageReplaceState.stage == CouponUploadStage.Idle &&
+                    imageReplaceState.originalBytes != null
+                ) {
+                    GDInfoBanner(
+                        title = "업로드 준비 완료",
+                        body = imageReplaceState.optimizationSummary()
+                            ?: "화질과 용량을 비교해 원본을 그대로 사용할 준비를 마쳤어요."
+                    )
+                }
+                if (busyAction == "replaceImage") {
+                    val percent = imageReplaceState.percent
+                    if (percent != null && imageReplaceState.stage == CouponUploadStage.Uploading) {
+                        LinearProgressIndicator(
+                            progress = { percent.coerceIn(0, 100) / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(
+                        when (imageReplaceState.stage) {
+                            CouponUploadStage.Preparing -> "빠른 업로드를 위해 새 이미지를 최적화하는 중이에요"
+                            CouponUploadStage.Saving -> "새 이미지 적용과 이전 파일 정리 중이에요"
+                            CouponUploadStage.Uploading -> listOfNotNull(
+                                imageReplaceState.optimizationSummary(),
+                                percent?.let { "업로드 $it%" } ?: "업로드 중"
+                            ).joinToString(" · ")
+                            CouponUploadStage.Cancelling -> "새 이미지 업로드를 정리하는 중이에요"
+                            CouponUploadStage.Idle -> "새 이미지 업로드를 준비하는 중이에요"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            onDiscardReplacementImage()
+                            replacementImageUri = null
+                        },
+                        enabled = !actionBusy,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("취소")
+                    }
+                    Button(
+                        onClick = { onReplaceImage(replacement) { replacementImageUri = null } },
+                        enabled = !actionBusy && imageReplaceState.stage != CouponUploadStage.Preparing,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (busyAction == "replaceImage") ButtonProgressIndicator()
+                        Text(
+                            when {
+                                busyAction == "replaceImage" -> "교체 중..."
+                                imageReplaceState.stage == CouponUploadStage.Preparing -> "준비 중..."
+                                else -> "이 이미지로 교체"
+                            }
+                        )
+                    }
+                }
+            }
+        }
         if (editMode) {
             EditCouponForm(
                 coupon = coupon,
@@ -488,10 +845,22 @@ private fun CouponDetailContent(
     }
 
     expandedImage?.let { bitmap ->
-        val bytes = (imageState as? UiState.Success)?.data
-        if (bytes != null) {
-            CouponImageDialog(previewBitmap = bitmap, imageBytes = bytes, onDismiss = { expandedImage = null })
-        }
+        CouponImageDialog(
+            previewBitmap = bitmap,
+            imageState = imageState,
+            onRetry = onRetryImage,
+            onDismiss = {
+                if (shouldCancelOriginalImageLoad(imageState)) onCancelImageRequest()
+                expandedImage = null
+            }
+        )
+    }
+    if (showBarcodeDialog && coupon.barcodeValue != null && coupon.barcodeFormat != null) {
+        CouponBarcodeDialog(
+            value = coupon.barcodeValue,
+            format = coupon.barcodeFormat,
+            onDismiss = { showBarcodeDialog = false }
+        )
     }
     if (showMarkUsedDialog) {
         AlertDialog(
@@ -533,6 +902,69 @@ private fun CouponDetailContent(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun CouponBarcodeDialog(value: String, format: String, onDismiss: () -> Unit) {
+    KeepScreenBrightWhileVisible()
+    var bitmap by remember(value, format) { mutableStateOf<Bitmap?>(null) }
+    var renderFinished by remember(value, format) { mutableStateOf(false) }
+    DisposableEffect(value, format) {
+        onDispose { bitmap?.recycle() }
+    }
+    LaunchedEffect(value, format) {
+        bitmap = withContext(Dispatchers.Default) { renderCouponBarcode(value, format) }
+        renderFinished = true
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().background(Color.White).padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("계산대용 바코드", color = Color.Black, style = MaterialTheme.typography.titleLarge)
+                    Text("최대 밝기 · 화면 켜짐", color = Color.DarkGray, style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "바코드 닫기", tint = Color.Black)
+                }
+            }
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                val rendered = bitmap
+                when {
+                    rendered != null -> Image(
+                        bitmap = rendered.asImageBitmap(),
+                        contentDescription = "재생성된 $format 바코드",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
+                    !renderFinished -> CircularProgressIndicator()
+                    else -> Text("바코드를 재생성할 수 없습니다. 원본 이미지를 사용해 주세요.", color = Color.Black)
+                }
+            }
+            SelectionContainer {
+                Text(
+                    value,
+                    color = Color.Black,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                "스캔되지 않으면 닫고 원본 이미지를 확대해 주세요.",
+                color = Color.DarkGray,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
     }
 }
 
@@ -624,59 +1056,117 @@ private fun CommentRow(comment: CouponComment, canDelete: Boolean, onDelete: () 
 }
 
 @Composable
-private fun CouponImage(imageState: UiState<ByteArray>, onOpenImage: (ImageBitmap) -> Unit) {
+private fun CouponImage(
+    roomId: String,
+    coupon: Coupon,
+    imageState: CouponOriginalImageState,
+    onRequestImage: () -> Unit,
+    onOpenImage: (ImageBitmap) -> Unit
+) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val targetWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
     val targetHeight = with(density) { 480.dp.roundToPx() }
-    val imageBytes = (imageState as? UiState.Success)?.data
-    var bitmap by remember(imageBytes, targetWidth, targetHeight) { mutableStateOf<ImageBitmap?>(null) }
-    var decodeFinished by remember(imageBytes, targetWidth, targetHeight) { mutableStateOf(false) }
+    val fullImage = (imageState as? CouponOriginalImageState.Ready)?.image
+    val hasThumbnail = coupon.thumbnailBlobPath != null
+    var thumbnailBitmap by remember(coupon.imageBlobPath, coupon.thumbnailBlobPath, targetWidth, targetHeight) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    var thumbnailFinished by remember(coupon.imageBlobPath, coupon.thumbnailBlobPath, targetWidth, targetHeight) {
+        mutableStateOf(!hasThumbnail)
+    }
+    var fullPreviewBitmap by remember(fullImage, targetWidth, targetHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var fullPreviewFinished by remember(fullImage, targetWidth, targetHeight) { mutableStateOf(false) }
 
-    LaunchedEffect(imageBytes, targetWidth, targetHeight) {
-        bitmap = null
-        decodeFinished = false
-        if (imageBytes != null) {
-            bitmap = withContext(Dispatchers.IO) {
-                CouponImageLoader.decodeSampledBitmap(imageBytes, targetWidth, targetHeight)?.asImageBitmap()
-            }
-            decodeFinished = true
+    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath, targetWidth, targetHeight) {
+        thumbnailBitmap = null
+        thumbnailFinished = !hasThumbnail
+        if (hasThumbnail) {
+            thumbnailBitmap = runCatching {
+                CouponImageLoader.load(
+                    roomId = roomId,
+                    couponId = coupon.id,
+                    imageBlobPath = coupon.imageBlobPath,
+                    thumbnailBlobPath = coupon.thumbnailBlobPath,
+                    targetWidth = targetWidth,
+                    targetHeight = targetHeight
+                )?.asImageBitmap()
+            }.getOrNull()
+            thumbnailFinished = true
         }
+    }
+
+    LaunchedEffect(fullImage, thumbnailFinished, thumbnailBitmap, targetWidth, targetHeight) {
+        fullPreviewBitmap = null
+        fullPreviewFinished = false
+        if (fullImage != null && (!hasThumbnail || thumbnailFinished && thumbnailBitmap == null)) {
+            fullPreviewBitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    CouponImageLoader.decodeSampledBitmap(fullImage.file, targetWidth, targetHeight)?.asImageBitmap()
+                }.getOrNull()
+            }
+            fullPreviewFinished = true
+        }
+    }
+
+    LaunchedEffect(hasThumbnail, thumbnailFinished, thumbnailBitmap) {
+        if (shouldLoadOriginalImage(
+                hasThumbnail = hasThumbnail,
+                thumbnailFailed = thumbnailFinished && thumbnailBitmap == null
+            )) {
+            onRequestImage()
+        }
+    }
+
+    val bitmap = thumbnailBitmap ?: fullPreviewBitmap
+    val previewFinished = if (hasThumbnail) {
+        thumbnailFinished && (thumbnailBitmap != null || fullPreviewFinished || imageState is CouponOriginalImageState.Error)
+    } else {
+        fullPreviewFinished || imageState is CouponOriginalImageState.Error
     }
 
     Card(modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 480.dp)) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            when (imageState) {
-                UiState.Loading -> Text("이미지를 불러오는 중입니다")
-                is UiState.Error -> Text(imageState.message, color = MaterialTheme.colorScheme.error)
-                is UiState.Success -> {
-                    val decodedBitmap = bitmap
-                    if (!decodeFinished) {
-                        Text("이미지를 최적화하는 중입니다")
-                    } else if (decodedBitmap == null) {
-                        Text("이미지를 표시할 수 없습니다.")
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().clickable { onOpenImage(decodedBitmap) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Image(
-                                bitmap = decodedBitmap,
-                                contentDescription = "쿠폰 이미지",
-                                modifier = Modifier.fillMaxWidth(),
-                                contentScale = ContentScale.Fit
-                            )
-                            Text(
-                                "탭해서 크게 보기",
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .background(Color.Black.copy(alpha = 0.58f), MaterialTheme.shapes.small)
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        }
+            val decodedBitmap = bitmap
+            if (decodedBitmap != null) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onRequestImage()
+                        onOpenImage(decodedBitmap)
+                    },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        bitmap = decodedBitmap,
+                        contentDescription = "쿠폰 이미지",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
+                    Text(
+                        if (imageState is CouponOriginalImageState.Loading) {
+                            "탭해서 크게 보기 · 원본 준비 중"
+                        } else {
+                            "탭해서 크게 보기"
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.58f), MaterialTheme.shapes.small)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            } else if (!previewFinished) {
+                Text("이미지를 빠르게 준비하는 중입니다")
+            } else {
+                when (imageState) {
+                    is CouponOriginalImageState.Error -> Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(imageState.message, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = onRequestImage) { Text("이미지 다시 불러오기") }
                     }
+                    else -> Text("이미지를 표시할 수 없습니다.")
                 }
             }
         }
@@ -684,36 +1174,50 @@ private fun CouponImage(imageState: UiState<ByteArray>, onOpenImage: (ImageBitma
 }
 
 @Composable
-private fun CouponImageDialog(previewBitmap: ImageBitmap, imageBytes: ByteArray, onDismiss: () -> Unit) {
+internal fun CouponImageDialog(
+    previewBitmap: ImageBitmap,
+    imageState: CouponOriginalImageState,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    KeepScreenBrightWhileVisible()
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val maxWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() * 2 }
     val maxHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() * 2 }
-    var highResolution by remember(imageBytes, maxWidth, maxHeight) { mutableStateOf<ImageBitmap?>(null) }
-    var highResolutionFinished by remember(imageBytes, maxWidth, maxHeight) { mutableStateOf(false) }
+    val imageFile = (imageState as? CouponOriginalImageState.Ready)?.image
+    var highResolution by remember(imageFile, maxWidth, maxHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var highResolutionFinished by remember(imageFile, maxWidth, maxHeight) { mutableStateOf(false) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, 4f)
-        val maxOffsetX = maxWidth / 4f * (scale - 1f)
-        val maxOffsetY = maxHeight / 4f * (scale - 1f)
-        offset = if (scale == 1f) {
+        val updatedScale = (scale * zoomChange).coerceIn(1f, 4f)
+        scale = updatedScale
+        offset = clampZoomOffset(offset + panChange, updatedScale, viewportSize)
+    }
+    fun setZoom(targetScale: Float) {
+        val updatedScale = targetScale.coerceIn(1f, 4f)
+        val ratio = if (scale > 0f) updatedScale / scale else 1f
+        scale = updatedScale
+        offset = if (updatedScale == 1f) {
             Offset.Zero
         } else {
-            Offset(
-                x = (offset.x + panChange.x).coerceIn(-maxOffsetX, maxOffsetX),
-                y = (offset.y + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-            )
+            clampZoomOffset(offset * ratio, updatedScale, viewportSize)
         }
     }
 
-    LaunchedEffect(imageBytes, maxWidth, maxHeight) {
-        highResolution = withContext(Dispatchers.Default) {
-            runCatching {
-                CouponImageLoader.decodeZoomBitmap(imageBytes, maxWidth, maxHeight)?.asImageBitmap()
-            }.getOrNull()
+    LaunchedEffect(imageFile, maxWidth, maxHeight) {
+        highResolution = null
+        highResolutionFinished = false
+        if (imageFile != null) {
+            highResolution = withContext(Dispatchers.Default) {
+                runCatching {
+                    CouponImageLoader.decodeZoomBitmap(imageFile.file, maxWidth, maxHeight)?.asImageBitmap()
+                }.getOrNull()
+            }
+            highResolutionFinished = true
         }
-        highResolutionFinished = true
     }
 
     Dialog(
@@ -729,23 +1233,28 @@ private fun CouponImageDialog(previewBitmap: ImageBitmap, imageBytes: ByteArray,
                 contentDescription = "확대된 쿠폰 이미지",
                 modifier = Modifier
                     .fillMaxSize()
+                    .testTag("zoomed-coupon-image")
                     .padding(16.dp)
+                    .onSizeChanged { viewportSize = it }
                     .graphicsLayer(
                         scaleX = scale,
                         scaleY = scale,
                         translationX = offset.x,
                         translationY = offset.y
                     )
-                    .pointerInput(Unit) {
-                        detectTapGestures(onDoubleTap = {
-                            scale = if (scale > 1f) 1f else 2f
-                            if (scale == 1f) offset = Offset.Zero
+                    .pointerInput(viewportSize) {
+                        detectTapGestures(onDoubleTap = { tap ->
+                            val updatedScale = if (scale > 1f) 1f else 2f
+                            scale = updatedScale
+                            offset = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
                         })
                     }
                     .transformable(transformState),
                 contentScale = ContentScale.Fit
             )
-            if (!highResolutionFinished) {
+            if (imageState is CouponOriginalImageState.Idle ||
+                imageState is CouponOriginalImageState.Loading ||
+                imageState is CouponOriginalImageState.Ready && !highResolutionFinished) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -754,14 +1263,30 @@ private fun CouponImageDialog(previewBitmap: ImageBitmap, imageBytes: ByteArray,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text("선명한 이미지를 준비하는 중이에요", color = Color.White)
+                    Text(
+                        if (imageState is CouponOriginalImageState.Idle ||
+                            imageState is CouponOriginalImageState.Loading) {
+                            "미리보기를 먼저 표시했어요 · 선명한 원본을 불러오는 중이에요"
+                        } else {
+                            "선명한 이미지를 준비하는 중이에요"
+                        },
+                        color = Color.White
+                    )
+                }
+            } else if (imageState is CouponOriginalImageState.Error) {
+                Column(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("원본을 불러오지 못해 미리보기로 확대 중이에요", color = Color.White)
+                    TextButton(onClick = onRetry) { Text("원본 다시 불러오기") }
                 }
             } else {
                 Text(
                     if (highResolution == null) {
                         "원본 최적화 실패 · 미리보기로 확대 중"
                     } else {
-                        "두 손가락으로 확대 · 두 번 탭해 전환"
+                        "밝기 최적화됨 · 두 손가락 확대 · 두 번 탭"
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -771,11 +1296,36 @@ private fun CouponImageDialog(previewBitmap: ImageBitmap, imageBytes: ByteArray,
                     style = MaterialTheme.typography.labelMedium
                 )
             }
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+            Row(
+                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Close, contentDescription = "닫기", tint = Color.White)
+                TextButton(
+                    onClick = { setZoom(1f) },
+                    enabled = scale != 1f
+                ) {
+                    Text("원본 맞춤", color = Color.White)
+                }
+                Row(
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.extraLarge),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { setZoom(scale - 1f) }, enabled = scale > 1f) {
+                        Icon(Icons.Default.ZoomOut, contentDescription = "축소", tint = Color.White)
+                    }
+                    Text(
+                        String.format(Locale.US, "%.1f×", scale),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    IconButton(onClick = { setZoom(scale + 1f) }, enabled = scale < 4f) {
+                        Icon(Icons.Default.ZoomIn, contentDescription = "확대", tint = Color.White)
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "닫기", tint = Color.White)
+                }
             }
         }
     }

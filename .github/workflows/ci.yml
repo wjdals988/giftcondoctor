@@ -54,7 +54,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   android:
-    name: Android unit test and debug build
+    name: Android unit test, R8 release, and benchmark build
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -79,4 +79,4 @@ jobs:
           printf '%s' '{"project_info":{"project_number":"1234567890","project_id":"giftcondoctor-ci","storage_bucket":"giftcondoctor-ci.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:1234567890:android:0000000000000000","android_client_info":{"package_name":"com.giftcondoctor.app"}},"oauth_client":[],"api_key":[{"current_key":"ci-placeholder"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}' > android/app/google-services.json
       - name: Run Android verification
         working-directory: android
-        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :benchmark:assembleBenchmark

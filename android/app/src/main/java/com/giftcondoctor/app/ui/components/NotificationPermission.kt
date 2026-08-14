@@ -18,7 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,7 +28,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.delay
 
 data class NotificationPermissionState(
     val runtimeRequired: Boolean,
@@ -72,20 +70,6 @@ fun rememberNotificationPermissionState(): NotificationPermissionState {
 }
 
 @Composable
-fun RequestNotificationPermissionOnLaunch() {
-    val permission = rememberNotificationPermissionState()
-    var requested by remember { mutableStateOf(false) }
-
-    LaunchedEffect(permission.runtimeRequired, permission.granted) {
-        if (!requested && permission.runtimeRequired && !permission.granted) {
-            requested = true
-            delay(500)
-            permission.request()
-        }
-    }
-}
-
-@Composable
 fun NotificationPermissionStatus(
     permission: NotificationPermissionState,
     modifier: Modifier = Modifier
@@ -96,12 +80,12 @@ fun NotificationPermissionStatus(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Android 알림 권한")
+                Text("만료 푸시 알림")
                 Text(
                     when {
-                        !permission.runtimeRequired -> "권한 필요 없음"
-                        permission.granted -> "허용됨"
-                        else -> "꺼져 있음"
+                        !permission.runtimeRequired -> "사용 가능"
+                        permission.granted -> "켜짐"
+                        else -> "꺼짐"
                     },
                     color = if (permission.granted || !permission.runtimeRequired) {
                         MaterialTheme.colorScheme.primary
@@ -112,12 +96,12 @@ fun NotificationPermissionStatus(
             }
             if (permission.runtimeRequired && !permission.granted) {
                 Text(
-                    "푸시 알림을 받으려면 Android 알림 권한을 허용해야 합니다.",
+                    "쿠폰 만료 알림을 받으려면 먼저 기기 알림을 허용해 주세요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(onClick = permission.request, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small) {
-                    Text("알림 권한 허용")
+                    Text("만료 알림 받기")
                 }
             }
         }

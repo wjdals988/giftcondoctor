@@ -196,6 +196,15 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium)
             ChangeLogEntry(
+                version = "0.1.20",
+                changes = listOf(
+                    "목록 이미지 요청을 화면 이탈 즉시 취소하고 같은 이미지는 한 번만 내려받도록 개선했습니다.",
+                    "Baseline Profile과 100개 목록 Release/R8 성능 비교를 추가했습니다.",
+                    "쿠폰 이미지를 미리 확인해 교체하고 확대 화면을 1배부터 4배까지 조절할 수 있습니다.",
+                    "알림 권한은 로그인 전에 묻지 않고 첫 쿠폰방 이후 이유를 확인한 뒤 요청합니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.14",
                 changes = listOf(
                     "쿠폰 이름과 브랜드 검색, 상태별 필터, 만료 임박순 정렬을 추가했습니다.",

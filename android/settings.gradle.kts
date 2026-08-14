@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Giftcondoctor"
 include(":app")
+include(":benchmark")

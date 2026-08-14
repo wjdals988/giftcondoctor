@@ -1,0 +1,103 @@
+# Android 목록 성능 기준선
+
+- 측정일: 2026-08-15
+- 대상: `0.1.20 (21)` 개발 버전
+- 기기: `emulator-5556`, Android 16(API 36), arm64, 4 cores, 2GB RAM
+- 빌드: `benchmark` 변형, release 기반, R8·resource shrink 활성화, debug test key 서명
+- 데이터: 네트워크 이미지 요청이 없는 쿠폰 100개
+- 반복: Baseline Profile 미적용/적용별 cold start 5회, 3회 fling 스크롤 5회
+
+## Baseline Profile A/B 결과
+
+| 지표 | 미적용 | 적용 | 변화 |
+|---|---:|---:|---:|
+| 100개 목록 Cold start 중앙값 | 1,264.3ms | 1,046.9ms | **17.2% 단축** |
+| 100개 목록 Cold start 최소 | 1,152.7ms | 1,004.9ms | 12.8% 단축 |
+| 100개 목록 Cold start 최대 | 1,502.2ms | 1,130.6ms | 24.7% 단축 |
+| 스크롤 frame duration CPU P50 | 22.8ms | 22.5ms | 1.5% 단축 |
+| 스크롤 frame duration CPU P90 | 32.9ms | 32.1ms | 2.3% 단축 |
+| 스크롤 frame duration CPU P95 | 34.4ms | 33.4ms | 2.9% 단축 |
+| 스크롤 frame duration CPU P99 | 55.0ms | 42.9ms | **22.0% 단축** |
+| 스크롤 frame overrun P90 | 24.6ms | 23.8ms | 3.3% 감소 |
+| 스크롤 frame overrun P99 | 50.3ms | 43.9ms | **12.8% 감소** |
+
+최종 코드에서 수집한 앱 전용 규칙은 목록용 354개와 실제 `MainActivity` 시작용 219개다. 중복 10개를 제거한 563개 합본을 Baseline Profile로, 219개 시작 규칙을 Startup Profile로 사용한다. 등록 완료 UX까지 포함한 최종 R8 release APK에 `baseline.prof` 6,053 bytes와 `baseline.profm` 715 bytes가 포함되는 것까지 확인했다.
+
+실제 `MainActivity` 로그인 화면의 별도 release/R8 측정은 미적용 1,061.2ms → 적용 961.6ms로 중앙값이 9.4% 단축됐다. debug APK의 수동 `am start -W` 3.8~5.0초는 release 결과를 대표하지 않는다.
+
+## 채택하지 않은 목록 행 단순화 실험
+
+`Card + ListItem`을 고정 `Row`로 바꾸고 상단 통계를 1회 순회로 합친 실험을 같은 emulator-5556, Release/R8, 각 5회로 재측정했다. Baseline Profile 적용 스크롤 P50은 22.48→22.26ms(1.0% 단축), P90은 32.13→32.17ms(0.1% 악화), P99는 42.90→37.89ms(11.7% 단축)였지만, cold start 중앙값이 1,046.9→1,113.8ms로 6.4% 악화됐다. 핵심 P50/P90 개선이 없고 시작 비용이 증가해 해당 코드 변경은 되돌렸다. 이 실행은 변동성 확인용 반증 데이터이며 위 최종 기준선에는 합산하지 않는다.
+
+## 채택하지 않은 번들 바코드 모델
+
+ML Kit bundled barcode 17.3.0을 넣은 R8 APK는 68,084,965B였고 4개 ABI의 `libbarhopper_v3.so`가 포함됐다. 기존 ZXing core로 정적 이미지 감지와 전체화면 재생성을 통합하고 업로드 EXIF 보정·교체 사전 준비까지 포함한 최종 APK는 46,908,846B로 21,176,119B(31.1%) 작아졌다. Code 128 생성→재감지 왕복 테스트는 통과했지만 실제 매장 스캐너 정확도는 아직 비교하지 않았으므로, 용량만으로 기능 우위를 주장하지 않는다.
+
+현재 unsigned 검증 APK의 SHA-256은 `ef0475f7e9aee0bf3a8b86ccf3ec3a2c39daf6e9b20d8ed81fcb45cebd997f98`다. 기존 release 키로 서명한 배포 산출물이 아니므로 GitHub Release나 대시보드에 올리지 않는다.
+
+## 업로드 사전 최적화 기준선
+
+이미지를 선택하면 OCR·바코드 분석과 업로드 전처리를 병렬 실행한다. 원본이 1.5MB 이상이거나 변이 2,560px를 넘으면 최대 6,553,600px, JPEG 품질 92로 준비하고, 서버 지원 형식 변환이 아니라면 원본보다 최소 10% 작을 때만 최적화본을 채택한다. EXIF 방향과 투명 배경을 보정하며 준비 파일은 전송 완료·취소·재선택·다음 앱 시작에 삭제한다.
+
+`emulator-5556` debug 최종 전체 suite 2회의 3,000×2,000 합성 JPEG는 5,707,065B→2,909,037B로 49.0% 줄었고 준비 시간은 537.294~598.459ms, PSS 증가는 247~267KB, 결과 크기는 2,559×1,706이었다. 10Mbps 링크에서 payload만 환산하면 약 2.24초를 절약하므로 느린 실행의 준비 비용을 빼도 순절감은 약 1.64초다. 다만 실제 무선 전송·TLS·Vercel 처리 시간과 사진별 압축률은 포함하지 않으며, 빠른 Wi-Fi에서는 사전 준비가 완료되지 않은 즉시 저장 경로가 오히려 느릴 수 있다. 일반 등록은 정보 확인 중, 이미지 교체는 확인 중 병렬 준비해 이 비용을 숨긴다.
+
+## 24개 썸네일 디코드·메모리 캐시 기준선
+
+같은 `emulator-5556`의 debug 계측 프로세스에서 생산 코드의 압축·bitmap `LruCache`, 샘플 디코드, 동시 요청 병합 경로를 그대로 호출했다. 1280×720 합성 JPEG 1장(212,708B)을 서로 다른 바이트 배열 24개 응답으로 복제해 첫 조회와 bitmap 메모리 재조회를 5회 반복했다. 같은 객체를 여러 key에 넣어 PSS를 과소 측정하지 않도록 매 fetch마다 `copyOf()`를 반환하고 각 회차 전 GC 안정화 시간을 뒀다.
+
+| 지표 | 중앙값 또는 고정값 | 장당 환산 |
+|---|---:|---:|
+| 첫 조회 24개 완료 | 209.043ms | 8.710ms |
+| bitmap 재조회 24개 완료 | 18.848ms | 0.785ms |
+| 실제 디코드 시간 | 7.530ms | 7.530ms |
+| 논리 fetch payload | 5,104,992B | 212,708B |
+| 디코드 bitmap cache | 1,990,656B | 82,944B |
+| 압축 byte cache | 5,104,992B | 212,708B |
+| PSS 증가 | 7,000KB | 291.7KB |
+
+최신 19개 전체 계측 suite에서 bitmap 재조회는 첫 조회보다 11.1배 빨랐고, 두 번째 24개 조회에서 fetch·download·decode 횟수가 늘지 않았다. 동일 이미지 key를 24개 코루틴이 동시에 요청하는 별도 회귀도 실제 fetch 1회, decode 1회, 대기 결과 재사용 23회로 통과했다. 샘플 bitmap을 표시 영역까지 후축소한 결과 적용 전 전체-suite 대비 bitmap cache는 64.0%, PSS 중앙값은 31.8% 줄었다. 시간 변화는 ±5% 안이라 에뮬레이터 노이즈로 보고 메모리 절감만 강한 결론으로 사용한다.
+
+같은 원본 썸네일을 56×56에서 512×360으로 바꾸는 별도 계측은 8.206→12.092ms, fetch 1회, 압축 cache hit 1회, decode 2회였다. 표시 크기는 bitmap key에만 포함하고 압축 source key에서는 제외해 목록에서 이미 받은 bytes를 상세 미리보기에 다시 쓴다. 압축 LRU는 기기 heap에 따라 2~8MB이며 로그아웃·이미지 교체 때 비워지고 디스크에는 저장되지 않는다.
+
+이 수치는 HTTP 전송, Firebase token 갱신, Vercel 응답 지연, WebP 썸네일 생성, Compose의 실제 화면 표시 완료를 포함하지 않는다. 또한 debug 계측 프로세스의 PSS 차이이며 release 앱 peak PSS가 아니다. 따라서 “실제 첫 화면 219ms”로 해석하면 안 되고 디코드·메모리 캐시 회귀 기준선으로만 사용한다.
+
+실제 `RoomDashboard → CouponListThumbnail → Image` 최신 전체-suite 경로에서 24개 첫 순회는 3,239.266ms, 역방향 cache 순회는 1,748.038ms로 46.0% 단축됐다. Compose가 행을 폐기·재구성해도 fetch·decode는 각각 24회에서 늘지 않았고 memory hit 34회가 기록됐다. 화면 실제 target에 맞춘 bitmap cache는 1,171,296B였다. 해당 UI 프로세스 PSS는 실행별 변동이 커 절대 상한으로 사용하지 않으며, UI 시간도 테스트 스크롤·동기화를 포함한 단일 debug 실행이다.
+
+## 상세 원본 파일 스트리밍 기준선
+
+상세 원본 응답은 최대 10MB `ByteArray`로 모으지 않고 앱 전용 `cacheDir/coupon-detail-images`에 64KB 버퍼로 기록한다. ViewModel은 파일과 byte count만 보관하고 preview·zoom은 파일 source에서 디코딩한다. 화면 종료, 다운로드 취소, 로그아웃에는 추적 파일을 삭제하며 다음 앱 시작에는 이전 프로세스가 남긴 파일을 정리한다. 삭제 실패 시 내용을 0바이트로 먼저 비운 뒤 재삭제한다.
+
+`emulator-5556` debug 전체-suite의 3,000×2,000 합성 JPEG(4,550,583B) 결과는 preview 338.305ms/1,382,400B, zoom 268.368ms/12,441,600B, PSS 증가 11,629KB다. 이전 `ByteArray` 상태라면 동일한 4,550,583B 압축 body가 bitmap과 함께 상주하지만 현재 경로에는 없다. preview bitmap도 표시 크기 후축소 전 6,000,000B에서 1,382,400B로 77.0% 줄었다. 다만 실제 HTTP 시간은 제외되며 zoom bitmap 자체의 메모리는 남는다.
+
+썸네일이 있는 쿠폰은 상세 진입만으로 원본 파일을 만들지 않고 확대 탭 또는 썸네일 실패 때만 원본을 요청한다. 따라서 확대를 사용하지 않는 상세 세션의 원본 HTTP·disk write는 논리적으로 1회→0회다. Idle/Loading/Ready/Error 정책, Loading·Ready 중 중복 억제, 확대 닫기 중 Loading 취소를 8개 단위 경계로 검증했지만 실제 Vercel wire byte 절감률은 운영 계측 전까지 확정하지 않는다.
+
+UI 값은 24개를 한 화면에 동시에 표시한 시간이 아니라 테스트가 각 행을 순서대로 스크롤하고 이미지 semantics가 나타날 때까지 기다린 총시간이다. debug 실행이고 Compose 테스트 동기화 비용까지 포함하므로 체감 프레임이나 release 성능 합격선으로 사용하지 않는다. 다만 재구성 시 추가 HTTP·decode가 일어나지 않는다는 회귀는 직접 증명한다.
+
+## 판정
+
+- 100개 목록의 프로필 적용 전·후 비교와 회귀 자동화를 확보했다.
+- 100개 목록 cold start 중앙값은 목표 15%를 넘어 17.2% 단축됐고 실제 앱 시작도 9.4% 단축됐다.
+- 적용 후에도 P50 22.5ms와 P90 32.1ms가 16.7ms frame budget을 넘는다. 프로필은 긴 프레임 P99를 22.0% 줄였지만 일반 스크롤 60fps를 달성하지 못했다.
+- 세 번의 목록 A/B에서 스크롤 P90 개선폭은 29.6%, 6.8%, 2.3%였다. 방향은 모두 개선이지만 에뮬레이터에서 개선폭 재현성이 낮다.
+- 최종 목록 cold start 변동계수는 미적용 10.7%, 적용 4.4%로 낮아졌다. 실제 앱 시작도 13.8%에서 10.1%로 낮아졌다.
+- 목록 Macrobenchmark는 이미지 네트워크·디코딩을 제외한다. 별도 계측으로 디코드·메모리 캐시와 실제 목록 UI 재구성 기준선은 확보했지만 실제 인증 HTTP 최초 표시 시간은 여전히 필요하다.
+- 에뮬레이터 결과는 실제 사용자 기기를 대표하지 않는다. 동일 테스트를 중급 물리 디바이스에서 실행하기 전 절대 성능 합격 판정에 사용하지 않는다.
+
+## 다음 비교 목표
+
+### 2026-08-15 추가 후보 판정
+
+동일 Android 16 AVD와 Baseline Profile에서 100개 목록을 후보별 5회 재측정했다. 현재 구조의 기준은 CPU frame P50/P90 `22.0/24.7ms`였다. `Card`를 제거하고 clip된 `ListItem`만 남긴 후보는 `23.5/33.5ms`로 각각 6.9%/35.8% 악화되어 되돌렸다. 상태·D-day·카테고리를 목록 진입 시 선계산한 후보도 `22.1/25.9ms`로 0.6%/5.0% 악화되어 되돌렸다. 시각·초기 진입 비용을 늘리면서 5% 이상 개선하지 못한 두 후보는 제품 코드에 포함하지 않았다.
+
+1. 실제 계정·Vercel Blob의 24개 WebP 썸네일에서 인증 HTTP·Compose 최초 표시 시간과 wire byte 측정
+2. 100개 스크롤 CPU frame P50과 P90을 모두 16.7ms 이하로 낮추기
+3. 2GB RAM 기기에서 20회 왕복 스크롤 후 peak PSS와 OOM 여부 측정
+4. 중급 물리 기기에서 A/B 각 10회 재측정해 회귀 임계값 확정
+
+실행 명령:
+
+```bash
+cd android
+ANDROID_SERIAL=emulator-5556 ./gradlew --no-daemon :benchmark:connectedBenchmarkAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.giftcondoctor.benchmark.CouponListBenchmark
+```

@@ -1,5 +1,6 @@
 package com.giftcondoctor.app.ui.screens
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,12 +65,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -98,13 +103,16 @@ import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.GDStatCard
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
+import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
+import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -119,6 +127,7 @@ fun RoomListScreen(
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val notificationPermission = rememberNotificationPermissionState()
     val joinedTestRoom = when (val state = rooms) {
         is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
         else -> false
@@ -155,11 +164,15 @@ fun RoomListScreen(
                             )
                         }
                     } else {
-                        GDInfoBanner(
-                            title = "만료 알림을 켜두면 놓치지 않아요",
-                            body = "매일 오전 9시에 만료 예정 쿠폰만 간결하게 알려드립니다.",
-                            icon = Icons.Default.Notifications
-                        )
+                        if (notificationPermission.runtimeRequired && !notificationPermission.granted) {
+                            NotificationPermissionStatus(notificationPermission)
+                        } else {
+                            GDInfoBanner(
+                                title = "만료 알림을 켜두면 놓치지 않아요",
+                                body = "매일 오전 9시에 만료 예정 쿠폰만 간결하게 알려드립니다.",
+                                icon = Icons.Default.Notifications
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = onCreateRoom, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Default.Add, contentDescription = null)
@@ -511,9 +524,9 @@ fun RoomDetailScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalComposeUiApi::class)
 @Composable
-private fun RoomDashboard(
+internal fun RoomDashboard(
     roomId: String,
     coupons: List<Coupon>,
     isOwner: Boolean,
@@ -524,7 +537,17 @@ private fun RoomDashboard(
     onRetry: () -> Unit,
     onOpenCoupon: (String) -> Unit,
     onAddCoupon: () -> Unit,
-    modifier: Modifier
+    modifier: Modifier,
+    thumbnailLoader: suspend (String, Coupon, Int, Int) -> Bitmap? = { requestedRoomId, coupon, width, height ->
+        CouponImageLoader.load(
+            roomId = requestedRoomId,
+            couponId = coupon.id,
+            imageBlobPath = coupon.imageBlobPath,
+            thumbnailBlobPath = coupon.thumbnailBlobPath,
+            targetWidth = width,
+            targetHeight = height
+        )
+    }
 ) {
     val today = seoulToday()
     val listState = rememberLazyListState()
@@ -557,7 +580,11 @@ private fun RoomDashboard(
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { testTagsAsResourceId = true }
+            .testTag("coupon-list")
+            .padding(16.dp),
         contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -680,7 +707,11 @@ private fun RoomDashboard(
                 )
             }
         }
-        items(visibleCoupons, key = { it.id }) { coupon ->
+        items(
+            items = visibleCoupons,
+            key = { it.id },
+            contentType = { "coupon" }
+        ) { coupon ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { onOpenCoupon(coupon.id) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -690,10 +721,10 @@ private fun RoomDashboard(
                     supportingContent = {
                         Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${coupon.expiresLocalDate} · ${statusLabel(coupon.status)}")
                     },
-                    leadingContent = { CouponListThumbnail(roomId, coupon) },
+                    leadingContent = { CouponListThumbnail(roomId, coupon, thumbnailLoader) },
                     trailingContent = {
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            GDBadge(couponDdayText(coupon))
+                            GDBadge(couponDdayText(coupon, today))
                             if (coupon.visibility == "private") {
                                 Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                             }
@@ -761,7 +792,11 @@ private fun couponFilterLabel(filter: CouponListFilter): String = when (filter) 
 }
 
 @Composable
-private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
+private fun CouponListThumbnail(
+    roomId: String,
+    coupon: Coupon,
+    thumbnailLoader: suspend (String, Coupon, Int, Int) -> Bitmap?
+) {
     var image by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf<ImageBitmap?>(null) }
     var loading by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf(false) }
     val targetSize = with(LocalDensity.current) { 56.dp.roundToPx() }
@@ -771,14 +806,7 @@ private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
         if (coupon.imageBlobPath.isBlank()) return@LaunchedEffect
         loading = true
         runCatching {
-            CouponImageLoader.load(
-                roomId = roomId,
-                couponId = coupon.id,
-                imageBlobPath = coupon.imageBlobPath,
-                thumbnailBlobPath = coupon.thumbnailBlobPath,
-                targetWidth = targetSize,
-                targetHeight = targetSize
-            )?.asImageBitmap()
+            thumbnailLoader(roomId, coupon, targetSize, targetSize)?.asImageBitmap()
         }.onSuccess {
             image = it
         }
@@ -803,7 +831,7 @@ private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
 
 @Composable
 private fun CouponCategoryThumbnail(coupon: Coupon, loading: Boolean = false) {
-    val category = couponCategory(coupon)
+    val category = remember(coupon.title, coupon.brand) { couponCategory(coupon.title, coupon.brand) }
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -833,32 +861,39 @@ private data class CouponCategory(
     val contentColor: Color
 )
 
-private fun couponCategory(coupon: Coupon): CouponCategory {
-    val source = "${coupon.title} ${coupon.brand}".lowercase()
-    fun containsAny(vararg keywords: String): Boolean = keywords.any { source.contains(it.lowercase()) }
+private fun couponCategory(title: String, brand: String): CouponCategory {
+    val source = "$title $brand".lowercase()
+    fun containsAny(keywords: List<String>): Boolean = keywords.any(source::contains)
 
     return when {
-        containsAny("스타벅스", "커피", "카페", "투썸", "이디야", "메가커피", "컴포즈", "빽다방", "할리스") ->
+        containsAny(CAFE_KEYWORDS) ->
             CouponCategory("카페", Icons.Default.LocalCafe, Color(0xFFE3F7F2), Color(0xFF008E85))
-        containsAny("치킨", "피자", "버거", "맥도날드", "버거킹", "롯데리아", "교촌", "bbq", "bhc", "도미노", "배민", "요기요") ->
+        containsAny(FOOD_KEYWORDS) ->
             CouponCategory("음식", Icons.Default.Restaurant, Color(0xFFFFF0E7), Color(0xFFE86E2F))
-        containsAny("cu", "gs25", "세븐", "이마트24", "편의점") ->
+        containsAny(CONVENIENCE_KEYWORDS) ->
             CouponCategory("편의점", Icons.Default.Store, Color(0xFFE8F2FF), Color(0xFF2878D8))
-        containsAny("cgv", "메가박스", "롯데시네마", "영화", "시네마") ->
+        containsAny(CINEMA_KEYWORDS) ->
             CouponCategory("영화", Icons.Default.Theaters, Color(0xFFF1EAFF), Color(0xFF7B52CC))
-        containsAny("항공", "호텔", "여행", "야놀자", "여기어때", "숙박") ->
+        containsAny(TRAVEL_KEYWORDS) ->
             CouponCategory("여행", Icons.Default.Flight, Color(0xFFE7F7FF), Color(0xFF0095D6))
-        containsAny("쿠팡", "네이버", "백화점", "올리브영", "상품권", "쇼핑", "마트") ->
+        containsAny(SHOPPING_KEYWORDS) ->
             CouponCategory("쇼핑", Icons.Default.ShoppingBag, Color(0xFFFFF7D9), Color(0xFFC28A00))
         else ->
             CouponCategory("쿠폰", Icons.Default.CardGiftcard, Color(0xFFEAFBF6), Color(0xFF00A89C))
     }
 }
 
-private fun couponDdayText(coupon: Coupon): String {
+private val CAFE_KEYWORDS = listOf("스타벅스", "커피", "카페", "투썸", "이디야", "메가커피", "컴포즈", "빽다방", "할리스")
+private val FOOD_KEYWORDS = listOf("치킨", "피자", "버거", "맥도날드", "버거킹", "롯데리아", "교촌", "bbq", "bhc", "도미노", "배민", "요기요")
+private val CONVENIENCE_KEYWORDS = listOf("cu", "gs25", "세븐", "이마트24", "편의점")
+private val CINEMA_KEYWORDS = listOf("cgv", "메가박스", "롯데시네마", "영화", "시네마")
+private val TRAVEL_KEYWORDS = listOf("항공", "호텔", "여행", "야놀자", "여기어때", "숙박")
+private val SHOPPING_KEYWORDS = listOf("쿠팡", "네이버", "백화점", "올리브영", "상품권", "쇼핑", "마트")
+
+private fun couponDdayText(coupon: Coupon, today: LocalDate): String {
     if (coupon.status == "used") return "사용 완료"
     if (coupon.status == "expired") return "만료"
-    val days = daysBeforeExpiry(seoulToday(), coupon.expiresLocalDate)
+    val days = daysBeforeExpiry(today, coupon.expiresLocalDate)
     return when {
         days < 0 -> "만료"
         days == 0 -> "오늘"

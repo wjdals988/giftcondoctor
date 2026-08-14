@@ -8,6 +8,7 @@ android/.gradle/
 android/.gradle-dist/
 android/build/
 android/app/build/
+android/benchmark/build/
 android/local.properties
 android/app/google-services.json
 android/keystore.properties

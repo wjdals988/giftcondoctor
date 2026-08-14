@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
 import com.giftcondoctor.app.core.trustedAppDeepLink
+import com.giftcondoctor.app.data.CouponImageFileStore
+import com.giftcondoctor.app.data.CouponUploadOptimizer
 import com.giftcondoctor.app.notifications.NotificationChannels
 import com.giftcondoctor.app.ui.GiftcondoctorApp
 
@@ -15,6 +17,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CouponImageFileStore.purgeAbandonedOnce(applicationContext)
+        CouponUploadOptimizer.purgeAbandonedOnce(applicationContext)
         NotificationChannels.create(this)
         pendingDeepLink.value = extractDeepLink(intent)
         setContent {

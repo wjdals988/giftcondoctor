@@ -63,7 +63,9 @@ data class Coupon(
     val reservedByUid: String?,
     val usedByUid: String?,
     val visibility: String,
-    val notifyTarget: String
+    val notifyTarget: String,
+    val barcodeValue: String? = null,
+    val barcodeFormat: String? = null
 )
 
 data class CouponComment(
@@ -81,7 +83,8 @@ data class UploadedImage(
     val imageWidth: Int?,
     val imageHeight: Int?,
     val contentType: String,
-    val size: Long
+    val size: Long,
+    val cleanupPending: Boolean = false
 )
 
 fun DocumentSnapshot.toRoomMembership(): RoomMembership? {
@@ -135,7 +138,9 @@ fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
         reservedByUid = getString("reservedByUid"),
         usedByUid = getString("usedByUid"),
         visibility = getString("visibility") ?: "room",
-        notifyTarget = getString("notifyTarget") ?: "allMembers"
+        notifyTarget = getString("notifyTarget") ?: "allMembers",
+        barcodeValue = getString("barcodeValue"),
+        barcodeFormat = getString("barcodeFormat")
     )
 }
 

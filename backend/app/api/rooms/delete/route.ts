@@ -1,6 +1,8 @@
-import { del } from "@vercel/blob";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { requireRoomOwner, requireUser } from "@/lib/auth";
+import { requireCouponBlobPath } from "@/lib/blobPath";
+import { enqueueBlobCleanup } from "@/lib/blobCleanupQueue";
+import { deleteCouponImages } from "@/lib/couponImageStorage";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError, readJson } from "@/lib/http";
@@ -24,15 +26,17 @@ export async function POST(request: Request) {
     const db = getAdminDb();
     const refs: DocumentReference[] = [];
     const blobPaths: string[] = [];
+    const cleanupTargets: Array<{ couponId: string; paths: string[] }> = [];
 
     const coupons = await db.collection(`rooms/${roomId}/coupons`).get();
     for (const coupon of coupons.docs) {
-      const blobPath = coupon.get("imageBlobPath");
-      if (typeof blobPath === "string" && blobPath.length > 0) blobPaths.push(blobPath);
+      const couponPaths = [requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, coupon.id)];
       const thumbnailBlobPath = coupon.get("thumbnailBlobPath");
-      if (typeof thumbnailBlobPath === "string" && thumbnailBlobPath.length > 0) {
-        blobPaths.push(thumbnailBlobPath);
+      if (thumbnailBlobPath) {
+        couponPaths.push(requireCouponBlobPath(thumbnailBlobPath, roomId, coupon.id));
       }
+      blobPaths.push(...couponPaths);
+      cleanupTargets.push({ couponId: coupon.id, paths: couponPaths });
 
       const comments = await coupon.ref.collection("comments").get();
       comments.docs.forEach((comment) => refs.push(comment.ref));
@@ -54,13 +58,29 @@ export async function POST(request: Request) {
     refs.push(db.doc(`roomSecrets/${roomId}`));
     refs.push(db.doc(`rooms/${roomId}`));
 
+    const cleanupJobs = await Promise.all(
+      cleanupTargets.map((target) => enqueueBlobCleanup(roomId, target.couponId, target.paths))
+    );
     await deleteDocumentRefs(db, refs);
 
+    let cleanupPending = false;
     if (blobPaths.length > 0) {
-      await del(blobPaths);
+      try {
+        await deleteCouponImages(blobPaths);
+        await Promise.all(cleanupJobs.map((job) => job.delete().catch((error) => {
+          console.error("failed to remove completed room cleanup job", { roomId, jobId: job.id, error });
+        })));
+      } catch {
+        cleanupPending = true;
+      }
     }
 
-    return json({ ok: true, deletedCoupons: coupons.size, deletedMembers: members.size });
+    return json({
+      ok: true,
+      deletedCoupons: coupons.size,
+      deletedMembers: members.size,
+      cleanupPending
+    });
   } catch (error) {
     return jsonError(error);
   }
