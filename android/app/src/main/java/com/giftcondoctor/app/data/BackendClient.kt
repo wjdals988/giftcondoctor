@@ -165,13 +165,26 @@ class BackendClient(
         )
     }
 
-    suspend fun fetchCouponImage(roomId: String, couponId: String, thumbnail: Boolean = false): ByteArray =
+    suspend fun fetchCouponImage(
+        roomId: String,
+        couponId: String,
+        thumbnail: Boolean = false,
+        backfillThumbnail: Boolean = false
+    ): ByteArray =
         withContext(Dispatchers.IO) {
-            val variant = if (thumbnail) "&variant=thumbnail" else ""
-            val request = authedBuilder()
-                .url("$baseUrl/api/coupons/image?roomId=$roomId&couponId=$couponId$variant")
-                .get()
-                .build()
+            val path = if (backfillThumbnail) "/api/coupons/thumbnail" else "/api/coupons/image"
+            val variant = if (thumbnail && !backfillThumbnail) "&variant=thumbnail" else ""
+            val url = "$baseUrl$path" +
+                "?roomId=${Uri.encode(roomId)}" +
+                "&couponId=${Uri.encode(couponId)}" +
+                variant
+            val builder = authedBuilder()
+                .url(url)
+            val request = if (backfillThumbnail) {
+                builder.post(ByteArray(0).toRequestBody(null)).build()
+            } else {
+                builder.get().build()
+            }
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw IOException(errorMessage(response.code, response.body?.string()))
                 response.body?.bytes() ?: throw IOException("이미지 응답이 비어 있습니다.")

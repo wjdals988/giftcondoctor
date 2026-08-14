@@ -257,6 +257,10 @@ class CouponRepository(
         firestore.document("rooms/$roomId/coupons/$couponId/comments/$commentId").delete().await()
     }
 
-    suspend fun fetchImage(roomId: String, couponId: String, thumbnail: Boolean = false): ByteArray =
-        backend.fetchCouponImage(roomId, couponId, thumbnail)
+    suspend fun fetchImage(
+        roomId: String,
+        couponId: String,
+        thumbnail: Boolean = false,
+        backfillThumbnail: Boolean = false
+    ): ByteArray = backend.fetchCouponImage(roomId, couponId, thumbnail, backfillThumbnail)
 }

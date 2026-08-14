@@ -27,11 +27,23 @@ object CouponImageLoader {
         targetHeight: Int
     ): Bitmap? = withContext(Dispatchers.IO) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext null
-        val requestedPath = thumbnailBlobPath ?: imageBlobPath
-        val cacheKey = "$uid/$roomId/$couponId/$requestedPath@$targetWidth:$targetHeight"
+        val cacheKey = "$uid/$roomId/$couponId/thumbnail:$imageBlobPath@$targetWidth:$targetHeight"
         cache.get(cacheKey)?.let { return@withContext it }
 
-        val bytes = repository.fetchImage(roomId, couponId, thumbnail = thumbnailBlobPath != null)
+        val bytes = if (thumbnailBlobPath != null) {
+            repository.fetchImage(roomId, couponId, thumbnail = true)
+        } else {
+            runCatching {
+                repository.fetchImage(
+                    roomId,
+                    couponId,
+                    thumbnail = true,
+                    backfillThumbnail = true
+                )
+            }.getOrElse {
+                repository.fetchImage(roomId, couponId)
+            }
+        }
         decodeSampledBitmap(bytes, targetWidth, targetHeight)?.also { bitmap ->
             cache.put(cacheKey, bitmap)
         }

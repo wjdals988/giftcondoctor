@@ -1,7 +1,12 @@
 import sharp from "sharp";
+import { couponBlobPrefix } from "./blobPath";
 
 const MAX_INPUT_PIXELS = 40_000_000;
 const THUMBNAIL_EDGE = 512;
+
+export function legacyCouponThumbnailPath(roomId: string, couponId: string): string {
+  return `${couponBlobPrefix(roomId, couponId)}thumbnail.webp`;
+}
 
 export type CouponThumbnail = {
   data: Buffer;

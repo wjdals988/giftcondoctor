@@ -74,7 +74,7 @@ IP 연결은 되고 도메인만 실패하면 AVD를 정상 DNS로 재시작한 
 
 GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니다. 테스트·빌드·서명 검증을 먼저 끝낸 뒤 `v{versionName}` GitHub Release를 발행하고, 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
 
-현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.15 (16)`는 이미지 성능·확대 UX 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
+현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.16 (17)`는 기존 쿠폰 썸네일 백필까지 포함한 성능 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
 
 앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
 
@@ -106,6 +106,7 @@ PR과 `main` push에서는 다음 항목을 자동 검증합니다.
 - Firestore rules는 비멤버의 room/coupon 접근을 차단합니다.
 - 이미지 업로드는 JPEG, PNG, WebP magic byte를 검증하고 쿠폰별 Blob 경로에 묶습니다.
 - 등록 시 512px 이하 비공개 WebP 썸네일을 함께 만들며, 목록은 썸네일을 우선 사용하고 기존 쿠폰은 원본으로 호환합니다.
+- 기존 쿠폰은 인증된 목록 조회 시 전용 POST API가 쿠폰별 고정 썸네일을 1회 생성하며, 실패하면 원본 fallback으로 표시합니다.
 - Android 업로드는 원본 전체를 메모리에 복사하지 않고 64KB 단위로 전송하며 진행률을 표시합니다.
 - OCR은 Android ML Kit의 한국어 텍스트 인식을 사용하며, 인식 결과는 사용자가 확인·수정한 뒤 저장합니다.
 - Firebase Storage, Firebase Cloud Functions, SMS는 MVP에서 사용하지 않습니다.
