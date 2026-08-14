@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { couponBlobPrefix, requireCouponBlobPath } from "../lib/blobPath";
 import { ApiError, requireCronSecret } from "../lib/http";
 import { detectSupportedImage } from "../lib/imageUpload";
+import { legacyCouponThumbnailPath } from "../lib/imageThumbnail";
 import { rateLimitDocumentId, rateLimitWindow } from "../lib/rateLimit";
 
 const originalCronSecret = process.env.CRON_SECRET;
@@ -38,6 +39,8 @@ describe("coupon blob identity", () => {
       "room-1",
       "coupon_1"
     )).toContain("coupon_1/image.jpg");
+    expect(legacyCouponThumbnailPath("room-1", "coupon_1"))
+      .toBe("rooms/room-1/coupons/coupon_1/thumbnail.webp");
   });
 
   it("rejects cross-coupon and malformed paths", () => {
