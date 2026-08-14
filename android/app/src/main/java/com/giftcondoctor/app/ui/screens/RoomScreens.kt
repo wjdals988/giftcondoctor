@@ -59,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,9 +74,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.core.CouponListFilter
 import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.daysBeforeExpiry
+import com.giftcondoctor.app.core.filterAndSortCoupons
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.CouponImageLoader
@@ -489,6 +492,7 @@ fun RoomDetailScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RoomDashboard(
     roomId: String,
@@ -499,11 +503,16 @@ private fun RoomDashboard(
     modifier: Modifier
 ) {
     val today = seoulToday()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedFilter by rememberSaveable { mutableStateOf(CouponListFilter.ALL) }
     val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
     val todayCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) == 0 }
     val soonCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) in 0..3 }
     val activeCount = actionable.count()
     val usedCount = coupons.count { it.status == "used" }
+    val visibleCoupons = remember(coupons, searchQuery, selectedFilter, today) {
+        filterAndSortCoupons(coupons, searchQuery, selectedFilter, today)
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
@@ -556,6 +565,38 @@ private fun RoomDashboard(
         item {
             Text("쿠폰 목록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
         }
+        if (coupons.isNotEmpty()) {
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("쿠폰 이름·브랜드 검색") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CouponListFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = selectedFilter == filter,
+                            onClick = { selectedFilter = filter },
+                            label = { Text(couponFilterLabel(filter)) }
+                        )
+                    }
+                }
+            }
+            item {
+                Text(
+                    "${coupons.size}개 중 ${visibleCoupons.size}개 · 만료 임박순",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         if (coupons.isEmpty()) {
             item {
                 EmptyState(
@@ -570,8 +611,21 @@ private fun RoomDashboard(
                     onPrimaryAction = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) null else onAddCoupon
                 )
             }
+        } else if (visibleCoupons.isEmpty()) {
+            item {
+                EmptyState(
+                    title = "조건에 맞는 쿠폰이 없어요",
+                    message = "검색어나 상태 필터를 바꾸면 다른 쿠폰을 확인할 수 있습니다.",
+                    icon = Icons.Default.CardGiftcard,
+                    primaryActionLabel = "검색·필터 초기화",
+                    onPrimaryAction = {
+                        searchQuery = ""
+                        selectedFilter = CouponListFilter.ALL
+                    }
+                )
+            }
         }
-        items(coupons, key = { it.id }) { coupon ->
+        items(visibleCoupons, key = { it.id }) { coupon ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { onOpenCoupon(coupon.id) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -594,6 +648,14 @@ private fun RoomDashboard(
             }
         }
     }
+}
+
+private fun couponFilterLabel(filter: CouponListFilter): String = when (filter) {
+    CouponListFilter.ALL -> "전체"
+    CouponListFilter.AVAILABLE -> "사용 가능"
+    CouponListFilter.RESERVED -> "예약"
+    CouponListFilter.USED -> "사용 완료"
+    CouponListFilter.EXPIRED -> "만료"
 }
 
 @Composable

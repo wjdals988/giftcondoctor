@@ -310,6 +310,9 @@ class CouponDetailViewModel(
     private val _commentBusy = MutableStateFlow(false)
     val commentBusy: StateFlow<Boolean> = _commentBusy
 
+    private val _busyAction = MutableStateFlow<String?>(null)
+    val busyAction: StateFlow<String?> = _busyAction
+
     private val _roomOwnerUid = MutableStateFlow<String?>(null)
     val roomOwnerUid: StateFlow<String?> = _roomOwnerUid
 
@@ -347,19 +350,26 @@ class CouponDetailViewModel(
         }
     }
 
-    fun reserve(roomId: String, couponId: String) = runAction { repository.reserve(roomId, couponId) }
-    fun cancelReservation(roomId: String, couponId: String) = runAction { repository.cancelReservation(roomId, couponId) }
-    fun markUsed(roomId: String, couponId: String) = runAction { repository.markUsed(roomId, couponId) }
-    fun delete(roomId: String, couponId: String, onDeleted: () -> Unit) = runAction {
+    fun reserve(roomId: String, couponId: String) =
+        runAction("reserve", "쿠폰을 예약했습니다.") { repository.reserve(roomId, couponId) }
+
+    fun cancelReservation(roomId: String, couponId: String) =
+        runAction("cancelReservation", "예약을 취소했습니다.") { repository.cancelReservation(roomId, couponId) }
+
+    fun markUsed(roomId: String, couponId: String) =
+        runAction("markUsed", "사용 완료로 변경했습니다.") { repository.markUsed(roomId, couponId) }
+
+    fun delete(roomId: String, couponId: String, onDeleted: () -> Unit) = runAction("delete", onSuccess = onDeleted) {
         repository.deleteCoupon(roomId, couponId)
-        onDeleted()
     }
 
-    fun addComment(roomId: String, couponId: String, body: String) {
+    fun addComment(roomId: String, couponId: String, body: String, onAdded: () -> Unit) {
+        if (_commentBusy.value) return
+        _commentBusy.value = true
         viewModelScope.launch {
-            _commentBusy.value = true
             _message.value = null
             runCatching { repository.addComment(roomId, couponId, body) }
+                .onSuccess { onAdded() }
                 .onFailure { _message.value = it.localizedMessage ?: "댓글을 등록하지 못했습니다." }
             _commentBusy.value = false
         }
@@ -380,8 +390,9 @@ class CouponDetailViewModel(
         brand: String,
         expiresLocalDate: String,
         visibility: String,
-        notifyTarget: String
-    ) = runAction {
+        notifyTarget: String,
+        onSaved: () -> Unit
+    ) = runAction("edit", "쿠폰 정보를 수정했습니다.", onSaved) {
         repository.editCoupon(
             roomId,
             couponId,
@@ -393,11 +404,23 @@ class CouponDetailViewModel(
         )
     }
 
-    private fun runAction(block: suspend () -> Unit) {
+    private fun runAction(
+        action: String,
+        successMessage: String? = null,
+        onSuccess: () -> Unit = {},
+        block: suspend () -> Unit
+    ) {
+        if (_busyAction.value != null) return
+        _busyAction.value = action
         viewModelScope.launch {
             _message.value = null
             runCatching { block() }
+                .onSuccess {
+                    _message.value = successMessage
+                    onSuccess()
+                }
                 .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
+            _busyAction.value = null
         }
     }
 }
