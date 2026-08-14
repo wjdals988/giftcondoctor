@@ -1,6 +1,6 @@
 # 기프티콘닥터 UI/UX 벤치마크 및 작업 목록
 
-- 기준일: 2026-08-14
+- 기준일: 2026-08-15
 - 범위: 로그인 → 쿠폰방 생성/입장 → 쿠폰 등록 → 조회/사용 → 알림 설정
 - 원칙: 첫 가치 도달 시간을 줄이고, 운영/진단 기능은 일상 흐름과 분리한다.
 
@@ -8,12 +8,11 @@
 
 | 서비스 | 확인한 강점 | 기프티콘닥터 적용점 |
 |---|---|---|
-| [Google Wallet](https://play.google.com/store/apps/details?id=com.google.android.apps.walletnfcrel) | 자주 쓰는 항목에 빠르게 접근하고 한곳에서 관리 | 방 상세의 핵심 행동을 작은 상단 아이콘이 아닌 `쿠폰 등록` FAB로 고정 |
-| [Samsung Wallet](https://www.samsung.com/us/support/answer/ANS10001346/) | 첫 카드 추가 CTA, 바코드 스캔/수동 입력, Quick Access | 빈 화면에 설명만 두지 않고 바로 실행 가능한 CTA 제공 |
-| [Stocard](https://play.google.com/store/apps/details?id=de.stocard.stocard) | 수 초 안에 바코드 스캔, 빠른 바코드 제시 | 상세 화면을 사용 시점 중심으로 재구성하고 이미지 확대/밝기 기능 강화 |
+| [Google Wallet](https://support.google.com/wallet/answer/14188766?hl=ko) | 사진 선택 → 이름·설명 확인 → 추가 → 바코드 사용의 짧은 흐름 | 사진을 먼저 선택하고 OCR 결과를 확인한 뒤 저장하는 등록 구조 유지 |
+| [Samsung Wallet](https://www.samsung.com/us/support/answer/ANS10002602/) | Gallery·카메라 스캔·수동 입력의 3가지 등록 경로와 Quick Access | 빈 화면 CTA를 명확히 하고 갤러리 외 공유 시트·바코드 스캔 경로 확장 |
 | [기프티스타](https://play.google.com/store/apps/details?id=com.giftistar.app) | 갤러리 자동 탐색과 OCR로 등록 부담 축소 | 사진을 첫 단계로 두고 OCR 결과 확인 후 저장하는 3단계 구조 |
 | [니콘내콘](https://play.google.com/store/apps/details?id=com.ncncnative) | 원터치 등록을 강조해 진입 장벽 축소 | 기본 등록은 필수 정보만 노출하고 공유·알림 옵션은 접어서 제공 |
-| [SuperCards](https://play.google.com/store/apps/details?id=de.superapps.supercards) | 회원가입 없는 시작, 스크린샷 가져오기, 오프라인 사용, 위젯·Wear OS | 매장 네트워크가 없어도 최근 쿠폰을 열고 자주 쓰는 쿠폰에 즉시 접근 |
+| [SuperCards](https://play.google.com/store/apps/details?id=de.superapps.supercards) | 2026년 기준 100만+ 다운로드, 스크린샷 가져오기·오프라인·Wear OS | 매장 네트워크가 없어도 최근 쿠폰을 열고 자주 쓰는 쿠폰에 즉시 접근 |
 | [Cardly](https://play.google.com/store/apps/details?id=com.secretmeridian.cardly) | 여러 스크린샷 가져오기, 이름·바코드 자동 감지, 검색·즐겨찾기·위젯 | Android 공유 시트와 다중 선택 등록, 즐겨찾기·검색을 한 흐름으로 설계 |
 | [Loyalty Card Wallet](https://play.google.com/store/apps/details?id=com.panaustik.cardwallet) | 사진 대신 바코드를 해석해 화면에 다시 그려 스캔 신뢰성 확보, 만료 알림 | 원본 이미지 확대만 의존하지 않고 바코드 값을 검증해 전체 화면으로 재생성 |
 | [카카오톡 선물하기](https://www.kakaocorp.com/page/service/service/KakaoTalkGift) | 선물함 중심 관리와 서비스 연속성 | 외부에서 가져온 쿠폰도 하나의 사용 가능 목록에서 만료 임박순으로 제시 |
@@ -44,12 +43,12 @@
 
 ### P0 — 출시·운영 게이트
 
-- [완료] PR Backend 20개, Rules 9개, Android 7개 테스트와 build/audit 전체 통과
+- [완료] 로컬 Backend 22개, Rules 11개, Android 21개 테스트와 build/audit 전체 통과
 - [완료] Vercel Preview 배포 성공 확인
 - [대기] Preview health와 인증이 필요한 API의 실패/성공 경계 확인
 - [대기] Firestore Rules·Indexes 프로덕션 배포 경로와 rollback 절차 확정
 - [대기] main 병합 후 Vercel production이 동일 commit을 가리키는지 확인
-- [대기] Android `0.1.13 (14)` Release 생성, APK 서명·SHA-256·설치 검증
+- [차단] Android `0.1.15 (16)` debug 설치 검증 완료, 기존 release keystore 미복구로 서명 Release는 보류
 
 ### P1 — 첫 가치 도달과 등록 흐름
 
@@ -66,7 +65,7 @@
 ### P1 — 실제 사용 순간
 
 - [완료] 쿠폰 이름·브랜드 검색과 사용 가능/예약/사용 완료/만료 상태별 필터, 만료 임박순 정렬
-- [예정] 쿠폰 상세에서 바코드를 감지·재생성하고 전체 화면 보기와 화면 밝기 임시 상승
+- [진행] 전체 화면 고해상도 지연 로딩과 핀치·더블탭 확대 적용, 바코드 감지·재생성과 화면 밝기 임시 상승은 후속
 - [예정] 최근 열어본 쿠폰의 암호화 로컬 캐시로 매장 네트워크 장애 시 오프라인 표시
 - [완료] 사용 완료와 삭제 전에 영향 범위를 확인하는 절차 제공
 - [예정] 사용 완료와 삭제 후 실행 취소 가능한 피드백 제공
@@ -74,11 +73,12 @@
 
 ### P1 — 성능과 신뢰
 
-- [예정] 목록에서 원본 이미지를 내려받지 않는 썸네일 API 및 이미지 캐시 도입
-- [예정] 행마다 생성되는 Repository/HTTP 클라이언트를 앱 단위로 공유
+- [완료] 신규 쿠폰에 512px 이하 비공개 WebP 썸네일 생성, 목록에서 우선 로딩하고 기존 쿠폰은 원본 fallback
+- [완료] 목록 이미지 로더의 Repository와 HTTP 클라이언트를 앱 단위 singleton으로 공유
+- [완료] Android 업로드를 전체 `ByteArray` 복사에서 64KB 스트리밍으로 전환하고 전송률·저장 단계 표시
 - [완료] 댓글을 최신 100개 기준으로 조회하도록 변경
 - [완료] Blob 업로드 후 Firestore 저장 실패 시 보상 삭제
-- [예정] 쿠폰 목록 paging과 서버 thumbnail 변환 실패 관측 지표 추가
+- [예정] 쿠폰 목록 paging, 기존 쿠폰 썸네일 백필과 서버 thumbnail 변환 실패 관측 지표 추가
 
 ### P2 — 세련도와 확장
 
@@ -96,12 +96,14 @@
 - 터치 영역: Android 권장 최소 48dp
 - 푸시 E2E: 전경/백그라운드/종료 3상태 × 테스트/실제 cron 2경로 = 6개 시나리오
 - 교차 계정 프라이버시: A 로그아웃 → B 로그인 1개 필수 시나리오
+- 3000×2000 무작위 픽셀 JPEG 진단 샘플: 원본 4,948,267B → 512×341 WebP 45,706B로 99.08% 감소, 로컬 변환 48.5ms
+- Android 업로드 읽기 버퍼: 최대 10MB 전체 복사 → 8KB 반복 버퍼(애플리케이션 버퍼 기준 최대 1,280배 축소, 네트워크 내부 버퍼 제외)
 
 ## 5. 남은 위험
 
 - 로컬 코드가 원격 및 프로덕션에 반영되지 않은 상태에서는 물리 디바이스 푸시 개선을 주장할 수 없다.
 - 에뮬레이터 5556은 Firebase 도메인 DNS 해석에 실패하므로 푸시 판정 장비로 사용할 수 없다.
-- 홈 흐름을 단순화했지만, 썸네일 원본 다운로드와 날짜 직접 입력은 아직 체감 품질을 제한한다.
+- 신규 쿠폰은 썸네일을 사용하지만 기존 쿠폰은 백필 전까지 목록에서 원본 fallback을 사용한다.
 - 현재 쿠폰 사용은 원격 이미지 로딩에 의존해 매장 네트워크가 불안정하면 결제 직전 사용할 수 없는 위험이 있다.
-- 바코드를 이미지 그대로 확대하므로 화면 밝기·해상도·여백에 따라 매장 스캐너 인식률이 달라질 수 있다.
+- 확대 해상도와 제스처는 개선됐지만 바코드를 이미지 그대로 표시하므로 화면 밝기·여백에 따라 매장 스캐너 인식률이 달라질 수 있다.
 - 벤치마크 앱은 개인 지갑 중심이고 기프티콘닥터는 공동 방 중심이므로, 전역 `내 쿠폰` 탭 도입은 정보 구조 검증 후 결정해야 한다.
