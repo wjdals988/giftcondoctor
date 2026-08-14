@@ -8,7 +8,7 @@
 
 | 서비스 | 확인한 강점 | 기프티콘닥터 적용점 |
 |---|---|---|
-| [Google Wallet](https://support.google.com/wallet/answer/14188766?hl=ko) | 사진 선택 → 이름·설명 확인 → 추가 → 바코드 사용의 짧은 흐름 | 사진을 먼저 선택하고 OCR 결과를 확인한 뒤 저장하는 등록 구조 유지 |
+| [Google Wallet](https://support.google.com/wallet/answer/11951709?hl=ko) | 큰 텍스트의 단순한 패스 목록, 빠른 추가와 직접 순서 변경 | 첫 목록을 작게 시작하고 스크롤 중 자연스럽게 확장하되 현재 로드 범위를 명시 |
 | [Samsung Wallet](https://www.samsung.com/us/support/answer/ANS10002602/) | Gallery·카메라 스캔·수동 입력의 3가지 등록 경로와 Quick Access | 빈 화면 CTA를 명확히 하고 갤러리 외 공유 시트·바코드 스캔 경로 확장 |
 | [기프티스타](https://play.google.com/store/apps/details?id=com.giftistar.app) | 갤러리 자동 탐색과 OCR로 등록 부담 축소 | 사진을 첫 단계로 두고 OCR 결과 확인 후 저장하는 3단계 구조 |
 | [니콘내콘](https://play.google.com/store/apps/details?id=com.ncncnative) | 원터치 등록을 강조해 진입 장벽 축소 | 기본 등록은 필수 정보만 노출하고 공유·알림 옵션은 접어서 제공 |
@@ -43,12 +43,12 @@
 
 ### P0 — 출시·운영 게이트
 
-- [완료] 로컬 Backend 22개, Rules 11개, Android 21개 테스트와 build/audit 전체 통과
+- [완료] 로컬 Backend 22개, Rules 12개, Android 28개 테스트와 build/audit 전체 통과
 - [완료] Vercel Preview 배포 성공 확인
 - [대기] Preview health와 인증이 필요한 API의 실패/성공 경계 확인
 - [대기] Firestore Rules·Indexes 프로덕션 배포 경로와 rollback 절차 확정
 - [대기] main 병합 후 Vercel production이 동일 commit을 가리키는지 확인
-- [차단] Android `0.1.16 (17)` debug 빌드 검증, 기존 release keystore 미복구로 서명 Release는 보류
+- [차단] Android `0.1.17 (18)` debug 빌드 검증, 기존 release keystore 미복구로 서명 Release는 보류
 
 ### P1 — 첫 가치 도달과 등록 흐름
 
@@ -78,7 +78,8 @@
 - [완료] Android 업로드를 전체 `ByteArray` 복사에서 64KB 스트리밍으로 전환하고 전송률·저장 단계 표시
 - [완료] 댓글을 최신 100개 기준으로 조회하도록 변경
 - [완료] Blob 업로드 후 Firestore 저장 실패 시 보상 삭제
-- [예정] 쿠폰 목록 cursor paging과 서버 thumbnail 변환 실패 관측 지표 추가
+- [완료] 공개·본인 비공개 쿠폰을 각각 12개씩 cursor paging하고 끝 4개 전에 선조회, 로딩·끝·오류/재시도 상태 표시
+- [예정] 서버 thumbnail 변환 실패와 페이지별 Firestore 읽기 수 관측 지표 추가
 
 ### P2 — 세련도와 확장
 
@@ -98,12 +99,15 @@
 - 교차 계정 프라이버시: A 로그아웃 → B 로그인 1개 필수 시나리오
 - 3000×2000 무작위 픽셀 JPEG 진단 샘플: 원본 4,948,267B → 512×341 WebP 45,706B로 99.08% 감소, 로컬 변환 48.5ms
 - Android 업로드 읽기 버퍼: 최대 10MB 전체 복사 → 8KB 반복 버퍼(애플리케이션 버퍼 기준 최대 1,280배 축소, 네트워크 내부 버퍼 제외)
+- 쿠폰 100개 가정 초기 표시 상한: 전체 100개 → 공개 12개+본인 비공개 12개, 최대 24개로 76% 축소. sentinel 포함 쿼리 문서 상한은 26개로 74% 축소하며 실제 Firestore 과금은 캐시·분포·재연결에 따라 달라진다.
 
 ## 5. 남은 위험
 
 - 로컬 코드가 원격 및 프로덕션에 반영되지 않은 상태에서는 물리 디바이스 푸시 개선을 주장할 수 없다.
 - 에뮬레이터 5556은 Firebase 도메인 DNS 해석에 실패하므로 푸시 판정 장비로 사용할 수 없다.
 - 기존 쿠폰은 첫 목록 조회에서 썸네일을 생성하므로 첫 1회는 서버 변환 지연이 추가되고, 사용자당 시간당 100개를 넘으면 원본 fallback이 발생한다.
+- 검색어가 뒤 페이지에만 있으면 일치 항목을 찾을 때까지 추가 페이지를 읽을 수 있어 최악의 경우 100개 전체 조회 비용이 다시 발생한다.
+- cursor query용 복합 인덱스가 운영에 배포되기 전에는 목록이 `FAILED_PRECONDITION`으로 실패하므로 앱 배포보다 인덱스 배포를 먼저 완료해야 한다.
 - 현재 쿠폰 사용은 원격 이미지 로딩에 의존해 매장 네트워크가 불안정하면 결제 직전 사용할 수 없는 위험이 있다.
 - 확대 해상도와 제스처는 개선됐지만 바코드를 이미지 그대로 표시하므로 화면 밝기·여백에 따라 매장 스캐너 인식률이 달라질 수 있다.
 - 벤치마크 앱은 개인 지갑 중심이고 기프티콘닥터는 공동 방 중심이므로, 전역 `내 쿠폰` 탭 도입은 정보 구조 검증 후 결정해야 한다.
