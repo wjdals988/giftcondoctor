@@ -74,6 +74,8 @@ IP 연결은 되고 도메인만 실패하면 AVD를 정상 DNS로 재시작한 
 
 GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니다. 테스트·빌드·서명 검증을 먼저 끝낸 뒤 `v{versionName}` GitHub Release를 발행하고, 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
 
+현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.14 (15)`는 새 기능 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
+
 앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
 
 - `GOOGLE_SERVICES_JSON_BASE64`: `android/app/google-services.json`의 base64 값

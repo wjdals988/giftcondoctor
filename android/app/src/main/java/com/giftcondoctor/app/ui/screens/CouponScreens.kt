@@ -24,13 +24,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,12 +47,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,6 +89,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -189,14 +198,7 @@ fun AddCouponScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                OutlinedTextField(
-                    value = expires,
-                    onValueChange = { expires = it },
-                    label = { Text("만료일") },
-                    supportingText = { Text("예: 2026-12-31") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                ExpiryDateField(value = expires, onValueChange = { expires = it })
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(7 to "+7일", 30 to "+30일", 90 to "+90일").forEach { (days, label) ->
                         AssistChip(onClick = { expires = today.plusDays(days.toLong()).toString() }, label = { Text(label) })
@@ -312,6 +314,7 @@ fun CouponDetailScreen(
     val imageState by viewModel.imageBytes.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val commentBusy by viewModel.commentBusy.collectAsStateWithLifecycle()
+    val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
     val roomOwnerUid by viewModel.roomOwnerUid.collectAsStateWithLifecycle()
     val currentUid = viewModel.currentUid
 
@@ -327,15 +330,16 @@ fun CouponDetailScreen(
                 currentUid = currentUid,
                 roomOwnerUid = roomOwnerUid,
                 commentBusy = commentBusy,
+                busyAction = busyAction,
                 message = message,
                 onReserve = { viewModel.reserve(roomId, couponId) },
                 onCancelReservation = { viewModel.cancelReservation(roomId, couponId) },
                 onUsed = { viewModel.markUsed(roomId, couponId) },
                 onDelete = { viewModel.delete(roomId, couponId, onDeleted) },
-                onAddComment = { body -> viewModel.addComment(roomId, couponId, body) },
+                onAddComment = { body, onAdded -> viewModel.addComment(roomId, couponId, body, onAdded) },
                 onDeleteComment = { commentId -> viewModel.deleteComment(roomId, couponId, commentId) },
-                onEdit = { title, brand, expires, visibility, notifyTarget ->
-                    viewModel.edit(roomId, couponId, title, brand, expires, visibility, notifyTarget)
+                onEdit = { title, brand, expires, visibility, notifyTarget, onSaved ->
+                    viewModel.edit(roomId, couponId, title, brand, expires, visibility, notifyTarget, onSaved)
                 }
             )
         }
@@ -351,17 +355,21 @@ private fun CouponDetailContent(
     currentUid: String?,
     roomOwnerUid: String?,
     commentBusy: Boolean,
+    busyAction: String?,
     message: String?,
     onReserve: () -> Unit,
     onCancelReservation: () -> Unit,
     onUsed: () -> Unit,
     onDelete: () -> Unit,
-    onAddComment: (String) -> Unit,
+    onAddComment: (String, () -> Unit) -> Unit,
     onDeleteComment: (String) -> Unit,
-    onEdit: (String, String, String, String, String) -> Unit
+    onEdit: (String, String, String, String, String, () -> Unit) -> Unit
 ) {
     var editMode by remember(coupon.id) { mutableStateOf(false) }
     var expandedImage by remember(coupon.id) { mutableStateOf<ImageBitmap?>(null) }
+    var showMarkUsedDialog by remember(coupon.id) { mutableStateOf(false) }
+    var showDeleteDialog by remember(coupon.id) { mutableStateOf(false) }
+    val actionBusy = busyAction != null
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -369,10 +377,13 @@ private fun CouponDetailContent(
     ) {
         CouponImage(imageState, onOpenImage = { expandedImage = it })
         if (editMode) {
-            EditCouponForm(coupon = coupon, onSave = { title, brand, expires, visibility, notifyTarget ->
-                onEdit(title, brand, expires, visibility, notifyTarget)
-                editMode = false
-            })
+            EditCouponForm(
+                coupon = coupon,
+                saving = busyAction == "edit",
+                onSave = { title, brand, expires, visibility, notifyTarget ->
+                    onEdit(title, brand, expires, visibility, notifyTarget) { editMode = false }
+                }
+            )
         } else {
             Text(coupon.title, style = MaterialTheme.typography.headlineSmall)
             Text(coupon.brand.ifBlank { "브랜드 없음" })
@@ -385,27 +396,44 @@ private fun CouponDetailContent(
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (coupon.status == "active") {
-                Button(onClick = onReserve, modifier = Modifier.weight(1f)) { Text("예약") }
+                Button(onClick = onReserve, enabled = !actionBusy, modifier = Modifier.weight(1f)) { Text("예약") }
             }
             if (coupon.status == "reserved" &&
                 (coupon.reservedByUid == currentUid || coupon.ownerUid == currentUid)
             ) {
-                OutlinedButton(onClick = onCancelReservation, modifier = Modifier.weight(1f)) { Text("예약 취소") }
+                OutlinedButton(onClick = onCancelReservation, enabled = !actionBusy, modifier = Modifier.weight(1f)) {
+                    Text("예약 취소")
+                }
             }
             if (coupon.status == "active" ||
                 (coupon.status == "reserved" && coupon.reservedByUid == currentUid)
             ) {
-                Button(onClick = onUsed, modifier = Modifier.weight(1f)) { Text("사용 완료") }
+                Button(
+                    onClick = { showMarkUsedDialog = true },
+                    enabled = !actionBusy,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("사용 완료")
+                }
             }
         }
         if (coupon.ownerUid == currentUid || roomOwnerUid == currentUid) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (coupon.ownerUid == currentUid) {
-                    OutlinedButton(onClick = { editMode = !editMode }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { editMode = !editMode },
+                        enabled = !actionBusy,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(if (editMode) "수정 취소" else "수정")
                     }
                 }
-                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = { showDeleteDialog = true },
+                    enabled = !actionBusy,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
                     Text("삭제")
                 }
             }
@@ -423,6 +451,47 @@ private fun CouponDetailContent(
     expandedImage?.let { bitmap ->
         CouponImageDialog(bitmap = bitmap, onDismiss = { expandedImage = null })
     }
+    if (showMarkUsedDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!actionBusy) showMarkUsedDialog = false },
+            title = { Text("사용 완료로 변경할까요?") },
+            text = { Text("완료한 쿠폰은 사용 가능 목록에서 제외됩니다.") },
+            dismissButton = {
+                TextButton(onClick = { showMarkUsedDialog = false }, enabled = !actionBusy) { Text("취소") }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showMarkUsedDialog = false
+                        onUsed()
+                    },
+                    enabled = !actionBusy
+                ) {
+                    Text("사용 완료")
+                }
+            }
+        )
+    }
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!actionBusy) showDeleteDialog = false },
+            title = { Text("쿠폰을 삭제할까요?") },
+            text = { Text("쿠폰 이미지와 댓글도 함께 삭제되며 되돌릴 수 없습니다.") },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }, enabled = !actionBusy) { Text("취소") }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onDelete() },
+                    enabled = !actionBusy,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    if (busyAction == "delete") ButtonProgressIndicator()
+                    Text(if (busyAction == "delete") "삭제 중..." else "삭제")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -430,7 +499,7 @@ private fun CouponCommentsSection(
     commentsState: UiState<List<CouponComment>>,
     currentUid: String?,
     commentBusy: Boolean,
-    onAddComment: (String) -> Unit,
+    onAddComment: (String, () -> Unit) -> Unit,
     onDeleteComment: (String) -> Unit
 ) {
     var body by remember { mutableStateOf("") }
@@ -455,8 +524,7 @@ private fun CouponCommentsSection(
         Button(
             onClick = {
                 val text = body
-                onAddComment(text)
-                body = ""
+                onAddComment(text) { body = "" }
             },
             enabled = !commentBusy && body.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
@@ -608,6 +676,7 @@ private fun formatCommentTime(createdAt: Instant?): String =
 @Composable
 private fun EditCouponForm(
     coupon: Coupon,
+    saving: Boolean,
     onSave: (String, String, String, String, String) -> Unit
 ) {
     var title by remember(coupon.id) { mutableStateOf(coupon.title) }
@@ -618,7 +687,7 @@ private fun EditCouponForm(
 
     OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("쿠폰 이름") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("브랜드") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = expires, onValueChange = { expires = it }, label = { Text("만료일") }, modifier = Modifier.fillMaxWidth())
+    ExpiryDateField(value = expires, onValueChange = { expires = it }, enabled = !saving)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("비공개 쿠폰")
         Switch(
@@ -653,8 +722,64 @@ private fun EditCouponForm(
                 if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers"
             )
         },
+        enabled = !saving,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text("수정 저장")
+        if (saving) ButtonProgressIndicator()
+        Text(if (saving) "저장 중..." else "수정 저장")
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpiryDateField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean = true
+) {
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text("만료일") },
+        supportingText = { Text("YYYY-MM-DD 형식으로 입력하거나 달력에서 선택하세요.") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        enabled = enabled,
+        trailingIcon = {
+            IconButton(onClick = { showDatePicker = true }, enabled = enabled) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = "만료일 달력 열기")
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        val selectedDateMillis = runCatching {
+            LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }.getOrNull()
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("취소") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val selectedDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                            onValueChange(selectedDate.toString())
+                        }
+                        showDatePicker = false
+                    },
+                    enabled = datePickerState.selectedDateMillis != null
+                ) {
+                    Text("선택")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 }

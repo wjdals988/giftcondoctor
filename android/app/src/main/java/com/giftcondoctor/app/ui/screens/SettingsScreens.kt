@@ -196,6 +196,16 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium)
             ChangeLogEntry(
+                version = "0.1.14",
+                changes = listOf(
+                    "쿠폰 이름과 브랜드 검색, 상태별 필터, 만료 임박순 정렬을 추가했습니다.",
+                    "사용 완료와 쿠폰 삭제 전에 한 번 더 확인하도록 안전 절차를 추가했습니다.",
+                    "댓글 입력과 수정 화면은 서버 저장이 성공한 뒤에만 비우거나 닫도록 개선했습니다.",
+                    "쿠폰 등록과 수정에서 만료일을 달력으로 선택할 수 있습니다.",
+                    "목록 검색·필터·정렬 경계 사례를 자동 테스트로 검증합니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.13",
                 changes = listOf(
                     "쿠폰 상세 화면에 댓글 작성과 삭제 기능을 추가했습니다.",
