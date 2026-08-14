@@ -67,6 +67,19 @@ describe("coupon security rules", () => {
     await assertSucceeds(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), validCoupon()));
   });
 
+  it("allows only a thumbnail path owned by the same coupon", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertSucceeds(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
+      ...validCoupon(),
+      thumbnailBlobPath: "rooms/room-1/coupons/coupon-1/thumbnail.webp"
+    }));
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-2"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/coupon-2/image.jpg",
+      thumbnailBlobPath: "rooms/room-1/coupons/coupon-1/thumbnail.webp"
+    }));
+  });
+
   it("rejects a Blob path owned by another coupon", async () => {
     const db = testEnvironment.authenticatedContext("member-1").firestore();
     await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
@@ -89,6 +102,18 @@ describe("coupon security rules", () => {
     const couponRef = doc(db, "rooms/room-1/coupons/coupon-1");
     await assertSucceeds(setDoc(couponRef, validCoupon()));
     await assertFails(updateDoc(couponRef, { title: "x".repeat(101) }));
+  });
+
+  it("rejects replacing the immutable thumbnail path", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const couponRef = doc(db, "rooms/room-1/coupons/coupon-1");
+    await assertSucceeds(setDoc(couponRef, {
+      ...validCoupon(),
+      thumbnailBlobPath: "rooms/room-1/coupons/coupon-1/thumbnail.webp"
+    }));
+    await assertFails(updateDoc(couponRef, {
+      thumbnailBlobPath: "rooms/room-1/coupons/coupon-1/replacement.webp"
+    }));
   });
 
   it("blocks a different member from using a reserved coupon", async () => {

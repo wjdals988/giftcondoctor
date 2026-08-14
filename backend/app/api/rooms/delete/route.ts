@@ -29,6 +29,10 @@ export async function POST(request: Request) {
     for (const coupon of coupons.docs) {
       const blobPath = coupon.get("imageBlobPath");
       if (typeof blobPath === "string" && blobPath.length > 0) blobPaths.push(blobPath);
+      const thumbnailBlobPath = coupon.get("thumbnailBlobPath");
+      if (typeof thumbnailBlobPath === "string" && thumbnailBlobPath.length > 0) {
+        blobPaths.push(thumbnailBlobPath);
+      }
 
       const comments = await coupon.ref.collection("comments").get();
       comments.docs.forEach((comment) => refs.push(comment.ref));
