@@ -48,6 +48,9 @@ export async function POST(request: Request) {
     const logs = await db.collection("notificationLogs").where("roomId", "==", roomId).get();
     logs.docs.forEach((log) => refs.push(log.ref));
 
+    const deliveries = await db.collection("notificationOutbox").where("roomId", "==", roomId).get();
+    deliveries.docs.forEach((delivery) => refs.push(delivery.ref));
+
     refs.push(db.doc(`roomSecrets/${roomId}`));
     refs.push(db.doc(`rooms/${roomId}`));
 

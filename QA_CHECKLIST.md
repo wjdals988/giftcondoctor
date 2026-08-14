@@ -49,7 +49,9 @@
 - [ ] 만료 알림 형식 테스트 버튼으로 `쿠폰 만료 D-Day` 푸시를 즉시 수신
 - [ ] Cron 수동 호출이 summary JSON 반환
 - [ ] Cron 일부 발송 실패 시 summary와 함께 HTTP 500 반환
-- [ ] 동일 쿠폰/날짜/일수는 notificationLogs로 중복 발송 방지
+- [ ] 같은 날짜 Cron을 동시에 2회 호출하면 1회만 lease를 획득하고 다른 1회는 `locked`로 종료
+- [ ] 동일 수신자·쿠폰·만료일 outbox가 1개만 생성되고 전송 성공 후 `sent` 상태 유지
+- [ ] 일시적 FCM 오류는 `retry`, 최대 5회 실패는 `deadLetter`, 만료된 `sending` lease는 재획득
 - [ ] 알림 탭 시 `CouponDetailScreen`으로 이동
 
 ## 보안

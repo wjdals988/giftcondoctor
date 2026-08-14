@@ -209,6 +209,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /notificationOutbox/{messageId} {
+      allow read, write: if false;
+    }
+
+    match /cronLeases/{leaseId} {
+      allow read, write: if false;
+    }
+
     match /roomSecrets/{roomId} {
       allow read, write: if false;
     }

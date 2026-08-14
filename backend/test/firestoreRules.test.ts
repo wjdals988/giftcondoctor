@@ -248,3 +248,18 @@ describe("notification setting security rules", () => {
     }));
   });
 });
+
+describe("server-only notification state", () => {
+  it("blocks clients from reading or writing outbox and cron lease documents", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "notificationOutbox/message-1"), { status: "pending" });
+      await setDoc(doc(context.firestore(), "cronLeases/expiry-reminders-2026-08-15"), { status: "running" });
+    });
+
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(getDoc(doc(db, "notificationOutbox/message-1")));
+    await assertFails(setDoc(doc(db, "notificationOutbox/message-2"), { status: "sent" }));
+    await assertFails(getDoc(doc(db, "cronLeases/expiry-reminders-2026-08-15")));
+    await assertFails(setDoc(doc(db, "cronLeases/manual"), { status: "completed" }));
+  });
+});
