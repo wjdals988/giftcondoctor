@@ -1,6 +1,5 @@
 package com.giftcondoctor.app.ui.screens
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,6 +66,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -78,7 +78,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.daysBeforeExpiry
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
-import com.giftcondoctor.app.data.CouponRepository
+import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
@@ -99,8 +99,6 @@ import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -600,19 +598,22 @@ private fun RoomDashboard(
 
 @Composable
 private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
-    val repository = remember { CouponRepository() }
     var image by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf<ImageBitmap?>(null) }
     var loading by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf(false) }
+    val targetSize = with(LocalDensity.current) { 56.dp.roundToPx() }
 
-    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath) {
+    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath, targetSize) {
         image = null
         if (coupon.imageBlobPath.isBlank()) return@LaunchedEffect
         loading = true
         runCatching {
-            withContext(Dispatchers.IO) {
-                val bytes = repository.fetchImage(roomId, coupon.id)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-            }
+            CouponImageLoader.load(
+                roomId = roomId,
+                couponId = coupon.id,
+                imageBlobPath = coupon.imageBlobPath,
+                targetWidth = targetSize,
+                targetHeight = targetSize
+            )?.asImageBitmap()
         }.onSuccess {
             image = it
         }

@@ -54,7 +54,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -66,6 +68,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDInfoBanner
@@ -507,24 +510,43 @@ private fun CommentRow(comment: CouponComment, canDelete: Boolean, onDelete: () 
 
 @Composable
 private fun CouponImage(imageState: UiState<ByteArray>, onOpenImage: (ImageBitmap) -> Unit) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val targetWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val targetHeight = with(density) { 480.dp.roundToPx() }
+    val imageBytes = (imageState as? UiState.Success)?.data
+    var bitmap by remember(imageBytes, targetWidth, targetHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var decodeFinished by remember(imageBytes, targetWidth, targetHeight) { mutableStateOf(false) }
+
+    LaunchedEffect(imageBytes, targetWidth, targetHeight) {
+        bitmap = null
+        decodeFinished = false
+        if (imageBytes != null) {
+            bitmap = withContext(Dispatchers.IO) {
+                CouponImageLoader.decodeSampledBitmap(imageBytes, targetWidth, targetHeight)?.asImageBitmap()
+            }
+            decodeFinished = true
+        }
+    }
+
     Card(modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 480.dp)) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             when (imageState) {
                 UiState.Loading -> Text("이미지를 불러오는 중입니다")
                 is UiState.Error -> Text(imageState.message, color = MaterialTheme.colorScheme.error)
                 is UiState.Success -> {
-                    val bitmap = remember(imageState.data) {
-                        BitmapFactory.decodeByteArray(imageState.data, 0, imageState.data.size)?.asImageBitmap()
-                    }
-                    if (bitmap == null) {
+                    val decodedBitmap = bitmap
+                    if (!decodeFinished) {
+                        Text("이미지를 최적화하는 중입니다")
+                    } else if (decodedBitmap == null) {
                         Text("이미지를 표시할 수 없습니다.")
                     } else {
                         Box(
-                            modifier = Modifier.fillMaxWidth().clickable { onOpenImage(bitmap) },
+                            modifier = Modifier.fillMaxWidth().clickable { onOpenImage(decodedBitmap) },
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
-                                bitmap = bitmap,
+                                bitmap = decodedBitmap,
                                 contentDescription = "쿠폰 이미지",
                                 modifier = Modifier.fillMaxWidth(),
                                 contentScale = ContentScale.Fit
