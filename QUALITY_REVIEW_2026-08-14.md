@@ -3,20 +3,20 @@
 검토일: 2026-08-14
 대상: Android, Next.js Backend, Firestore Rules, GitHub Actions, 릴리스 흐름
 
-## 전체 평가: B (70/100)
+## 전체 평가: B+ (74/100)
 
 `code-quality-reviewer`의 가중치에 따라 평가했습니다. 제공된 자동 품질 스크립트는 숫자 파싱 오류로 중단되어 자동 점수는 사용하지 않았고, 실제 테스트·빌드·보안 감사와 수동 코드 검토를 근거로 계산했습니다.
 
 | 평가축 | 점수 | 주요 근거 |
 |---|---:|---|
 | 가독성 | 64 | 알림 정책과 권한 조건은 명확해졌지만 500~900줄 UI/ViewModel 파일이 존재 |
-| 성능 | 59 | 연결 풀 공유는 개선됐으나 원본 이미지 전체 다운로드와 Cron N+1 조회가 남음 |
+| 성능 | 69 | 표시 크기별 샘플 디코딩과 LRU 캐시를 적용했으나 서버 원본 다운로드와 Cron N+1 조회가 남음 |
 | 명시적 I/O | 80 | 알림 payload·권한·transaction 경계는 명확하나 API 입력 스키마 문서화가 부분적 |
-| 유지보수성 | 72 | CI·Rules 테스트·Wrapper와 회귀 테스트를 추가했으나 API 통합/UI 테스트가 부족 |
+| 유지보수성 | 78 | CI·Rules 테스트·Wrapper와 회귀 테스트를 실제 PR에서 검증했으나 API 통합/UI 테스트가 부족 |
 | 에러 처리 | 76 | 탈퇴 고아 데이터와 첫 푸시 채널을 보강했지만 삭제·알림의 재시도 상태가 없음 |
-| 협업 | 86 | 8개 논리적 커밋, CI, Changelog를 구성했으나 PR/branch protection 실반영은 미확인 |
+| 협업 | 92 | 5개 PR을 CI 검증 후 병합하고 배포 이력을 남겼으나 main branch protection은 미적용 |
 
-가중 총점은 `64×0.25 + 59×0.20 + 80×0.15 + 72×0.25 + 76×0.10 + 86×0.05 = 69.7`이며 반올림해 70점입니다.
+가중 총점은 `64×0.25 + 69×0.20 + 80×0.15 + 78×0.25 + 76×0.10 + 92×0.05 = 73.5`이며 반올림해 74점입니다.
 
 ## 이번 작업에서 해소한 주요 위험
 
@@ -34,21 +34,25 @@
 - 가입·탈퇴·멤버 제거의 `memberCount` transaction 정합성 보강
 - 소유 쿠폰이 남은 멤버의 탈퇴·제거와 타 예약자의 사용 완료 차단
 - Cron 부분 실패를 HTTP 500으로 노출해 운영 감지 가능성 보강
+- 백그라운드 FCM `deepLink` extra 복원과 앱 전용 URI 검증
+- 쿠폰 목록·상세·등록 미리보기에 샘플 디코딩과 UID별 LRU 캐시 적용
+- GitHub Actions 전체를 Node 24 기반 고정 SHA로 전환
 
 ## 검증 수치
 
 | 항목 | 작업 전 | 작업 후 |
 |---|---:|---:|
-| 자동 테스트 | 17개 | 36개 |
+| 자동 테스트 | 17개 | 43개 |
 | Firestore Rules 테스트 | 0개 | 9개 |
 | 프로덕션 High/Critical npm 취약점 | 11개 | 0개 |
 | 전체 프로덕션 npm 취약점 | 18개 | 6개 Moderate |
-| PR/main CI | 0개 | Backend·Android 2개 job |
+| PR/main CI | 0개 | Backend·Android 2개 job, PR 5개 및 main 실행 통과 |
 | Gradle Wrapper | 없음 | 8.10.2 + SHA-256 고정 |
 
 ## 5556 디바이스 검증
 
 - `emulator-5556`에 `0.1.13 (14)` debug APK 설치 및 cold start 성공
+- FCM과 같은 `OPEN_COUPON_DETAIL + deepLink extra` cold start 성공
 - Android 13+ 알림 권한 요청 UI 노출과 허용 상태 확인
 - 수정 전 앱 시작 시 `coupon_expiry` 채널 없음, 수정 후 시작 즉시 중요도 HIGH(4) 채널 생성 확인
 - 공식 `0.1.12 (13)`와 최신 `0.1.13 (14)` 모두 Firebase Installations에서 `SERVICE_NOT_AVAILABLE` 재현
@@ -57,13 +61,14 @@
 
 ## 아직 배포를 막아야 하는 위험
 
-### P1 — 운영 반영과 실제 릴리스 미검증
+### P1 — Android 실제 릴리스 미검증
 
-- 새 CI와 릴리스 workflow는 로컬 구문·명령 검증만 완료됐고 GitHub Actions 실행 이력은 아직 없습니다.
+- PR/main CI는 실제 GitHub Actions에서 반복 통과했고 Node 20/setup-java 폐기 annotation도 0건으로 정리했습니다.
 - `v0.1.13` tag와 Release는 생성하지 않았습니다.
-- GitHub `main` branch protection, `production` environment 승인, Firebase Rules 실제 배포 상태는 확인·변경하지 않았습니다.
+- Firestore Rules와 인덱스 3개는 운영 `giftcondoctor` 프로젝트에 배포했습니다.
+- GitHub Actions repository secret과 variable이 각각 0개라 Android release workflow는 실행 전에 차단했습니다.
 
-조치: 브랜치 push와 PR 검증 → 필수 check·승인 규칙 설정 → Rules 배포 확인 → `main`에서 수동 릴리스 순서로 진행합니다.
+조치: 기존 v0.1.12와 동일한 release keystore를 확보하고 필수 secret 7개를 등록한 뒤 `main`에서 수동 릴리스를 실행합니다.
 
 ### P1 — 알림 중복과 삭제 복구 구조
 
@@ -81,12 +86,12 @@
 
 조치: AVD를 정상 DNS로 재시작 → 전용 QA 계정으로 로그인 → token 문서 확인 → 즉시 테스트와 만료 형식 테스트 수신 → foreground/background/종료 상태 딥링크를 동일 APK·배포로 검증합니다.
 
-### P1 — 이미지 메모리와 목록 확장성
+### P1 — 이미지 전송량과 목록 확장성
 
-- 목록·상세 이미지는 인증 API에서 원본 bytes를 내려받습니다.
-- 쿠폰 목록에 paging이 없고 Bitmap 크기 제한·공용 캐시가 부족해 다수의 고해상도 이미지에서 OOM 또는 UI 지연 가능성이 있습니다.
+- Android는 목록·상세·등록 미리보기를 표시 크기에 맞춰 샘플 디코딩하고 UID별 4~24MB LRU 캐시를 사용합니다.
+- 인증 API는 여전히 원본 bytes를 내려받고 쿠폰 목록에 paging이 없어 네트워크 사용량과 초기 지연은 남아 있습니다.
 
-조치: 서버 thumbnail 생성, Android 이미지 캐시·sample decode, Firestore paging을 함께 적용합니다.
+조치: 서버 thumbnail 생성과 Firestore cursor paging을 추가하고 실제 100개 쿠폰·고해상도 이미지로 메모리/스크롤 계측을 수행합니다.
 
 ### P1 — abuse 방어의 우회 가능성
 
