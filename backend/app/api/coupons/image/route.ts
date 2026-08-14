@@ -11,13 +11,17 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const roomId = url.searchParams.get("roomId")?.trim();
     const couponId = url.searchParams.get("couponId")?.trim();
+    const variant = url.searchParams.get("variant")?.trim();
 
     if (!roomId || !couponId) {
       throw new ApiError(400, "roomId와 couponId가 필요합니다.");
     }
 
     const coupon = await requireCouponAccess(roomId, couponId, token.uid);
-    const blobPath = requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, couponId);
+    const requestedPath = variant === "thumbnail"
+      ? coupon.get("thumbnailBlobPath") ?? coupon.get("imageBlobPath")
+      : coupon.get("imageBlobPath");
+    const blobPath = requireCouponBlobPath(requestedPath, roomId, couponId);
 
     const privateBlob = await get(blobPath, { access: "private", useCache: false });
     if (!privateBlob || privateBlob.statusCode !== 200 || !privateBlob.stream) {
@@ -29,7 +33,7 @@ export async function GET(request: Request) {
         "Content-Type": privateBlob.blob.contentType ?? "application/octet-stream",
         "Content-Length": String(privateBlob.blob.size),
         "ETag": privateBlob.blob.etag,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": variant === "thumbnail" ? "private, max-age=3600" : "private, no-store",
         "X-Content-Type-Options": "nosniff"
       }
     });

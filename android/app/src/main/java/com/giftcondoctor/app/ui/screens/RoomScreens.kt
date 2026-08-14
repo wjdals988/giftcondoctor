@@ -660,11 +660,11 @@ private fun couponFilterLabel(filter: CouponListFilter): String = when (filter) 
 
 @Composable
 private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
-    var image by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf<ImageBitmap?>(null) }
-    var loading by remember(coupon.id, coupon.imageBlobPath) { mutableStateOf(false) }
+    var image by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf<ImageBitmap?>(null) }
+    var loading by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf(false) }
     val targetSize = with(LocalDensity.current) { 56.dp.roundToPx() }
 
-    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath, targetSize) {
+    LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath, targetSize) {
         image = null
         if (coupon.imageBlobPath.isBlank()) return@LaunchedEffect
         loading = true
@@ -673,6 +673,7 @@ private fun CouponListThumbnail(roomId: String, coupon: Coupon) {
                 roomId = roomId,
                 couponId = coupon.id,
                 imageBlobPath = coupon.imageBlobPath,
+                thumbnailBlobPath = coupon.thumbnailBlobPath,
                 targetWidth = targetSize,
                 targetHeight = targetSize
             )?.asImageBitmap()

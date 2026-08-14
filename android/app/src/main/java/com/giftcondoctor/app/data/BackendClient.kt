@@ -2,6 +2,7 @@ package com.giftcondoctor.app.data
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.PublicRoom
@@ -14,7 +15,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -123,21 +126,27 @@ class BackendClient(
         couponId: String,
         imageUri: Uri,
         contentType: String,
-        fileName: String
+        fileName: String,
+        onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> }
     ): UploadedImage {
-        val bytes = withContext(Dispatchers.IO) {
-            context.contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
-                ?: throw IOException("이미지를 읽을 수 없습니다.")
-        }
-        if (bytes.size > AppConstants.MAX_IMAGE_BYTES) {
+        val size = withContext(Dispatchers.IO) { contentLength(context, imageUri) }
+        if (size != null && size > AppConstants.MAX_IMAGE_BYTES) {
             throw IOException("이미지는 최대 10MB까지 업로드할 수 있습니다.")
         }
+        val imageBody = ContentUriRequestBody(
+            context = context,
+            uri = imageUri,
+            mediaType = contentType.toMediaType(),
+            knownLength = size,
+            maxBytes = AppConstants.MAX_IMAGE_BYTES.toLong(),
+            onProgress = onProgress
+        )
 
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("roomId", roomId)
             .addFormDataPart("couponId", couponId)
-            .addFormDataPart("image", fileName, bytes.toRequestBody(contentType.toMediaType()))
+            .addFormDataPart("image", fileName, imageBody)
             .build()
 
         val response = authedRequest(
@@ -148,17 +157,19 @@ class BackendClient(
         val json = JSONObject(response)
         return UploadedImage(
             blobPath = json.getString("blobPath"),
+            thumbnailBlobPath = json.optString("thumbnailBlobPath").takeIf { it.isNotBlank() },
             imageWidth = json.optIntOrNull("imageWidth"),
             imageHeight = json.optIntOrNull("imageHeight"),
             contentType = json.optString("contentType", contentType),
-            size = json.optLong("size", bytes.size.toLong())
+            size = json.optLong("size", size ?: -1L)
         )
     }
 
-    suspend fun fetchCouponImage(roomId: String, couponId: String): ByteArray =
+    suspend fun fetchCouponImage(roomId: String, couponId: String, thumbnail: Boolean = false): ByteArray =
         withContext(Dispatchers.IO) {
+            val variant = if (thumbnail) "&variant=thumbnail" else ""
             val request = authedBuilder()
-                .url("$baseUrl/api/coupons/image?roomId=$roomId&couponId=$couponId")
+                .url("$baseUrl/api/coupons/image?roomId=$roomId&couponId=$couponId$variant")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
@@ -167,17 +178,41 @@ class BackendClient(
             }
         }
 
-    suspend fun discardCouponImage(roomId: String, couponId: String, blobPath: String) {
+    suspend fun discardCouponImage(
+        roomId: String,
+        couponId: String,
+        blobPath: String,
+        thumbnailBlobPath: String?
+    ) {
+        val thumbnailQuery = thumbnailBlobPath?.let { "&thumbnailBlobPath=${Uri.encode(it)}" }.orEmpty()
         authedRequest(
             Request.Builder()
                 .url(
                     "$baseUrl/api/coupons/upload-image" +
                         "?roomId=${Uri.encode(roomId)}" +
                         "&couponId=${Uri.encode(couponId)}" +
-                        "&blobPath=${Uri.encode(blobPath)}"
+                        "&blobPath=${Uri.encode(blobPath)}" +
+                        thumbnailQuery
                 )
                 .delete()
         )
+    }
+
+    private fun contentLength(context: Context, uri: Uri): Long? {
+        val fromQuery = context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) cursor.getLong(index) else null
+        }
+        if (fromQuery != null && fromQuery > 0L) return fromQuery
+        return context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+            descriptor.length.takeIf { it > 0L }
+        }
     }
 
     private suspend fun postJson(path: String, body: JSONObject): String {
@@ -209,6 +244,45 @@ class BackendClient(
             runCatching { JSONObject(it).optString("error") }.getOrNull()
         }?.takeIf { it.isNotBlank() }
         return if (serverMessage != null) "$serverMessage ($code)" else "서버 요청에 실패했습니다. ($code)"
+    }
+}
+
+private class ContentUriRequestBody(
+    context: Context,
+    private val uri: Uri,
+    private val mediaType: okhttp3.MediaType,
+    private val knownLength: Long?,
+    private val maxBytes: Long,
+    private val onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit
+) : RequestBody() {
+    private val resolver = context.contentResolver
+
+    override fun contentType(): okhttp3.MediaType = mediaType
+
+    override fun contentLength(): Long = knownLength ?: -1L
+
+    override fun writeTo(sink: BufferedSink) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var sent = 0L
+        var lastReported = 0L
+        resolver.openInputStream(uri)?.use { input ->
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                sent += count
+                if (sent > maxBytes) throw IOException("이미지는 최대 10MB까지 업로드할 수 있습니다.")
+                sink.write(buffer, 0, count)
+                if (sent - lastReported >= PROGRESS_INTERVAL_BYTES || sent == knownLength) {
+                    onProgress(sent, knownLength)
+                    lastReported = sent
+                }
+            }
+        } ?: throw IOException("이미지를 읽을 수 없습니다.")
+        if (sent != lastReported) onProgress(sent, knownLength)
+    }
+
+    private companion object {
+        const val PROGRESS_INTERVAL_BYTES = 64L * 1024L
     }
 }
 

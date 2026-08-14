@@ -9,6 +9,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -51,19 +55,23 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -83,6 +91,7 @@ import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
+import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -106,6 +115,7 @@ fun AddCouponScreen(
     val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
     val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var title by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
@@ -239,6 +249,28 @@ fun AddCouponScreen(
                     }
                 }
                 InlineMessage(message)
+                if (busy) {
+                    val uploadPercent = uploadState.percent
+                    val statusText = when (uploadState.stage) {
+                        CouponUploadStage.Uploading -> uploadPercent?.let { "이미지 업로드 $it%" }
+                            ?: "이미지를 업로드하는 중이에요"
+                        CouponUploadStage.Saving -> "쿠폰 정보를 안전하게 저장하는 중이에요"
+                        CouponUploadStage.Idle -> "쿠폰 등록을 준비하는 중이에요"
+                    }
+                    if (uploadPercent != null && uploadState.stage == CouponUploadStage.Uploading) {
+                        LinearProgressIndicator(
+                            progress = { uploadPercent.coerceIn(0, 100) / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Button(
                     enabled = !busy && !analysisBusy,
                     onClick = {
@@ -257,7 +289,14 @@ fun AddCouponScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (busy) ButtonProgressIndicator()
-                    Text(if (busy) "등록 중..." else "쿠폰 등록하기")
+                    Text(
+                        when {
+                            !busy -> "쿠폰 등록하기"
+                            uploadState.stage == CouponUploadStage.Saving -> "저장 중..."
+                            uploadState.percent != null -> "업로드 ${uploadState.percent}%"
+                            else -> "업로드 중..."
+                        }
+                    )
                 }
             }
         }
@@ -449,7 +488,10 @@ private fun CouponDetailContent(
     }
 
     expandedImage?.let { bitmap ->
-        CouponImageDialog(bitmap = bitmap, onDismiss = { expandedImage = null })
+        val bytes = (imageState as? UiState.Success)?.data
+        if (bytes != null) {
+            CouponImageDialog(previewBitmap = bitmap, imageBytes = bytes, onDismiss = { expandedImage = null })
+        }
     }
     if (showMarkUsedDialog) {
         AlertDialog(
@@ -642,7 +684,38 @@ private fun CouponImage(imageState: UiState<ByteArray>, onOpenImage: (ImageBitma
 }
 
 @Composable
-private fun CouponImageDialog(bitmap: ImageBitmap, onDismiss: () -> Unit) {
+private fun CouponImageDialog(previewBitmap: ImageBitmap, imageBytes: ByteArray, onDismiss: () -> Unit) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val maxWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() * 2 }
+    val maxHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() * 2 }
+    var highResolution by remember(imageBytes, maxWidth, maxHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var highResolutionFinished by remember(imageBytes, maxWidth, maxHeight) { mutableStateOf(false) }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 4f)
+        val maxOffsetX = maxWidth / 4f * (scale - 1f)
+        val maxOffsetY = maxHeight / 4f * (scale - 1f)
+        offset = if (scale == 1f) {
+            Offset.Zero
+        } else {
+            Offset(
+                x = (offset.x + panChange.x).coerceIn(-maxOffsetX, maxOffsetX),
+                y = (offset.y + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+            )
+        }
+    }
+
+    LaunchedEffect(imageBytes, maxWidth, maxHeight) {
+        highResolution = withContext(Dispatchers.Default) {
+            runCatching {
+                CouponImageLoader.decodeZoomBitmap(imageBytes, maxWidth, maxHeight)?.asImageBitmap()
+            }.getOrNull()
+        }
+        highResolutionFinished = true
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -652,11 +725,52 @@ private fun CouponImageDialog(bitmap: ImageBitmap, onDismiss: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Image(
-                bitmap = bitmap,
+                bitmap = highResolution ?: previewBitmap,
                 contentDescription = "확대된 쿠폰 이미지",
-                modifier = Modifier.fillMaxSize().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = {
+                            scale = if (scale > 1f) 1f else 2f
+                            if (scale == 1f) offset = Offset.Zero
+                        })
+                    }
+                    .transformable(transformState),
                 contentScale = ContentScale.Fit
             )
+            if (!highResolutionFinished) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("선명한 이미지를 준비하는 중이에요", color = Color.White)
+                }
+            } else {
+                Text(
+                    if (highResolution == null) {
+                        "원본 최적화 실패 · 미리보기로 확대 중"
+                    } else {
+                        "두 손가락으로 확대 · 두 번 탭해 전환"
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.small)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)

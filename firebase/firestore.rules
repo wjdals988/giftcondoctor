@@ -45,12 +45,17 @@ service cloud.firestore {
       return request.resource.data.imageBlobPath is string
         && request.resource.data.imageBlobPath.matches(
           '^rooms/' + roomId + '/coupons/' + couponId + '/[A-Za-z0-9._-]+$'
-        );
+        )
+        && (!request.resource.data.keys().hasAny(["thumbnailBlobPath"])
+          || (request.resource.data.thumbnailBlobPath is string
+            && request.resource.data.thumbnailBlobPath.matches(
+              '^rooms/' + roomId + '/coupons/' + couponId + '/[A-Za-z0-9._-]+$'
+            )));
     }
 
     function validCouponSchema(roomId, couponId) {
       return request.resource.data.keys().hasOnly([
-          "title", "brand", "ownerUid", "imageBlobPath", "imageWidth", "imageHeight",
+          "title", "brand", "ownerUid", "imageBlobPath", "thumbnailBlobPath", "imageWidth", "imageHeight",
           "expiresLocalDate", "expiresAtUtc", "timezone", "status", "reservedByUid",
           "usedByUid", "usedAt", "visibility", "notifyTarget", "createdAt", "updatedAt"
         ])
@@ -69,6 +74,7 @@ service cloud.firestore {
     function immutableCouponFields() {
       return request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.imageBlobPath == resource.data.imageBlobPath
+        && request.resource.data.get("thumbnailBlobPath", null) == resource.data.get("thumbnailBlobPath", null)
         && request.resource.data.createdAt == resource.data.createdAt;
     }
 

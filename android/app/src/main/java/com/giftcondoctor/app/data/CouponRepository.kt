@@ -105,7 +105,9 @@ class CouponRepository(
         brand: String,
         expiresLocalDate: LocalDate,
         visibility: String,
-        notifyTarget: String
+        notifyTarget: String,
+        onUploadProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
+        onImageUploaded: () -> Unit = {}
     ): String {
         val uid = auth.currentUser?.uid ?: error("로그인이 필요합니다.")
         val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
@@ -118,13 +120,13 @@ class CouponRepository(
             couponId = couponId,
             imageUri = imageUri,
             contentType = contentType,
-            fileName = imageUri.lastPathSegment ?: "coupon-image"
+            fileName = imageUri.lastPathSegment ?: "coupon-image",
+            onProgress = onUploadProgress
         )
-
         val now = FieldValue.serverTimestamp()
         runCatching {
-            firestore.document("rooms/$roomId/coupons/$couponId").set(
-                mapOf(
+            onImageUploaded()
+            val couponData = mutableMapOf<String, Any?>(
                 "title" to title.trim(),
                 "brand" to brand.trim(),
                 "ownerUid" to uid,
@@ -142,10 +144,13 @@ class CouponRepository(
                 "notifyTarget" to notifyTarget,
                 "createdAt" to now,
                 "updatedAt" to now
-                )
-            ).await()
+            )
+            upload.thumbnailBlobPath?.let { couponData["thumbnailBlobPath"] = it }
+            firestore.document("rooms/$roomId/coupons/$couponId").set(couponData).await()
         }.getOrElse { error ->
-            runCatching { backend.discardCouponImage(roomId, couponId, upload.blobPath) }
+            runCatching {
+                backend.discardCouponImage(roomId, couponId, upload.blobPath, upload.thumbnailBlobPath)
+            }
             throw error
         }
         return couponId
@@ -252,6 +257,6 @@ class CouponRepository(
         firestore.document("rooms/$roomId/coupons/$couponId/comments/$commentId").delete().await()
     }
 
-    suspend fun fetchImage(roomId: String, couponId: String): ByteArray =
-        backend.fetchCouponImage(roomId, couponId)
+    suspend fun fetchImage(roomId: String, couponId: String, thumbnail: Boolean = false): ByteArray =
+        backend.fetchCouponImage(roomId, couponId, thumbnail)
 }

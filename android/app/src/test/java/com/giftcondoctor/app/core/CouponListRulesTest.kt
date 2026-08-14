@@ -71,6 +71,7 @@ class CouponListRulesTest {
         brand = brand,
         ownerUid = "owner",
         imageBlobPath = "",
+        thumbnailBlobPath = null,
         imageWidth = null,
         imageHeight = null,
         expiresLocalDate = LocalDate.parse(expires),

@@ -21,7 +21,11 @@ export async function DELETE(request: Request) {
     const coupon = await requireCouponAccess(roomId, couponId, token.uid);
     await assertPublicCouponDeleteAllowed(roomId, token.uid, coupon);
 
-    const blobPath = requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, couponId);
+    const blobPaths = [requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, couponId)];
+    const thumbnailBlobPath = coupon.get("thumbnailBlobPath");
+    if (thumbnailBlobPath) {
+      blobPaths.push(requireCouponBlobPath(thumbnailBlobPath, roomId, couponId));
+    }
     const db = getAdminDb();
     const comments = await db.collection(`rooms/${roomId}/coupons/${couponId}/comments`).get();
     await deleteDocumentRefs(db, [
@@ -29,7 +33,7 @@ export async function DELETE(request: Request) {
       db.doc(`rooms/${roomId}/coupons/${couponId}`)
     ]);
 
-    await del(blobPath);
+    await del(blobPaths);
 
     return json({ ok: true });
   } catch (error) {

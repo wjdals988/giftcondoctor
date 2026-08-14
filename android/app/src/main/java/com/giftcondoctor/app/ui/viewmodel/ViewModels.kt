@@ -32,6 +32,12 @@ import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
+enum class CouponUploadStage { Idle, Uploading, Saving }
+
+data class CouponUploadState(
+    val stage: CouponUploadStage = CouponUploadStage.Idle,
+    val percent: Int? = null
+)
 
 class SessionViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
@@ -223,6 +229,9 @@ class AddCouponViewModel(
     private val _suggestion = MutableStateFlow<CouponTextSuggestion?>(null)
     val suggestion: StateFlow<CouponTextSuggestion?> = _suggestion
 
+    private val _uploadState = MutableStateFlow(CouponUploadState())
+    val uploadState: StateFlow<CouponUploadState> = _uploadState
+
     fun recognizeCouponImage(context: Context, imageUri: Uri) {
         viewModelScope.launch {
             _analysisBusy.value = true
@@ -264,6 +273,7 @@ class AddCouponViewModel(
         viewModelScope.launch {
             _busy.value = true
             _message.value = null
+            _uploadState.value = CouponUploadState(CouponUploadStage.Uploading)
             runCatching {
                 require(imageUri != null) { "쿠폰 이미지를 선택해 주세요." }
                 require(title.isNotBlank()) { "쿠폰 이름을 입력해 주세요." }
@@ -276,13 +286,23 @@ class AddCouponViewModel(
                     brand = brand,
                     expiresLocalDate = date,
                     visibility = visibility,
-                    notifyTarget = notifyTarget
+                    notifyTarget = notifyTarget,
+                    onUploadProgress = { sentBytes, totalBytes ->
+                        val percent = totalBytes
+                            ?.takeIf { it > 0L }
+                            ?.let { ((sentBytes * 100L) / it).toInt().coerceIn(0, 100) }
+                        _uploadState.value = CouponUploadState(CouponUploadStage.Uploading, percent)
+                    },
+                    onImageUploaded = {
+                        _uploadState.value = CouponUploadState(CouponUploadStage.Saving, 100)
+                    }
                 )
                 onAdded(couponId)
             }.onFailure {
                 _message.value = it.localizedMessage ?: "쿠폰을 추가하지 못했습니다."
             }
             _busy.value = false
+            _uploadState.value = CouponUploadState()
         }
     }
 }
