@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
@@ -33,6 +34,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,12 +47,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -83,6 +89,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -191,14 +198,7 @@ fun AddCouponScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                OutlinedTextField(
-                    value = expires,
-                    onValueChange = { expires = it },
-                    label = { Text("만료일") },
-                    supportingText = { Text("예: 2026-12-31") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                ExpiryDateField(value = expires, onValueChange = { expires = it })
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(7 to "+7일", 30 to "+30일", 90 to "+90일").forEach { (days, label) ->
                         AssistChip(onClick = { expires = today.plusDays(days.toLong()).toString() }, label = { Text(label) })
@@ -687,7 +687,7 @@ private fun EditCouponForm(
 
     OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("쿠폰 이름") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("브랜드") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = expires, onValueChange = { expires = it }, label = { Text("만료일") }, modifier = Modifier.fillMaxWidth())
+    ExpiryDateField(value = expires, onValueChange = { expires = it }, enabled = !saving)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("비공개 쿠폰")
         Switch(
@@ -727,5 +727,59 @@ private fun EditCouponForm(
     ) {
         if (saving) ButtonProgressIndicator()
         Text(if (saving) "저장 중..." else "수정 저장")
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpiryDateField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean = true
+) {
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text("만료일") },
+        supportingText = { Text("YYYY-MM-DD 형식으로 입력하거나 달력에서 선택하세요.") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        enabled = enabled,
+        trailingIcon = {
+            IconButton(onClick = { showDatePicker = true }, enabled = enabled) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = "만료일 달력 열기")
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        val selectedDateMillis = runCatching {
+            LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }.getOrNull()
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("취소") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val selectedDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                            onValueChange(selectedDate.toString())
+                        }
+                        showDatePicker = false
+                    },
+                    enabled = datePickerState.selectedDateMillis != null
+                ) {
+                    Text("선택")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 }
