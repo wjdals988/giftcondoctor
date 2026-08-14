@@ -21,6 +21,7 @@
 - 손상된 날짜 문서가 전체 쿠폰 목록을 중단하지 않도록 격리
 - 쿠폰 문서 저장 실패 시 업로드 Blob을 보상 삭제
 - foreground·cold start 알림 deep link와 인증 초기화 순서 보강
+- 백그라운드 FCM 알림의 `deepLink` extra를 복원하고 앱 전용 URI만 허용
 - 앱 시작 시 만료 알림 채널을 미리 생성해 첫 백그라운드 푸시의 fallback 의존 제거
 - 만료 푸시를 `쿠폰 만료 D-n` 형식으로 간결하게 정리하고 테스트 푸시의 불필요한 10초 대기 제거
 - 방 가입·탈퇴·멤버 제거를 transaction으로 처리해 `memberCount` 정합성 보강
@@ -28,6 +29,7 @@
 - 예약 쿠폰은 예약자만 사용 완료할 수 있고 완료 시 예약자 정보를 정리하도록 보강
 - Cron 부분 실패를 HTTP 500과 summary로 노출해 무음 실패 방지
 - 푸시 연결 테스트에서 알림 권한, FCM 기기 등록, 서버 전송 실패를 구분해 안내
+- 쿠폰 목록 이미지를 표시 크기에 맞춰 샘플 디코딩하고 4~24MB LRU 캐시 적용
 
 ### UI/UX
 
@@ -44,3 +46,4 @@
 - PR/main Backend·Android CI와 Firestore Rules Emulator 테스트 추가
 - 릴리스를 build/test/sign 이후에 발행하고 dashboard 갱신을 별도 job으로 분리
 - 기존 Release/tag 덮어쓰기 기능 제거
+- GitHub Actions를 Node 24 기반 공식 릴리스의 고정 SHA로 전환
