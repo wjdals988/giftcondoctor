@@ -3,7 +3,8 @@
 ## P0 — 출시 전 차단 항목
 
 - 물리 디바이스 푸시 6개 상태 조합과 A→B 교차 계정 개인정보 회귀 검증
-- Firestore Rules·Indexes 프로덕션 배포 및 rollback 경로 자동화
+- `main` branch protection과 Backend·Android 필수 check 강제
+- Firestore Rules·Indexes rollback 경로 자동화
 - Cron 알림 발송 lease/outbox와 중복·유실 관측 지표
 - Firebase App Check와 UID+IP 기반 abuse 방어
 
@@ -43,3 +44,8 @@
 - [x] PR/main Backend·Android CI
 - [x] 첫 쿠폰방 빈 상태와 쿠폰 등록 3단계 UI 단순화
 - [x] 푸시 권한·FCM 등록·서버 전송 단계별 오류 안내
+- [x] Firestore Rules·Indexes 프로덕션 배포와 운영 인덱스 3개 확인
+- [x] Vercel 운영 배포와 `/api/health` 200 스모크 확인
+- [x] 백그라운드 FCM deep link extra 복원과 앱 전용 URI 검증
+- [x] GitHub Actions Node 24 전환과 check annotation 0건 확인
+- [x] 쿠폰 이미지 샘플 디코딩·UID별 4~24MB LRU 캐시
