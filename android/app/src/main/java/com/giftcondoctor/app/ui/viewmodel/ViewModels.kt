@@ -10,6 +10,8 @@ import com.giftcondoctor.app.core.CouponTextSuggestion
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.parseCouponText
 import com.giftcondoctor.app.data.AuthRepository
+import com.giftcondoctor.app.data.CouponPager
+import com.giftcondoctor.app.data.CouponPagingState
 import com.giftcondoctor.app.data.CouponRepository
 import com.giftcondoctor.app.data.NotificationRepository
 import com.giftcondoctor.app.data.PushTokenRepository
@@ -181,12 +183,14 @@ class RoomDetailViewModel(
 ) : ViewModel() {
     private var roomJob: Job? = null
     private var couponJob: Job? = null
+    private var couponPager: CouponPager? = null
+    private var startedRoomId: String? = null
 
     private val _room = MutableStateFlow<UiState<Room>>(UiState.Loading)
     val room: StateFlow<UiState<Room>> = _room
 
-    private val _coupons = MutableStateFlow<UiState<List<Coupon>>>(UiState.Loading)
-    val coupons: StateFlow<UiState<List<Coupon>>> = _coupons
+    private val _coupons = MutableStateFlow(CouponPagingState())
+    val coupons: StateFlow<CouponPagingState> = _coupons
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
@@ -195,7 +199,16 @@ class RoomDetailViewModel(
         get() = roomRepository.currentUid
 
     fun start(roomId: String) {
-        if (roomJob != null) return
+        if (startedRoomId == roomId) {
+            couponPager?.refresh()
+            return
+        }
+        roomJob?.cancel()
+        couponJob?.cancel()
+        couponPager?.close()
+        startedRoomId = roomId
+        _room.value = UiState.Loading
+        _coupons.value = CouponPagingState()
         roomJob = viewModelScope.launch {
             roomRepository.observeRoom(roomId)
                 .catch { _room.value = UiState.Error(it.localizedMessage ?: "방 정보를 불러오지 못했습니다.") }
@@ -203,11 +216,23 @@ class RoomDetailViewModel(
                     _room.value = room?.let { UiState.Success(it) } ?: UiState.Error("방을 찾을 수 없습니다.")
                 }
         }
+        couponPager = couponRepository.couponPager(roomId)
         couponJob = viewModelScope.launch {
-            couponRepository.observeCoupons(roomId)
-                .catch { _coupons.value = UiState.Error(it.localizedMessage ?: "쿠폰 목록을 불러오지 못했습니다.") }
-                .collect { _coupons.value = UiState.Success(it) }
+            couponPager?.state?.collect { _coupons.value = it }
         }
+    }
+
+    fun loadMoreCoupons() {
+        couponPager?.loadNextPage()
+    }
+
+    fun retryCoupons() {
+        couponPager?.refresh()
+    }
+
+    override fun onCleared() {
+        couponPager?.close()
+        super.onCleared()
     }
 }
 

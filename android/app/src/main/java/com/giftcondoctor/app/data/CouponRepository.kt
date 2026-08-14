@@ -26,50 +26,10 @@ class CouponRepository(
     val currentUid: String?
         get() = auth.currentUser?.uid
 
-    fun observeCoupons(roomId: String): Flow<List<Coupon>> = callbackFlow {
-        val uid = auth.currentUser?.uid
-        var publicCoupons = emptyMap<String, Coupon>()
-        var privateCoupons = emptyMap<String, Coupon>()
-
-        fun emit() {
-            val coupons = publicCoupons + privateCoupons
-            trySend(coupons.values.sortedWith(compareBy<Coupon> { it.expiresLocalDate }.thenBy { it.title }))
-        }
-
-        val publicRegistration = firestore.collection("rooms/$roomId/coupons")
-            .whereEqualTo("visibility", "room")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                publicCoupons = snapshot?.documents.orEmpty()
-                    .mapNotNull { it.toCoupon(roomId) }
-                    .associateBy { it.id }
-                emit()
-            }
-
-        val privateRegistration = uid?.let {
-            firestore.collection("rooms/$roomId/coupons")
-                .whereEqualTo("visibility", "private")
-                .whereEqualTo("ownerUid", it)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        close(error)
-                        return@addSnapshotListener
-                    }
-                    privateCoupons = snapshot?.documents.orEmpty()
-                        .mapNotNull { it.toCoupon(roomId) }
-                        .associateBy { coupon -> coupon.id }
-                    emit()
-                }
-        }
-
-        awaitClose {
-            publicRegistration.remove()
-            privateRegistration?.remove()
-        }
-    }
+    fun couponPager(
+        roomId: String,
+        pageSize: Int = DEFAULT_COUPON_PAGE_SIZE_PER_VISIBILITY
+    ): CouponPager = CouponPager(roomId, currentUid, firestore, pageSize)
 
     fun observeCoupon(roomId: String, couponId: String): Flow<Coupon?> = callbackFlow {
         val registration = firestore.document("rooms/$roomId/coupons/$couponId")

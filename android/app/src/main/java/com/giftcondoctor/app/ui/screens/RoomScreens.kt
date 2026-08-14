@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
@@ -55,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +82,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.daysBeforeExpiry
 import com.giftcondoctor.app.core.filterAndSortCoupons
 import com.giftcondoctor.app.core.seoulToday
+import com.giftcondoctor.app.core.shouldLoadNextPage
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
@@ -484,10 +487,26 @@ fun RoomDetailScreen(
             }
         }
     ) { modifier ->
-        when (val state = coupons) {
-            UiState.Loading -> LoadingState()
-            is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> RoomDashboard(roomId, state.data, isOwner, onOpenCoupon, onAddCoupon, modifier)
+        when {
+            coupons.isInitialLoading && coupons.coupons.isEmpty() -> LoadingState()
+            coupons.coupons.isEmpty() && coupons.errorMessage != null -> ErrorState(
+                message = coupons.errorMessage ?: "쿠폰 목록을 불러오지 못했습니다.",
+                actionLabel = "다시 시도",
+                onAction = viewModel::retryCoupons
+            )
+            else -> RoomDashboard(
+                roomId = roomId,
+                coupons = coupons.coupons,
+                isOwner = isOwner,
+                hasMore = coupons.hasMore,
+                isLoadingMore = coupons.isLoadingMore,
+                pagingError = coupons.errorMessage,
+                onLoadMore = viewModel::loadMoreCoupons,
+                onRetry = viewModel::retryCoupons,
+                onOpenCoupon = onOpenCoupon,
+                onAddCoupon = onAddCoupon,
+                modifier = modifier
+            )
         }
     }
 }
@@ -498,11 +517,17 @@ private fun RoomDashboard(
     roomId: String,
     coupons: List<Coupon>,
     isOwner: Boolean,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    pagingError: String?,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
     onOpenCoupon: (String) -> Unit,
     onAddCoupon: () -> Unit,
     modifier: Modifier
 ) {
     val today = seoulToday()
+    val listState = rememberLazyListState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedFilter by rememberSaveable { mutableStateOf(CouponListFilter.ALL) }
     val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
@@ -513,8 +538,25 @@ private fun RoomDashboard(
     val visibleCoupons = remember(coupons, searchQuery, selectedFilter, today) {
         filterAndSortCoupons(coupons, searchQuery, selectedFilter, today)
     }
+    val shouldLoadMore by remember(listState, hasMore, isLoadingMore) {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            shouldLoadNextPage(
+                lastVisibleIndex = lastVisibleIndex,
+                totalItems = layout.totalItemsCount,
+                hasMore = hasMore,
+                isLoading = isLoadingMore
+            )
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) onLoadMore()
+    }
 
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize().padding(16.dp),
         contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -540,6 +582,15 @@ private fun RoomDashboard(
         }
         item {
             ReminderTimeBanner()
+        }
+        if (hasMore) {
+            item {
+                Text(
+                    "빠른 표시를 위해 ${coupons.size}개를 먼저 불러왔어요. 아래로 내리면 계속 이어집니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
             item {
@@ -591,7 +642,7 @@ private fun RoomDashboard(
             }
             item {
                 Text(
-                    "${coupons.size}개 중 ${visibleCoupons.size}개 · 만료 임박순",
+                    "불러온 ${coupons.size}개 중 ${visibleCoupons.size}개 · 만료 임박순",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -614,8 +665,12 @@ private fun RoomDashboard(
         } else if (visibleCoupons.isEmpty()) {
             item {
                 EmptyState(
-                    title = "조건에 맞는 쿠폰이 없어요",
-                    message = "검색어나 상태 필터를 바꾸면 다른 쿠폰을 확인할 수 있습니다.",
+                    title = if (hasMore) "불러온 범위에는 일치하는 쿠폰이 없어요" else "조건에 맞는 쿠폰이 없어요",
+                    message = if (hasMore) {
+                        "다음 페이지를 이어서 찾고 있어요. 검색어나 상태 필터를 바꿔도 됩니다."
+                    } else {
+                        "검색어나 상태 필터를 바꾸면 다른 쿠폰을 확인할 수 있습니다."
+                    },
                     icon = Icons.Default.CardGiftcard,
                     primaryActionLabel = "검색·필터 초기화",
                     onPrimaryAction = {
@@ -647,6 +702,53 @@ private fun RoomDashboard(
                 )
             }
         }
+        item(key = "paging-footer") {
+            CouponPagingFooter(
+                hasCoupons = coupons.isNotEmpty(),
+                hasMore = hasMore,
+                isLoadingMore = isLoadingMore,
+                errorMessage = pagingError,
+                onLoadMore = onLoadMore,
+                onRetry = onRetry
+            )
+        }
+    }
+}
+
+@Composable
+private fun CouponPagingFooter(
+    hasCoupons: Boolean,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    errorMessage: String?,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit
+) {
+    when {
+        errorMessage != null -> Card(modifier = Modifier.fillMaxWidth()) {
+            ListItem(
+                headlineContent = { Text("목록을 더 불러오지 못했어요") },
+                supportingContent = { Text(errorMessage) },
+                trailingContent = { TextButton(onClick = onRetry) { Text("다시 시도") } }
+            )
+        }
+        isLoadingMore -> Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Text("다음 쿠폰을 불러오는 중...")
+        }
+        hasMore -> OutlinedButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
+            Text("다음 쿠폰 불러오기")
+        }
+        hasCoupons -> Text(
+            "모든 쿠폰을 확인했어요.",
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

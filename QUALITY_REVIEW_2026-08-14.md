@@ -1,22 +1,22 @@
 # 코드 품질 엄격 검토 보고서
 
-검토일: 2026-08-14
+검토일: 2026-08-15
 대상: Android, Next.js Backend, Firestore Rules, GitHub Actions, 릴리스 흐름
 
-## 전체 평가: B+ (74/100)
+## 전체 평가: B+ (79/100)
 
 `code-quality-reviewer`의 가중치에 따라 평가했습니다. 제공된 자동 품질 스크립트는 숫자 파싱 오류로 중단되어 자동 점수는 사용하지 않았고, 실제 테스트·빌드·보안 감사와 수동 코드 검토를 근거로 계산했습니다.
 
 | 평가축 | 점수 | 주요 근거 |
 |---|---:|---|
-| 가독성 | 64 | 알림 정책과 권한 조건은 명확해졌지만 500~900줄 UI/ViewModel 파일이 존재 |
-| 성능 | 69 | 표시 크기별 샘플 디코딩과 LRU 캐시를 적용했으나 서버 원본 다운로드와 Cron N+1 조회가 남음 |
-| 명시적 I/O | 80 | 알림 payload·권한·transaction 경계는 명확하나 API 입력 스키마 문서화가 부분적 |
-| 유지보수성 | 78 | CI·Rules 테스트·Wrapper와 회귀 테스트를 실제 PR에서 검증했으나 API 통합/UI 테스트가 부족 |
-| 에러 처리 | 76 | 탈퇴 고아 데이터와 첫 푸시 채널을 보강했지만 삭제·알림의 재시도 상태가 없음 |
-| 협업 | 92 | 5개 PR을 CI 검증 후 병합하고 배포 이력을 남겼으나 main branch protection은 미적용 |
+| 가독성 | 66 | 페이징을 별도 `CouponPager`로 분리했지만 500~900줄 Compose 화면 파일이 존재 |
+| 성능 | 84 | 512px WebP, 8KB 업로드 버퍼, 최대 8MP 상세와 초기 최대 24개 cursor paging을 적용했으나 Cron N+1이 남음 |
+| 명시적 I/O | 82 | 페이지 크기·선조회 거리·오류/끝 상태가 타입으로 드러나지만 API 입력 스키마 문서화가 부분적 |
+| 유지보수성 | 82 | 총 62개 자동 테스트와 cursor 경계 테스트를 추가했으나 Android UI/API route 통합 테스트가 부족 |
+| 에러 처리 | 80 | 목록 오류 재시도와 Blob 보상 삭제를 제공하지만 삭제·알림의 영속 재시도 구조는 없음 |
+| 협업 | 94 | 기능·문서 커밋을 분리하고 PR/main CI·운영 인덱스 선배포를 적용했으나 main branch protection은 미적용 |
 
-가중 총점은 `64×0.25 + 69×0.20 + 80×0.15 + 78×0.25 + 76×0.10 + 92×0.05 = 73.5`이며 반올림해 74점입니다.
+가중 총점은 `66×0.25 + 84×0.20 + 82×0.15 + 82×0.25 + 80×0.10 + 94×0.05 = 78.8`이며 반올림해 79점입니다. 직전 74점보다 5점 상승했습니다.
 
 ## 이번 작업에서 해소한 주요 위험
 
@@ -36,28 +36,31 @@
 - Cron 부분 실패를 HTTP 500으로 노출해 운영 감지 가능성 보강
 - 백그라운드 FCM `deepLink` extra 복원과 앱 전용 URI 검증
 - 쿠폰 목록·상세·등록 미리보기에 샘플 디코딩과 UID별 LRU 캐시 적용
+- 신규·기존 쿠폰 512px WebP 썸네일과 실패 시 원본 fallback 적용
+- 공개·본인 비공개 쿠폰을 각각 12개씩 읽는 cursor paging과 끝 4개 전 선조회 적용
+- cursor anchor 1개를 겹쳐 실시간 앞페이지 삽입 시 누락을 방지하고 ID map으로 중복 제거
 - GitHub Actions 전체를 Node 24 기반 고정 SHA로 전환
 
 ## 검증 수치
 
 | 항목 | 작업 전 | 작업 후 |
 |---|---:|---:|
-| 자동 테스트 | 17개 | 43개 |
-| Firestore Rules 테스트 | 0개 | 9개 |
+| 자동 테스트 | 17개 | 62개(Backend 22, Rules 12, Android 28) |
+| Firestore Rules 테스트 | 0개 | 12개 |
 | 프로덕션 High/Critical npm 취약점 | 11개 | 0개 |
 | 전체 프로덕션 npm 취약점 | 18개 | 6개 Moderate |
-| PR/main CI | 0개 | Backend·Android 2개 job, PR 5개 및 main 실행 통과 |
+| PR/main CI | 0개 | Backend·Android 2개 job, 최근 PR 및 main 실행 반복 통과 |
 | Gradle Wrapper | 없음 | 8.10.2 + SHA-256 고정 |
 
 ## 5556 디바이스 검증
 
-- `emulator-5556`에 `0.1.13 (14)` debug APK 설치 및 cold start 성공
+- `emulator-5556`에 `0.1.17 (18)` 64MB debug APK 설치 및 cold start 성공
 - FCM과 같은 `OPEN_COUPON_DETAIL + deepLink extra` cold start 성공
 - Android 13+ 알림 권한 요청 UI 노출과 허용 상태 확인
 - 수정 전 앱 시작 시 `coupon_expiry` 채널 없음, 수정 후 시작 즉시 중요도 HIGH(4) 채널 생성 확인
-- 공식 `0.1.12 (13)`와 최신 `0.1.13 (14)` 모두 Firebase Installations에서 `SERVICE_NOT_AVAILABLE` 재현
-- 5556은 `8.8.8.8` 연결은 되지만 `google.com`과 `firebaseinstallations.googleapis.com` DNS 조회가 실패하며, DNS 서버는 `10.0.2.3`
-- 비교 후 5556을 최신 `0.1.13 (14)`와 알림 권한 허용 상태로 복원
+- 5556의 DNS는 이후 정상화돼 `firebaseinstallations.googleapis.com` 해석과 FCM token key 생성을 확인
+- 로그인 세션이 없어 Firestore token 등록 → 서버 전송 → 알림 트레이 표시는 아직 미검증
+- v0.1.17 시작 화면을 1080×2400으로 확인하고 실행 직후 crash·`FAILED_PRECONDITION` 로그가 없음을 확인
 
 ## 아직 배포를 막아야 하는 위험
 
@@ -65,7 +68,7 @@
 
 - PR/main CI는 실제 GitHub Actions에서 반복 통과했고 Node 20/setup-java 폐기 annotation도 0건으로 정리했습니다.
 - `v0.1.13` tag와 Release는 생성하지 않았습니다.
-- Firestore Rules와 인덱스 3개는 운영 `giftcondoctor` 프로젝트에 배포했습니다.
+- Firestore Rules와 인덱스 5개는 운영 `giftcondoctor` 프로젝트에 배포했습니다.
 - GitHub Actions repository secret과 variable이 각각 0개라 Android release workflow는 실행 전에 차단했습니다.
 
 조치: 기존 v0.1.12와 동일한 release keystore를 확보하고 필수 secret 7개를 등록한 뒤 `main`에서 수동 릴리스를 실행합니다.
@@ -80,18 +83,19 @@
 
 ### P1 — 실제 푸시 E2E 미검증
 
-- 디바이스 권한·FCM 채널·서버 payload와 token 저장 코드는 확인했지만, 5556의 DNS 장애로 FCM token 자체가 생성되지 않습니다.
-- 공식 서명 APK에서도 동일해 앱 서명보다는 `HoneymoonDoctor_Dev` AVD DNS 환경 문제로 판정했습니다.
-- DNS 복구 후에도 변경 백엔드 배포와 로그인된 QA 계정이 있어야 token 문서 및 실제 도착을 검증할 수 있습니다.
+- 디바이스 권한·FCM 채널·server payload와 FCM token key 생성까지 확인했습니다.
+- 다만 5556은 물리 디바이스가 아니며 로그인 세션이 없어 token 문서 저장과 실제 알림 도착은 증명하지 못했습니다.
+- 로그인된 물리 Android에서 계정 전환을 포함한 6개 상태 조합을 통과하기 전에는 푸시 해결 완료로 판정하지 않습니다.
 
 조치: AVD를 정상 DNS로 재시작 → 전용 QA 계정으로 로그인 → token 문서 확인 → 즉시 테스트와 만료 형식 테스트 수신 → foreground/background/종료 상태 딥링크를 동일 APK·배포로 검증합니다.
 
-### P1 — 이미지 전송량과 목록 확장성
+### P1 — 목록 확장성의 남은 검증
 
-- Android는 목록·상세·등록 미리보기를 표시 크기에 맞춰 샘플 디코딩하고 UID별 4~24MB LRU 캐시를 사용합니다.
-- 인증 API는 여전히 원본 bytes를 내려받고 쿠폰 목록에 paging이 없어 네트워크 사용량과 초기 지연은 남아 있습니다.
+- 목록은 512px WebP와 cursor paging을 사용하고 상세는 최대 8MP로 제한합니다.
+- 쿠폰 100개 기준 초기 표시 상한은 100개에서 최대 24개로 76% 줄었고, 9페이지 무누락·무중복 단위 테스트를 통과했습니다.
+- 검색어가 뒤 페이지에만 있으면 일치 항목을 찾는 동안 최악의 경우 전체 문서를 다시 읽으며, 실제 Firestore 읽기·프레임 시간 계측은 없습니다.
 
-조치: 서버 thumbnail 생성과 Firestore cursor paging을 추가하고 실제 100개 쿠폰·고해상도 이미지로 메모리/스크롤 계측을 수행합니다.
+조치: 로그인된 100개 쿠폰 fixture에서 페이지별 읽기 수, 첫 렌더, 스크롤 프레임과 메모리를 계측합니다.
 
 ### P1 — abuse 방어의 우회 가능성
 
