@@ -52,6 +52,8 @@
 - [ ] 같은 날짜 Cron을 동시에 2회 호출하면 1회만 lease를 획득하고 다른 1회는 `locked`로 종료
 - [ ] 동일 수신자·쿠폰·만료일 outbox가 1개만 생성되고 전송 성공 후 `sent` 상태 유지
 - [ ] 일시적 FCM 오류는 `retry`, 최대 5회 실패는 `deadLetter`, 만료된 `sending` lease는 재획득
+- [ ] 무인증 알림 상태 조회는 401이고 정상 인증 시 상태별 건수·health·최근 Cron 결과 반환
+- [ ] 완료된 outbox와 notification log만 30일 이후 일 200개 이하로 정리
 - [ ] 알림 탭 시 `CouponDetailScreen`으로 이동
 
 ## 보안
