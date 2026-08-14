@@ -28,11 +28,11 @@ class CouponRepository(
 
     fun observeCoupons(roomId: String): Flow<List<Coupon>> = callbackFlow {
         val uid = auth.currentUser?.uid
-        val coupons = mutableMapOf<String, Coupon>()
-        val publicIds = mutableSetOf<String>()
-        val privateIds = mutableSetOf<String>()
+        var publicCoupons = emptyMap<String, Coupon>()
+        var privateCoupons = emptyMap<String, Coupon>()
 
         fun emit() {
+            val coupons = publicCoupons + privateCoupons
             trySend(coupons.values.sortedWith(compareBy<Coupon> { it.expiresLocalDate }.thenBy { it.title }))
         }
 
@@ -43,14 +43,9 @@ class CouponRepository(
                     close(error)
                     return@addSnapshotListener
                 }
-                publicIds.forEach { coupons.remove(it) }
-                publicIds.clear()
-                snapshot?.documents?.forEach { doc ->
-                    doc.toCoupon(roomId)?.let {
-                        coupons[it.id] = it
-                        publicIds += it.id
-                    }
-                }
+                publicCoupons = snapshot?.documents.orEmpty()
+                    .mapNotNull { it.toCoupon(roomId) }
+                    .associateBy { it.id }
                 emit()
             }
 
@@ -63,14 +58,9 @@ class CouponRepository(
                         close(error)
                         return@addSnapshotListener
                     }
-                    privateIds.forEach { id -> coupons.remove(id) }
-                    privateIds.clear()
-                    snapshot?.documents?.forEach { doc ->
-                        doc.toCoupon(roomId)?.let { coupon ->
-                            coupons[coupon.id] = coupon
-                            privateIds += coupon.id
-                        }
-                    }
+                    privateCoupons = snapshot?.documents.orEmpty()
+                        .mapNotNull { it.toCoupon(roomId) }
+                        .associateBy { coupon -> coupon.id }
                     emit()
                 }
         }
@@ -95,14 +85,14 @@ class CouponRepository(
 
     fun observeComments(roomId: String, couponId: String): Flow<List<CouponComment>> = callbackFlow {
         val registration = firestore.collection("rooms/$roomId/coupons/$couponId/comments")
-            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(100)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
                     return@addSnapshotListener
                 }
-                trySend(snapshot?.documents?.mapNotNull { it.toCouponComment() }.orEmpty())
+                trySend(snapshot?.documents?.mapNotNull { it.toCouponComment() }?.reversed().orEmpty())
             }
         awaitClose { registration.remove() }
     }
@@ -132,8 +122,9 @@ class CouponRepository(
         )
 
         val now = FieldValue.serverTimestamp()
-        firestore.document("rooms/$roomId/coupons/$couponId").set(
-            mapOf(
+        runCatching {
+            firestore.document("rooms/$roomId/coupons/$couponId").set(
+                mapOf(
                 "title" to title.trim(),
                 "brand" to brand.trim(),
                 "ownerUid" to uid,
@@ -151,8 +142,12 @@ class CouponRepository(
                 "notifyTarget" to notifyTarget,
                 "createdAt" to now,
                 "updatedAt" to now
-            )
-        ).await()
+                )
+            ).await()
+        }.getOrElse { error ->
+            runCatching { backend.discardCouponImage(roomId, couponId, upload.blobPath) }
+            throw error
+        }
         return couponId
     }
 
@@ -194,8 +189,12 @@ class CouponRepository(
             val snapshot = transaction.get(ref)
             val status = snapshot.getString("status")
             if (status != "active" && status != "reserved") error("사용 처리할 수 없는 쿠폰입니다.")
+            if (status == "reserved" && snapshot.getString("reservedByUid") != uid) {
+                error("예약한 멤버만 사용 완료로 변경할 수 있습니다.")
+            }
             transaction.update(ref, mapOf(
                 "status" to "used",
+                "reservedByUid" to null,
                 "usedByUid" to uid,
                 "usedAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()

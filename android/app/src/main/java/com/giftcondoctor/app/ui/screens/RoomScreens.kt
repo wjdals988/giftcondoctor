@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
@@ -22,13 +23,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -41,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -112,7 +114,6 @@ fun RoomListScreen(
     viewModel: RoomListViewModel = viewModel()
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
-    val busy by viewModel.busy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val joinedTestRoom = when (val state = rooms) {
         is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
@@ -121,53 +122,59 @@ fun RoomListScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     GDScaffold(
-        title = "쿠폰방",
+        title = "내 쿠폰방",
         actions = {
             IconButton(onClick = onOpenNotifications) {
                 Icon(Icons.Default.Notifications, contentDescription = "알림 설정")
             }
             IconButton(onClick = { showLogoutDialog = true }) {
-                Icon(Icons.Default.Logout, contentDescription = "로그아웃")
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "로그아웃")
             }
         }
     ) { modifier ->
         Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            GDInfoBanner(
-                title = "만료 알림을 켜두면 놓치지 않아요",
-                body = "기프티콘닥터가 매일 오전 9시에 만료 예정 쿠폰을 확인해 알려드립니다.",
-                icon = Icons.Default.Notifications
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCreateRoom, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.small) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Text("방 만들기", modifier = Modifier.padding(start = 6.dp))
-                }
-                OutlinedButton(onClick = onJoinRoom, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.small) {
-                    Text("방 입장")
-                }
-            }
-            if (joinedTestRoom) {
-                GDInfoBanner(
-                    title = "푸시 테스트방 참여 중",
-                    body = "매일 오전 9시 실제 cron 경로로 테스트 푸시가 옵니다.",
-                    icon = Icons.Default.Notifications
-                )
-            } else {
-                OutlinedButton(
-                    onClick = { viewModel.joinPushTestRoom(onOpenRoom) },
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    if (busy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Text(if (busy) "테스트방 참가 중..." else "푸시 테스트방 참가")
-                }
-            }
             InlineMessage(message)
             when (val state = rooms) {
                 UiState.Loading -> LoadingState()
                 is UiState.Error -> ErrorState(state.message)
-                is UiState.Success -> RoomList(state.data, onOpenRoom)
+                is UiState.Success -> {
+                    if (state.data.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            EmptyState(
+                                title = "첫 쿠폰방을 만들어 보세요",
+                                message = "가족이나 친구와 함께 쓸 방을 만들거나, 받은 초대코드로 바로 입장할 수 있어요.",
+                                icon = Icons.Default.CardGiftcard,
+                                primaryActionLabel = "새 쿠폰방 만들기",
+                                onPrimaryAction = onCreateRoom,
+                                secondaryActionLabel = "초대코드로 입장",
+                                onSecondaryAction = onJoinRoom
+                            )
+                        }
+                    } else {
+                        GDInfoBanner(
+                            title = "만료 알림을 켜두면 놓치지 않아요",
+                            body = "매일 오전 9시에 만료 예정 쿠폰만 간결하게 알려드립니다.",
+                            icon = Icons.Default.Notifications
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onCreateRoom, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Text("방 만들기", modifier = Modifier.padding(start = 6.dp))
+                            }
+                            OutlinedButton(onClick = onJoinRoom, modifier = Modifier.weight(1f)) {
+                                Text("방 입장")
+                            }
+                        }
+                        if (joinedTestRoom) {
+                            Text(
+                                "푸시 테스트방 참여 중 · 매일 오전 9시",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        RoomList(state.data, onOpenRoom, Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
@@ -197,13 +204,8 @@ fun RoomListScreen(
 }
 
 @Composable
-private fun RoomList(rooms: List<RoomMembership>, onOpenRoom: (String) -> Unit) {
-    if (rooms.isEmpty()) {
-        EmptyState("아직 참여 중인 쿠폰방이 없습니다.")
-        return
-    }
-
-    LazyColumn(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun RoomList(rooms: List<RoomMembership>, onOpenRoom: (String) -> Unit, modifier: Modifier = Modifier) {
+    LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(rooms, key = { it.roomId }) { room ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { onOpenRoom(room.roomId) },
@@ -463,6 +465,15 @@ fun RoomDetailScreen(
     GDScaffold(
         title = title,
         onBack = onBack,
+        floatingActionButton = {
+            if (roomId != AppConstants.PUSH_TEST_ROOM_ID) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddCoupon,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("쿠폰 등록") }
+                )
+            }
+        },
         actions = {
             IconButton(onClick = onOpenMembers) {
                 Icon(Icons.Default.Group, contentDescription = "멤버")
@@ -470,17 +481,12 @@ fun RoomDetailScreen(
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "방 설정")
             }
-            if (roomId != AppConstants.PUSH_TEST_ROOM_ID) {
-                IconButton(onClick = onAddCoupon) {
-                    Icon(Icons.Default.Add, contentDescription = "쿠폰 추가")
-                }
-            }
         }
     ) { modifier ->
         when (val state = coupons) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(state.message)
-            is UiState.Success -> RoomDashboard(roomId, state.data, isOwner, onOpenCoupon, modifier)
+            is UiState.Success -> RoomDashboard(roomId, state.data, isOwner, onOpenCoupon, onAddCoupon, modifier)
         }
     }
 }
@@ -491,6 +497,7 @@ private fun RoomDashboard(
     coupons: List<Coupon>,
     isOwner: Boolean,
     onOpenCoupon: (String) -> Unit,
+    onAddCoupon: () -> Unit,
     modifier: Modifier
 ) {
     val today = seoulToday()
@@ -502,6 +509,7 @@ private fun RoomDashboard(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
+        contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -553,11 +561,15 @@ private fun RoomDashboard(
         if (coupons.isEmpty()) {
             item {
                 EmptyState(
-                    if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
-                        "테스트방은 쿠폰을 등록하지 않아도 매일 푸시가 옵니다."
+                    title = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) "푸시 확인 전용 방이에요" else "첫 쿠폰을 등록해 보세요",
+                    message = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
+                        "쿠폰을 등록하지 않아도 매일 오전 9시에 테스트 알림을 보냅니다."
                     } else {
-                        "아직 등록된 쿠폰이 없습니다."
-                    }
+                        "갤러리에서 이미지를 고르면 이름과 만료일을 자동으로 찾아드려요."
+                    },
+                    icon = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) Icons.Default.Notifications else Icons.Default.CardGiftcard,
+                    primaryActionLabel = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) null else "쿠폰 이미지 선택",
+                    onPrimaryAction = if (roomId == AppConstants.PUSH_TEST_ROOM_ID) null else onAddCoupon
                 )
             }
         }

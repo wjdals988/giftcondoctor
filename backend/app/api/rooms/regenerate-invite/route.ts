@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requireRoomOwner, requireUser } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { ApiError, json, jsonError, readJson } from "@/lib/http";
+import { enforceUserRateLimit } from "@/lib/rateLimit";
 import { createUniqueInviteCode, inviteExpiresAt } from "@/lib/invite";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ type Body = {
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    await enforceUserRateLimit(token.uid, { action: "invite-regenerate", limit: 5, windowSeconds: 3600 });
     const body = await readJson<Body>(request);
     const roomId = body.roomId?.trim();
     if (!roomId) throw new ApiError(400, "roomId가 필요합니다.");

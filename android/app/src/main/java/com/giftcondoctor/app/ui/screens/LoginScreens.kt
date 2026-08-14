@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,7 +65,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -95,6 +98,28 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
         )
         ReminderTimeBanner(modifier = Modifier.padding(bottom = 18.dp))
 
+        Button(
+            onClick = {
+                runCatching {
+                    googleLauncher.launch(sessionViewModel.googleSignInIntent(context))
+                }.onFailure {
+                    sessionViewModel.showMessage(it.localizedMessage ?: "Google 로그인 창을 열 수 없습니다.")
+                }
+            },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("G", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text("Google로 바로 시작")
+        }
+        Text(
+            "또는 이메일로 계속하기",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 14.dp)
+        )
+
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
@@ -115,40 +140,23 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
 
         InlineMessage(message)
 
-        Button(
+        OutlinedButton(
             onClick = { sessionViewModel.signIn(email.trim(), password) },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Icon(Icons.Default.Login, contentDescription = null)
+            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
             Text("로그인", modifier = Modifier.padding(start = 8.dp))
         }
-        OutlinedButton(
+        TextButton(
             onClick = { sessionViewModel.createAccount(email.trim(), password) },
             enabled = !busy,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            shape = MaterialTheme.shapes.small
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
         ) {
             Icon(Icons.Default.PersonAdd, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("이메일로 회원가입")
-        }
-        OutlinedButton(
-            onClick = {
-                runCatching {
-                    googleLauncher.launch(sessionViewModel.googleSignInIntent(context))
-                }.onFailure {
-                    sessionViewModel.showMessage(it.localizedMessage ?: "Google 로그인 창을 열 수 없습니다.")
-                }
-            },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            shape = MaterialTheme.shapes.small
-        ) {
-            Text("G", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(8.dp))
-            Text("Google로 계속하기")
         }
 
         if (busy) {

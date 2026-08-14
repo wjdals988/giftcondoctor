@@ -2,25 +2,28 @@
   "name": "giftcondoctor-backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "test:rules": "firebase emulators:exec --config ../firebase.json --project demo-giftcondoctor --only firestore \"vitest run --config vitest.rules.config.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vercel/blob": "^2.3.0",
-    "firebase-admin": "^13.0.2",
-    "image-size": "^1.2.0",
-    "next": "16.1.6",
+    "firebase-admin": "14.2.0",
+    "next": "16.3.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
+    "firebase-tools": "15.26.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.1.8"
+    "vitest": "4.1.10"
   }
 }

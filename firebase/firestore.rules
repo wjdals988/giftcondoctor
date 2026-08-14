@@ -41,15 +41,41 @@ service cloud.firestore {
         && visibleCoupon(get(couponPath(roomId, couponId)).data);
     }
 
+    function validCouponImagePath(roomId, couponId) {
+      return request.resource.data.imageBlobPath is string
+        && request.resource.data.imageBlobPath.matches(
+          '^rooms/' + roomId + '/coupons/' + couponId + '/[A-Za-z0-9._-]+$'
+        );
+    }
+
+    function validCouponSchema(roomId, couponId) {
+      return request.resource.data.keys().hasOnly([
+          "title", "brand", "ownerUid", "imageBlobPath", "imageWidth", "imageHeight",
+          "expiresLocalDate", "expiresAtUtc", "timezone", "status", "reservedByUid",
+          "usedByUid", "usedAt", "visibility", "notifyTarget", "createdAt", "updatedAt"
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 100
+        && request.resource.data.brand is string
+        && request.resource.data.brand.size() <= 100
+        && request.resource.data.expiresLocalDate is string
+        && request.resource.data.expiresLocalDate.matches('^20[0-9]{2}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.visibility in ["room", "private"]
+        && request.resource.data.notifyTarget in ["allMembers", "ownerOnly"]
+        && validCouponImagePath(roomId, couponId);
+    }
+
     function immutableCouponFields() {
       return request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.imageBlobPath == resource.data.imageBlobPath
         && request.resource.data.createdAt == resource.data.createdAt;
     }
 
-    function ownerCanEditCoupon() {
+    function ownerCanEditCoupon(roomId, couponId) {
       return resource.data.ownerUid == request.auth.uid
         && immutableCouponFields()
+        && validCouponSchema(roomId, couponId)
         && visibleCoupon(request.resource.data);
     }
 
@@ -72,11 +98,20 @@ service cloud.firestore {
     }
 
     function memberCanMarkUsed() {
-      return (resource.data.status == "active" || resource.data.status == "reserved")
+      return (resource.data.status == "active"
+          || (resource.data.status == "reserved" && resource.data.reservedByUid == request.auth.uid))
         && request.resource.data.status == "used"
+        && request.resource.data.reservedByUid == null
         && request.resource.data.usedByUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["status", "usedByUid", "usedAt", "updatedAt"]);
+          .hasOnly(["status", "reservedByUid", "usedByUid", "usedAt", "updatedAt"]);
+    }
+
+    function validGlobalNotificationSettings(data) {
+      return data.get("defaultNotificationMode", "basic") in ["minimal", "basic", "careful"]
+        && data.get("defaultNotificationDays", [7, 3, 1, 0]) is list
+        && data.get("defaultNotificationDays", [7, 3, 1, 0]).hasOnly([7, 5, 3, 2, 1, 0])
+        && data.get("pushEnabled", true) is bool;
     }
 
     match /users/{uid} {
@@ -85,11 +120,25 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "displayName", "email", "photoUrl", "defaultNotificationMode",
           "defaultNotificationDays", "pushEnabled", "createdAt", "updatedAt"
-        ]);
+        ])
+        && validGlobalNotificationSettings(request.resource.data);
       allow delete: if false;
 
       match /pushTokens/{tokenId} {
-        allow read, create, update, delete: if isSelf(uid);
+        allow read, delete: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && tokenId.matches('^[a-f0-9]{64}$')
+          && request.resource.data.keys().hasOnly([
+            "token", "platform", "deviceName", "appVersion", "createdAt", "lastSeenAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 20
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform == "android"
+          && request.resource.data.deviceName is string
+          && request.resource.data.deviceName.size() <= 200
+          && request.resource.data.appVersion is string
+          && request.resource.data.appVersion.size() <= 30;
       }
 
       match /roomMemberships/{roomId} {
@@ -117,14 +166,14 @@ service cloud.firestore {
       match /coupons/{couponId} {
         allow read: if isRoomMember(roomId) && visibleCoupon(resource.data);
         allow create: if isRoomMember(roomId)
+          && validCouponSchema(roomId, couponId)
           && request.resource.data.ownerUid == request.auth.uid
           && request.resource.data.status == "active"
           && request.resource.data.timezone == "Asia/Seoul"
-          && request.resource.data.imageBlobPath is string
           && visibleCoupon(request.resource.data);
         allow update: if isRoomMember(roomId)
           && visibleCoupon(resource.data)
-          && (ownerCanEditCoupon() || memberCanReserve() || memberCanCancelReservation() || memberCanMarkUsed());
+          && (ownerCanEditCoupon(roomId, couponId) || memberCanReserve() || memberCanCancelReservation() || memberCanMarkUsed());
         allow delete: if false;
 
         match /comments/{commentId} {
@@ -155,6 +204,10 @@ service cloud.firestore {
     }
 
     match /roomSecrets/{roomId} {
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{limitId} {
       allow read, write: if false;
     }
 

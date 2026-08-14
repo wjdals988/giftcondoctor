@@ -2,6 +2,7 @@ package com.giftcondoctor.app.ui.screens
 
 import android.net.Uri
 import android.graphics.BitmapFactory
+import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,12 +26,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -65,7 +72,6 @@ import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
-import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +81,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddCouponScreen(
     roomId: String,
@@ -96,6 +103,8 @@ fun AddCouponScreen(
     }
     var privateCoupon by remember { mutableStateOf(false) }
     var ownerOnly by remember { mutableStateOf(false) }
+    var showSharingOptions by remember { mutableStateOf(false) }
+    val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         imageUri = uri
     }
@@ -111,11 +120,17 @@ fun AddCouponScreen(
         data.expiresLocalDate?.let { expires = it.toString() }
     }
 
-    GDScaffold(title = "쿠폰 추가", onBack = onBack) { modifier ->
+    GDScaffold(title = "쿠폰 등록", onBack = onBack) { modifier ->
         Column(
             modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text(
+                "1  이미지 선택   ·   2  정보 확인   ·   3  저장",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -132,80 +147,114 @@ fun AddCouponScreen(
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(36.dp)
                         )
-                        Text(if (imageUri == null) "쿠폰 이미지 추가" else "이미지 다시 선택", color = MaterialTheme.colorScheme.primary)
-                        Text("이미지 최대 10MB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (imageUri == null) "갤러리에서 쿠폰 선택" else "다른 이미지 선택",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text("이미지에서 이름과 만료일을 자동으로 찾아요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-            imageUri?.let { SelectedImagePreview(it) }
-            GDInfoBanner(
-                title = "이미지는 안전하게 보관돼요",
-                body = "앱에는 공개 URL을 저장하지 않고, 인증된 멤버만 서버를 통해 이미지를 볼 수 있습니다."
-            )
-            if (analysisBusy) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Text("이미지를 분석하는 중입니다.", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            analysisMessage?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("쿠폰 이름") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("브랜드") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(
-                value = expires,
-                onValueChange = { expires = it },
-                label = { Text("만료일 (YYYY-MM-DD)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            ReminderTimeBanner()
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("비공개 쿠폰")
-                Switch(
-                    checked = privateCoupon,
-                    onCheckedChange = {
-                        privateCoupon = it
-                        if (it) ownerOnly = true
-                    }
+            if (imageUri == null) {
+                GDInfoBanner(
+                    title = "사진 한 장이면 충분해요",
+                    body = "기프티콘 이미지는 인증된 방 멤버에게만 보이며 최대 10MB까지 등록할 수 있어요."
                 )
-            }
-            Text(
-                "비공개 쿠폰은 방 멤버 목록에 보이지 않고 등록자 본인만 상세/이미지/알림에 접근합니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("등록자에게만 알림")
-                Switch(checked = ownerOnly || privateCoupon, enabled = !privateCoupon, onCheckedChange = { ownerOnly = it })
-            }
-            Text(
-                "켜면 쿠폰은 방에 공유되지만 만료 푸시 알림은 쿠폰을 등록한 사람에게만 갑니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            InlineMessage(message)
-            Button(
-                enabled = !busy,
-                onClick = {
-                    viewModel.addCoupon(
-                        context = context,
-                        roomId = roomId,
-                        imageUri = imageUri,
-                        title = title,
-                        brand = brand,
-                        expiresLocalDate = expires,
-                        visibility = if (privateCoupon) "private" else "room",
-                        notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
-                        onAdded = onAdded
+            } else {
+                imageUri?.let { SelectedImagePreview(it) }
+                if (analysisBusy) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Text("쿠폰 정보를 찾는 중이에요", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                analysisMessage?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("쿠폰 정보 확인", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("쿠폰 이름") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = brand,
+                    onValueChange = { brand = it },
+                    label = { Text("브랜드 (선택)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = expires,
+                    onValueChange = { expires = it },
+                    label = { Text("만료일") },
+                    supportingText = { Text("예: 2026-12-31") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(7 to "+7일", 30 to "+30일", 90 to "+90일").forEach { (days, label) ->
+                        AssistChip(onClick = { expires = today.plusDays(days.toLong()).toString() }, label = { Text(label) })
+                    }
+                }
+                Card(onClick = { showSharingOptions = !showSharingOptions }, modifier = Modifier.fillMaxWidth()) {
+                    ListItem(
+                        leadingContent = { Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        headlineContent = { Text("공유·알림 설정") },
+                        supportingContent = {
+                            Text(if (privateCoupon) "나만 보기 · 나에게만 알림" else if (ownerOnly) "방에 공유 · 나에게만 알림" else "방에 공유 · 모든 멤버에게 알림")
+                        },
+                        trailingContent = { Icon(Icons.Default.ExpandMore, contentDescription = if (showSharingOptions) "설정 접기" else "설정 펼치기") }
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.small
-            ) {
-                if (busy) ButtonProgressIndicator()
-                Text(if (busy) "추가 중..." else "추가하기")
+                    AnimatedVisibility(showSharingOptions) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("나만 보기")
+                                    Text("다른 방 멤버에게 쿠폰을 숨겨요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Switch(
+                                    checked = privateCoupon,
+                                    onCheckedChange = {
+                                        privateCoupon = it
+                                        if (it) ownerOnly = true
+                                    }
+                                )
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("나에게만 알림")
+                                    Text("방에 공유해도 만료 알림은 나만 받아요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Switch(checked = ownerOnly || privateCoupon, enabled = !privateCoupon, onCheckedChange = { ownerOnly = it })
+                            }
+                        }
+                    }
+                }
+                InlineMessage(message)
+                Button(
+                    enabled = !busy && !analysisBusy,
+                    onClick = {
+                        viewModel.addCoupon(
+                            context = context,
+                            roomId = roomId,
+                            imageUri = imageUri,
+                            title = title,
+                            brand = brand,
+                            expiresLocalDate = expires,
+                            visibility = if (privateCoupon) "private" else "room",
+                            notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
+                            onAdded = onAdded
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (busy) ButtonProgressIndicator()
+                    Text(if (busy) "등록 중..." else "쿠폰 등록하기")
+                }
             }
         }
     }
@@ -255,6 +304,7 @@ fun CouponDetailScreen(
     val imageState by viewModel.imageBytes.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val commentBusy by viewModel.commentBusy.collectAsStateWithLifecycle()
+    val roomOwnerUid by viewModel.roomOwnerUid.collectAsStateWithLifecycle()
     val currentUid = viewModel.currentUid
 
     GDScaffold(title = "쿠폰 상세", onBack = onBack) { modifier ->
@@ -267,6 +317,7 @@ fun CouponDetailScreen(
                 imageState = imageState,
                 commentsState = commentsState,
                 currentUid = currentUid,
+                roomOwnerUid = roomOwnerUid,
                 commentBusy = commentBusy,
                 message = message,
                 onReserve = { viewModel.reserve(roomId, couponId) },
@@ -290,6 +341,7 @@ private fun CouponDetailContent(
     imageState: UiState<ByteArray>,
     commentsState: UiState<List<CouponComment>>,
     currentUid: String?,
+    roomOwnerUid: String?,
     commentBusy: Boolean,
     message: String?,
     onReserve: () -> Unit,
@@ -327,19 +379,27 @@ private fun CouponDetailContent(
             if (coupon.status == "active") {
                 Button(onClick = onReserve, modifier = Modifier.weight(1f)) { Text("예약") }
             }
-            if (coupon.status == "reserved") {
+            if (coupon.status == "reserved" &&
+                (coupon.reservedByUid == currentUid || coupon.ownerUid == currentUid)
+            ) {
                 OutlinedButton(onClick = onCancelReservation, modifier = Modifier.weight(1f)) { Text("예약 취소") }
             }
-            if (coupon.status == "active" || coupon.status == "reserved") {
+            if (coupon.status == "active" ||
+                (coupon.status == "reserved" && coupon.reservedByUid == currentUid)
+            ) {
                 Button(onClick = onUsed, modifier = Modifier.weight(1f)) { Text("사용 완료") }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { editMode = !editMode }, modifier = Modifier.weight(1f)) {
-                Text(if (editMode) "수정 취소" else "수정")
-            }
-            OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
-                Text("삭제")
+        if (coupon.ownerUid == currentUid || roomOwnerUid == currentUid) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (coupon.ownerUid == currentUid) {
+                    OutlinedButton(onClick = { editMode = !editMode }, modifier = Modifier.weight(1f)) {
+                        Text(if (editMode) "수정 취소" else "수정")
+                    }
+                }
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                    Text("삭제")
+                }
             }
         }
         HorizontalDivider()

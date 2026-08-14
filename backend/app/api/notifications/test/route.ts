@@ -1,5 +1,6 @@
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { requireUser } from "@/lib/auth";
+import { enforceUserRateLimit } from "@/lib/rateLimit";
 import { ApiError, json, jsonError } from "@/lib/http";
 import { PUSH_TEST_ROOM_ID, joinPushTestRoom } from "@/lib/pushTestRoom";
 import { isInvalidFcmTokenCode, notificationBody, notificationTitle, shouldNotify } from "@/lib/reminders";
@@ -21,6 +22,7 @@ async function tokenDocsForUid(uid: string): Promise<TokenDoc[]> {
 export async function POST(request: Request) {
   try {
     const token = await requireUser(request);
+    await enforceUserRateLimit(token.uid, { action: "notification-test", limit: 5, windowSeconds: 600 });
     const payload = await request.json().catch(() => ({}));
     const kind = typeof payload?.kind === "string" ? payload.kind : "device";
     const expiryTest = kind === "expiryReminder";
@@ -41,8 +43,8 @@ export async function POST(request: Request) {
       throw new ApiError(404, "저장된 푸시 토큰이 없습니다. 앱을 다시 실행한 뒤 시도해 주세요.");
     }
 
-    const title = expiryTest ? notificationTitle("기프티콘닥터", 0) : "테스트 푸시가 도착했어요";
-    const body = expiryTest ? notificationBody("테스트 만료 쿠폰", "오늘", 0) : "기프티콘닥터 알림 설정이 정상입니다.";
+    const title = expiryTest ? notificationTitle("기프티콘닥터", 0) : "푸시 테스트";
+    const body = expiryTest ? notificationBody("테스트 쿠폰", "오늘", 0) : "알림이 정상적으로 도착했습니다.";
     const data: Record<string, string> = expiryTest
       ? {
           title,
@@ -51,8 +53,7 @@ export async function POST(request: Request) {
           couponId: "expiry-reminder-test",
           daysBefore: "0",
           deepLink: `giftcondoctor://rooms/${PUSH_TEST_ROOM_ID}`,
-          type: "expiry_reminder_test",
-          delaySeconds: "10"
+          type: "expiry_reminder_test"
         }
       : {
           title,
@@ -70,7 +71,8 @@ export async function POST(request: Request) {
           channelId: "coupon_expiry",
           clickAction: "OPEN_COUPON_DETAIL",
           color: "#00B4A6",
-          icon: "ic_stat_gd_notification"
+          icon: "ic_stat_gd_notification",
+          visibility: "private"
         }
       }
     });

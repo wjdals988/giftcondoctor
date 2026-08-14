@@ -21,8 +21,11 @@ import java.io.IOException
 
 class BackendClient(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = sharedHttpClient
 ) {
+    companion object {
+        private val sharedHttpClient = OkHttpClient()
+    }
     private val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -163,6 +166,19 @@ class BackendClient(
                 response.body?.bytes() ?: throw IOException("이미지 응답이 비어 있습니다.")
             }
         }
+
+    suspend fun discardCouponImage(roomId: String, couponId: String, blobPath: String) {
+        authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/upload-image" +
+                        "?roomId=${Uri.encode(roomId)}" +
+                        "&couponId=${Uri.encode(couponId)}" +
+                        "&blobPath=${Uri.encode(blobPath)}"
+                )
+                .delete()
+        )
+    }
 
     private suspend fun postJson(path: String, body: JSONObject): String {
         return authedRequest(

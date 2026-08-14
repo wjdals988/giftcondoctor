@@ -8,9 +8,7 @@ import com.giftcondoctor.app.data.model.toRoom
 import com.giftcondoctor.app.data.model.toRoomMember
 import com.giftcondoctor.app.data.model.toRoomMembership
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -85,27 +83,4 @@ class RoomRepository(
     suspend fun deleteRoom(roomId: String) = backend.deleteRoom(roomId)
 
     suspend fun removeMember(roomId: String, targetUid: String) = backend.removeMember(roomId, targetUid)
-
-    suspend fun updateRoomNotification(roomId: String, mode: String, days: List<Int>) {
-        firestore.document("rooms/$roomId").update(
-            mapOf(
-                "defaultNotificationMode" to mode,
-                "defaultNotificationDays" to days,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-        ).await()
-    }
-
-    suspend fun updateMemberNotification(roomId: String, enabled: Boolean, mode: String?, days: List<Int>?) {
-        val uid = auth.currentUser?.uid ?: return
-        firestore.document("rooms/$roomId/members/$uid").set(
-            mapOf(
-                "notificationEnabled" to enabled,
-                "notificationMode" to mode,
-                "notificationDays" to days,
-                "updatedAt" to FieldValue.serverTimestamp()
-            ),
-            SetOptions.merge()
-        ).await()
-    }
 }

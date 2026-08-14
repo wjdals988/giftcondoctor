@@ -29,9 +29,11 @@ export async function readJson<T>(request: Request): Promise<T> {
   }
 }
 
-export function requireCronSecret(request: Request) {
+export function requireCronSecret(request: Request): void {
   const expected = process.env.CRON_SECRET;
-  if (!expected) return;
+  if (!expected) {
+    throw new ApiError(503, "Cron 인증 설정이 누락되었습니다.");
+  }
 
   const actual = request.headers.get("authorization");
   if (actual !== `Bearer ${expected}`) {

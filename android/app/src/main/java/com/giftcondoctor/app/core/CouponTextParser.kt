@@ -108,10 +108,17 @@ private fun detectExpiry(text: String, today: LocalDate): LocalDate? {
             val year = if (yearText.length == 2) 2000 + yearText.toInt() else yearText.toInt()
             val month = match.groupValues[2].toInt()
             val day = match.groupValues[3].toInt()
-            runCatching { LocalDate.of(year, month, day) }.getOrNull()
+            val date = runCatching { LocalDate.of(year, month, day) }.getOrNull() ?: return@mapNotNull null
+            val contextStart = (match.range.first - 20).coerceAtLeast(0)
+            val contextEnd = (match.range.last + 12).coerceAtMost(text.lastIndex)
+            val context = text.substring(contextStart..contextEnd)
+            val labelScore = listOf("유효기간", "사용기간", "만료", "까지").count { context.contains(it) }
+            date to labelScore
         }
-        .filter { it >= today.minusDays(1) }
-        .minOrNull()
+        .filter { (date) -> date >= today.minusDays(1) }
+        .sortedWith(compareByDescending<Pair<LocalDate, Int>> { it.second }.thenBy { it.first })
+        .firstOrNull()
+        ?.first
 }
 
 private fun String.cleanTitleCandidate(): String =

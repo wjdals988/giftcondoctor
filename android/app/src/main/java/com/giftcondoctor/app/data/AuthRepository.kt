@@ -59,16 +59,25 @@ class AuthRepository(
 
     suspend fun upsertUser() {
         val user = auth.currentUser ?: return
-        val data = mapOf(
+        val ref = firestore.document("users/${user.uid}")
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(ref)
+            val data = mutableMapOf<String, Any?>(
             "displayName" to (user.displayName ?: user.email ?: "이름 없음"),
             "email" to user.email,
             "photoUrl" to user.photoUrl?.toString(),
-            "defaultNotificationMode" to "basic",
-            "defaultNotificationDays" to listOf(7, 3, 1, 0),
-            "pushEnabled" to true,
             "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        firestore.document("users/${user.uid}").set(data, com.google.firebase.firestore.SetOptions.merge()).await()
+            )
+            if (!existing.exists()) {
+                data += mapOf(
+                    "defaultNotificationMode" to "basic",
+                    "defaultNotificationDays" to listOf(7, 3, 1, 0),
+                    "pushEnabled" to true,
+                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+            }
+            transaction.set(ref, data, com.google.firebase.firestore.SetOptions.merge())
+        }.await()
     }
 
     fun signOut() {

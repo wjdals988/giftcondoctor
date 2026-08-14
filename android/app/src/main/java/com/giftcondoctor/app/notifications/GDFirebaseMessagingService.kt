@@ -1,8 +1,6 @@
 package com.giftcondoctor.app.notifications
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -39,7 +37,7 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun showNotification(title: String, body: String, deepLink: String?) {
-        createChannel()
+        NotificationChannels.create(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -64,7 +62,6 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
             .setColor(0xFF00B4A6.toInt())
             .setContentTitle(title)
             .setContentText(body)
-            .setSubText("오전 9시 만료 알림")
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -76,16 +73,4 @@ class GDFirebaseMessagingService : FirebaseMessagingService() {
         NotificationManagerCompat.from(this).notify(deepLink?.hashCode() ?: title.hashCode(), notification)
     }
 
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            AppConstants.EXPIRY_CHANNEL_ID,
-            "쿠폰 만료 알림",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "매일 오전 9시, 만료 예정 쿠폰을 알려드립니다."
-        }
-        manager.createNotificationChannel(channel)
-    }
 }

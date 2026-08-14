@@ -24,7 +24,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -32,12 +31,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
+enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
+
 class SessionViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val pushTokenRepository: PushTokenRepository = PushTokenRepository()
 ) : ViewModel() {
-    private val _isLoggedIn = MutableStateFlow(false)
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
+    private val _authState = MutableStateFlow(SessionAuthState.Loading)
+    val authState: StateFlow<SessionAuthState> = _authState
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
@@ -51,7 +52,7 @@ class SessionViewModel(
     init {
         viewModelScope.launch {
             authRepository.authState().collect {
-                _isLoggedIn.value = it
+                _authState.value = if (it) SessionAuthState.Authenticated else SessionAuthState.Unauthenticated
                 if (it) runCatching { pushTokenRepository.saveCurrentToken() }
             }
         }
@@ -83,7 +84,15 @@ class SessionViewModel(
     }
 
     fun signOut() {
-        authRepository.signOut()
+        viewModelScope.launch {
+            _busy.value = true
+            val cleanup = runCatching { pushTokenRepository.deleteCurrentToken() }
+            authRepository.signOut()
+            cleanup.onFailure {
+                _message.value = "로그아웃했지만 알림 토큰 정리가 지연될 수 있습니다."
+            }
+            _busy.value = false
+        }
     }
 
     private fun runAuth(block: suspend () -> Unit) {
@@ -279,10 +288,12 @@ class AddCouponViewModel(
 }
 
 class CouponDetailViewModel(
-    private val repository: CouponRepository = CouponRepository()
+    private val repository: CouponRepository = CouponRepository(),
+    private val roomRepository: RoomRepository = RoomRepository()
 ) : ViewModel() {
     private var couponJob: Job? = null
     private var commentsJob: Job? = null
+    private var roomJob: Job? = null
 
     private val _coupon = MutableStateFlow<UiState<Coupon>>(UiState.Loading)
     val coupon: StateFlow<UiState<Coupon>> = _coupon
@@ -298,6 +309,9 @@ class CouponDetailViewModel(
 
     private val _commentBusy = MutableStateFlow(false)
     val commentBusy: StateFlow<Boolean> = _commentBusy
+
+    private val _roomOwnerUid = MutableStateFlow<String?>(null)
+    val roomOwnerUid: StateFlow<String?> = _roomOwnerUid
 
     val currentUid: String?
         get() = repository.currentUid
@@ -315,6 +329,11 @@ class CouponDetailViewModel(
             repository.observeComments(roomId, couponId)
                 .catch { _comments.value = UiState.Error(it.localizedMessage ?: "댓글을 불러오지 못했습니다.") }
                 .collect { _comments.value = UiState.Success(it) }
+        }
+        roomJob = viewModelScope.launch {
+            roomRepository.observeRoom(roomId)
+                .catch { _roomOwnerUid.value = null }
+                .collect { _roomOwnerUid.value = it?.ownerUid }
         }
         refreshImage(roomId, couponId)
     }
@@ -454,20 +473,6 @@ class SettingsViewModel(
         }
     }
 
-    fun updateRoom(roomId: String, mode: NotificationMode) {
-        runSettingsAction("room") {
-            roomRepository.updateRoomNotification(roomId, mode.wire, mode.days)
-            _message.value = "방 알림 기본값을 저장했습니다."
-        }
-    }
-
-    fun updateMember(roomId: String, enabled: Boolean, mode: NotificationMode?) {
-        runSettingsAction("member") {
-            roomRepository.updateMemberNotification(roomId, enabled, mode?.wire, mode?.days)
-            _message.value = "내 방 알림 설정을 저장했습니다."
-        }
-    }
-
     fun regenerateInvite(roomId: String) {
         runSettingsAction("invite") {
             val code = roomRepository.regenerateInvite(roomId)
@@ -496,9 +501,9 @@ class SettingsViewModel(
             runCatching { notificationRepository.sendTestPush() }
                 .onSuccess { sent ->
                     _message.value = if (sent > 0) {
-                        "테스트 푸시를 보냈습니다. 잠시 후 알림을 확인해 주세요."
+                        "권한·FCM 등록·서버 전송을 확인했습니다. 잠시 후 알림을 확인해 주세요."
                     } else {
-                        "푸시 요청은 처리됐지만 전송된 토큰이 없습니다."
+                        "서버 요청은 처리됐지만 유효한 FCM 토큰으로 전송되지 않았습니다."
                     }
                 }
                 .onFailure {
@@ -512,11 +517,10 @@ class SettingsViewModel(
         viewModelScope.launch {
             _expiryTestPushBusy.value = true
             _message.value = null
-            delay(10_000)
             runCatching { notificationRepository.sendExpiryReminderTestPush() }
                 .onSuccess { sent ->
                     _message.value = if (sent > 0) {
-                        "10초 뒤 실제 만료 알림 형식의 푸시를 보냈습니다. 알림 도착 여부를 확인해 주세요."
+                        "만료 알림 형식의 테스트 푸시를 보냈습니다."
                     } else {
                         "요청은 처리됐지만 전송된 토큰이 없습니다."
                     }
