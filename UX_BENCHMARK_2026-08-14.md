@@ -50,7 +50,7 @@
 - [대기] Preview health와 인증이 필요한 API의 실패/성공 경계 확인
 - [구현] Firestore Rules·Indexes를 main 조상 commit으로 제한하고 검증 artifact→production 승인→cloud dry-run→배포 evidence로 이어지는 rollback·roll-forward workflow 추가. `main` 병합 후 실제 검증 run은 대기
 - [대기] main 병합 후 Vercel production이 동일 commit을 가리키는지 확인
-- [차단] Android `0.1.20 (21)` debug·R8 release 빌드 검증, 기존 release keystore 미복구로 서명 Release는 보류
+- [완료] 분실된 기존 키 대신 새 RSA 4096bit 키로 Android `0.1.20 (21)` 단위·R8 release·v2/v3 서명·정렬·인증서 검증과 GitHub signing dry-run 완료. 기존 v0.1.12 사용자는 로그아웃 후 삭제·재설치가 필요하며 실제 Release는 보류
 
 ### P1 — 첫 가치 도달과 등록 흐름
 
@@ -115,7 +115,8 @@
 ### P2 — 세련도와 확장
 
 - [완료] 핵심 쿠폰 목록의 48dp 실제 터치 영역, 접힘/펼침 TalkBack 상태, 글자 확대 200% 접근 경로 검증
-- [예정] 로그인·알림 설정·회원 관리까지 Accessibility Scanner와 TalkBack 수동 검증 확대
+- [완료] 로그인·알림 설정·방장/멤버 설정·멤버 제거까지 200% 글꼴·48dp·semantics 자동 회귀 확대
+- [예정] 실제 TalkBack 수동 탐색과 Accessibility Scanner 전수 검증
 - [예정] 방이 많아질 때 검색/즐겨찾기/최근 사용 정렬
 - [예정] 갤러리 다중 선택, 스크린샷 일괄 OCR과 Android 공유 시트에서 바로 가져오기
 - [예정] 즐겨찾기 쿠폰 홈 위젯과 Wear OS는 오프라인·바코드 경로 안정화 후 검토
@@ -127,6 +128,8 @@
 - Google Wallet 패스 면 구성 원칙: https://developers.google.com/wallet/retail/gift-cards/use-cases/pass-customization
 - Android 14 최대 200% 글꼴 확대: https://developer.android.com/about/versions/14/features
 - Compose 최소 48dp 터치 대상: https://developer.android.com/develop/ui/compose/accessibility/api-defaults
+
+알림 설정은 200%에서 라벨과 스위치를 세로로 배치하고 스위치 자체에 `푸시 알림 사용`과 `켜짐/꺼짐` 상태를 제공한다. 방 설정은 긴 이름과 역할 배지를 세로로 재배치하며, 권한 없는 멤버에게 초대코드 재발급을 노출하지 않는다. 멤버 제거는 즉시 실행 대신 대상 이름이 포함된 확인창을 거친다. 이 5개 흐름을 추가한 Android 16 AVD 시스템 글꼴 200% 전체 suite는 35/35를 통과했지만 실제 TalkBack 음성 순서와 OEM 화면은 별도 수동 검증이 필요하다.
 
 ## 3.1 삭제 복구 UX 비교 추가
 
