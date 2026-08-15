@@ -115,6 +115,7 @@
 
 ### 개발·배포
 
+- Firestore Rules·Indexes를 `main` 조상 commit으로만 복원하고 기본 검증, production 승인, cloud dry-run, 배포 evidence를 강제하는 rollback·roll-forward workflow 추가
 - Android 목록 검색·상태 분류·정렬 경계 사례 단위 테스트 4개 추가
 - Android 검색·상태 필터·달력 선택·복구함 자동 paging/수동 재시도 Compose 계측 회귀 추가
 - Gradle 8.10.2 Wrapper와 배포 파일 SHA-256 검증 추가

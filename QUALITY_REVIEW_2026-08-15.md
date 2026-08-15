@@ -119,3 +119,18 @@
 ## 긍정적 평가
 
 이번 변경은 체감 개선을 추측으로 끝내지 않고 취소 전파·중복 억제 단위 테스트, 100개 UI 회귀, Release/R8 Macrobenchmark까지 같은 경로로 묶었다. 이후 최적화가 실제로 좋아졌는지 같은 5회 기준선으로 비교할 수 있다.
+
+## Firestore rollback workflow 추가 검토
+
+`code-quality-reviewer` 6개 축으로 `.github/workflows/firebase-rollback.yml`과 운영 문서를 별도 평가한 결과는 **A (89/100)**다. 범용 자동 스크립트는 YAML을 지원하지 않고 macOS `awk` 산술 오류도 발생해 점수 근거에서 제외했으며, actionlint 전체 workflow 0건, YAML 파싱, 독립 rollback artifact 기반 Firestore Emulator 23/23을 자동 근거로 사용했다.
+
+| 평가축 | 점수 | 근거 |
+|---|---:|---|
+| 가독성 | 80 | 입력→snapshot→검증→승인→배포 순서는 명확하나 긴 shell block이 남음 |
+| 성능 | 95 | 수동 운영 경로에만 실행되며 앱·API runtime 영향 없음 |
+| 명시적 I/O | 94 | target/scope/execute, artifact hash, project credential 경계가 명시됨 |
+| 유지보수성 | 84 | action SHA와 firebase-tools lock을 고정했지만 workflow 자체 실전 run은 아직 없음 |
+| 에러 처리 | 96 | `set -euo pipefail`, main 조상 제한, 확인 문구, hash 재검증, dry-run 순으로 fail-closed |
+| 협업 | 96 | Actions summary, 7일 검토 artifact, 30일 evidence와 운영 절차를 함께 제공 |
+
+가중치는 `80×0.25 + 95×0.20 + 94×0.15 + 84×0.25 + 96×0.10 + 96×0.05 = 88.5`이며 반올림해 89점으로 판정했다. 검토 중 `upload-artifact`가 숨김 디렉터리를 기본 제외해 artifact가 비게 될 위험을 발견해 `.rollback/`을 `rollback-artifact/`로 교정했다. 남은 핵심 위험은 `main` 병합 전에는 workflow_dispatch 실전 검증이 불가능하고, 운영 secret·variable·environment 승인 설정이 아직 확인되지 않았다는 점이다. 장기적으로는 base64 service account key를 GitHub OIDC Workload Identity Federation으로 교체하는 것이 바람직하다.

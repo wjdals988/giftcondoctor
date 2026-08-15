@@ -4,7 +4,7 @@
 
 - 물리 디바이스 푸시 6개 상태 조합과 A→B 교차 계정 개인정보 회귀 검증
 - `main` branch protection과 Backend·Android 필수 check 강제
-- Firestore Rules·Indexes rollback 경로 자동화
+- Firestore rollback workflow를 `main` 병합한 뒤 검증 전용 run과 production Rules roll-forward smoke 실행
 - 복구함 cursor query용 composite index 2개를 프로덕션에 선배포하고 실제 쿼리 smoke 확인
 - [x] Cron 6분 lease, 수신자별 outbox, 2분 delivery claim, 일시 실패 최대 5회 지수 backoff
 - [x] notificationOutbox 상태별 건수, retry/deadLetter, 최장 대기시간, 최근 Cron 결과 조회와 30일 보존 정리
@@ -49,6 +49,7 @@
 - [x] Firestore Rules Emulator 보안 테스트
 - [x] 사용자별 API rate limit 기본 방어
 - [x] PR/main Backend·Android CI
+- [x] Firestore Rules·Indexes의 main 조상 commit 검증, production 승인, cloud dry-run, evidence 기반 rollback·roll-forward workflow 구현·정적 검사
 - [x] 첫 쿠폰방 빈 상태와 쿠폰 등록 3단계 UI 단순화
 - [x] 푸시 권한·FCM 등록·서버 전송 단계별 오류 안내
 - [x] Firestore Rules·Indexes 프로덕션 배포와 운영 인덱스 5개 확인

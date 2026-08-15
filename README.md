@@ -12,6 +12,7 @@ Android-first MVP for Korean users to manage shared gifticon/coupon images in ro
 - `UX_BENCHMARK_2026-08-14.md`: 유사 앱 비교, 정량 UX 목표, P0~P2 우선순위
 - `QUALITY_REVIEW_2026-08-14.md`: 코드 품질 점수와 출시 차단 위험
 - `PERFORMANCE_BENCHMARK_2026-08-15.md`: 100개 목록 Baseline Profile 적용 전·후 성능 기준선
+- `FIREBASE_ROLLBACK.md`: Rules·Indexes 검증, 승인, 롤백·roll-forward 운영 절차
 
 ## 필수 준비물
 
@@ -114,6 +115,7 @@ PR과 `main` push에서는 다음 항목을 자동 검증합니다.
 - Android Gradle Wrapper 검증, 단위 테스트, debug APK·R8 release·benchmark APK 빌드
 
 복구함 cursor paging은 `firebase/firestore.indexes.json`의 composite index 2개를 추가로 요구합니다. Backend/App 배포 전에 인덱스를 먼저 배포하고 생성 완료 후 실제 복구함 쿼리를 확인해야 합니다.
+운영 Rules·Indexes 장애 복구는 임의 로컬 파일을 직접 배포하지 않고 [`FIREBASE_ROLLBACK.md`](FIREBASE_ROLLBACK.md)의 `main` 조상 commit 기반 workflow를 사용합니다. 기본 실행은 Firebase에 접속하지 않는 검증 전용입니다.
 
 ## 보안 원칙
 

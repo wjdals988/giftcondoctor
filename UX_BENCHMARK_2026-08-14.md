@@ -48,7 +48,7 @@
 - [완료] 로컬 Backend 단위 57개, Rules·저장소 통합 23개, Android 단위 55개·계측 27개 테스트와 build/audit 전체 통과
 - [완료] Vercel Preview 배포 성공 확인
 - [대기] Preview health와 인증이 필요한 API의 실패/성공 경계 확인
-- [대기] Firestore Rules·Indexes 프로덕션 배포 경로와 rollback 절차 확정
+- [구현] Firestore Rules·Indexes를 main 조상 commit으로 제한하고 검증 artifact→production 승인→cloud dry-run→배포 evidence로 이어지는 rollback·roll-forward workflow 추가. `main` 병합 후 실제 검증 run은 대기
 - [대기] main 병합 후 Vercel production이 동일 commit을 가리키는지 확인
 - [차단] Android `0.1.20 (21)` debug·R8 release 빌드 검증, 기존 release keystore 미복구로 서명 Release는 보류
 
