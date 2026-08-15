@@ -2,7 +2,7 @@
 
 이 프로젝트는 공개된 버전을 덮어쓰지 않고 새 `versionName`과 `versionCode`로 발행합니다.
 
-## Unreleased — 0.1.31 (32)
+## 배포 대기 — 0.1.31 (32)
 
 ### OCR 정확도
 
@@ -14,6 +14,7 @@
 
 - 한 줄 주문일+유효기간, 다음 줄 만료일, 사용기간 범위, 잘못된 날짜+과거 결제일의 4개 회귀 추가
 - Android 단위 112/112, Android 16 AVD 계측 55/55, lint 오류 0건·기존 경고 14건, R8 release/benchmark build 통과
+- GitHub signing dry-run `31888994018` 성공: signed APK 47,012,293 bytes, SHA-256 `1db61d26bee4ce29488ac8a9355cb5cb65e206c997f616bcc7a4ca303acf45b1`, production API·새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.30 (31)
 
