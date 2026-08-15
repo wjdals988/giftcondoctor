@@ -17,6 +17,7 @@ import {
   type BlobCleanupJob
 } from "@/lib/blobCleanupQueue";
 import { deleteCouponImages } from "@/lib/couponImageStorage";
+import { claimExpiredCouponForPurge, purgeCouponDocument } from "@/lib/couponTrashStore";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError, requireCronSecret } from "@/lib/http";
@@ -50,6 +51,8 @@ const OUTBOX_BATCH_SIZE = 200;
 const OUTBOX_CONCURRENCY = 10;
 const BLOB_CLEANUP_BATCH_SIZE = 100;
 const BLOB_CLEANUP_CONCURRENCY = 5;
+const TRASH_PURGE_BATCH_SIZE = 100;
+const TRASH_PURGE_CONCURRENCY = 5;
 const CLEANUP_BATCH_SIZE = 200;
 
 type Summary = {
@@ -73,6 +76,8 @@ type Summary = {
   blobCleanupDeadLetters: number;
   blobCleanupBacklog: number;
   cleanedBlobCleanup: number;
+  trashPurged: number;
+  trashPurgeBacklog: number;
   errors: string[];
 };
 
@@ -622,6 +627,30 @@ async function processDueBlobCleanups(runId: string, now: Date, summary: Summary
   summary.blobCleanupBacklog = remainingDue.size + remainingExpired.size;
 }
 
+async function purgeExpiredCouponTrash(now: Date, summary: Summary) {
+  const db = getAdminDb();
+  const expired = await db.collectionGroup("coupons")
+    .where("purgeAt", "<=", Timestamp.fromDate(now))
+    .limit(TRASH_PURGE_BATCH_SIZE)
+    .get();
+  for (let index = 0; index < expired.docs.length; index += TRASH_PURGE_CONCURRENCY) {
+    await Promise.all(expired.docs.slice(index, index + TRASH_PURGE_CONCURRENCY).map(async (candidate) => {
+      try {
+        const claimed = await claimExpiredCouponForPurge(candidate.ref, now);
+        if (!claimed) return;
+        await purgeCouponDocument(claimed);
+        summary.trashPurged += 1;
+      } catch (error) {
+        summary.errors.push(`coupon-trash:${candidate.ref.path}:${errorMessage(error)}`);
+      }
+    }));
+  }
+  summary.trashPurgeBacklog = (await db.collectionGroup("coupons")
+    .where("purgeAt", "<=", Timestamp.fromDate(now))
+    .limit(1)
+    .get()).size;
+}
+
 async function cleanupNotificationHistory(now: Date, summary: Summary) {
   const db = getAdminDb();
   const cutoff = Timestamp.fromDate(notificationRetentionCutoff(now));
@@ -791,6 +820,8 @@ async function runExpiryReminders(now = new Date()) {
     blobCleanupDeadLetters: 0,
     blobCleanupBacklog: 0,
     cleanedBlobCleanup: 0,
+    trashPurged: 0,
+    trashPurgeBacklog: 0,
     errors: []
   };
   if (lease.lease !== "acquired") return summary;
@@ -799,6 +830,7 @@ async function runExpiryReminders(now = new Date()) {
     await enqueueExpiryReminders(now, summary);
     await enqueueDailyPushTest(runDate, now, summary);
     await processDueDeliveries(lease.runId, now, summary);
+    await purgeExpiredCouponTrash(now, summary);
     await processDueBlobCleanups(lease.runId, now, summary);
     await cleanupNotificationHistory(now, summary);
     await finishDailyLease(
@@ -806,7 +838,8 @@ async function runExpiryReminders(now = new Date()) {
       lease.runId,
       summary,
       summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0 ||
-        summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0
+        summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0 ||
+        summary.trashPurgeBacklog > 0
         ? "partial"
         : "completed"
     );
@@ -824,7 +857,8 @@ async function handle(request: Request) {
     const summary = await runExpiryReminders();
     if (
       summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0 ||
-      summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0
+      summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0 ||
+      summary.trashPurgeBacklog > 0
     ) {
       console.error("expiry-reminders completed partially", summary);
       return json(summary, { status: 500 });

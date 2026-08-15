@@ -260,6 +260,27 @@ describe("coupon security rules", () => {
     await assertFails(getDoc(doc(db, "rooms/room-1/coupons/coupon-1")));
   });
 
+  it("hides a soft-deleted coupon and its comments even from the coupon owner", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "deleted",
+        visibility: "deleted",
+        deletedByUid: "member-1",
+        deletedAt: Timestamp.now(),
+        purgeAt: Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        trashState: { status: "active", visibility: "room" }
+      });
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1/comments/comment-1"), {
+        authorUid: "member-1",
+        body: "삭제된 댓글"
+      });
+    });
+    const ownerDb = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(getDoc(doc(ownerDb, "rooms/room-1/coupons/coupon-1")));
+    await assertFails(getDoc(doc(ownerDb, "rooms/room-1/coupons/coupon-1/comments/comment-1")));
+  });
+
   it("allows bounded cursor queries but rejects another owner's private coupon query", async () => {
     await testEnvironment.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

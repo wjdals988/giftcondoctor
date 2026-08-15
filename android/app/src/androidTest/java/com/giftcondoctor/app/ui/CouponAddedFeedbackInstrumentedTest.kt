@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.giftcondoctor.app.ui.screens.CouponAddedFeedbackEffect
 import com.giftcondoctor.app.ui.screens.CouponUsedFeedbackEffect
+import com.giftcondoctor.app.ui.screens.CouponDeletedFeedbackEffect
+import com.giftcondoctor.app.ui.screens.DeletedCouponFeedback
 import com.giftcondoctor.app.ui.theme.GDTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -66,5 +68,35 @@ class CouponAddedFeedbackInstrumentedTest {
         composeRule.onNodeWithText("사용 완료로 변경했어요.").assertIsDisplayed()
         composeRule.onNodeWithText("실행 취소").performClick()
         composeRule.runOnIdle { assertEquals(1, undoCount) }
+    }
+
+    @Test
+    fun restoresCouponFromTheDeleteSnackbar() {
+        var consumed = 0
+        var restoredCouponId: String? = null
+
+        composeRule.setContent {
+            val snackbarHostState = remember { SnackbarHostState() }
+            GDTheme {
+                CouponDeletedFeedbackEffect(
+                    feedback = DeletedCouponFeedback("room-1", "coupon-1", "아메리카노"),
+                    snackbarHostState = snackbarHostState,
+                    onConsumed = { consumed += 1 },
+                    onUndo = {
+                        restoredCouponId = it
+                        Result.success(Unit)
+                    }
+                )
+                SnackbarHost(snackbarHostState)
+            }
+        }
+
+        composeRule.onNodeWithText("‘아메리카노’ 쿠폰을 복구함으로 이동했어요.").assertIsDisplayed()
+        composeRule.onNodeWithText("실행 취소").performClick()
+        composeRule.onNodeWithText("쿠폰을 목록으로 복원했어요.").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals(1, consumed)
+            assertEquals("coupon-1", restoredCouponId)
+        }
     }
 }

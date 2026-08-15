@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,11 +30,13 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
@@ -52,6 +56,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -91,6 +99,7 @@ import com.giftcondoctor.app.core.shouldLoadNextPage
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
@@ -108,11 +117,14 @@ import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
+import com.giftcondoctor.app.ui.viewmodel.CouponTrashViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
 import java.time.LocalDate
+import java.time.Instant
+import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -470,6 +482,8 @@ fun RoomDetailScreen(
     onOpenCoupon: (String) -> Unit,
     onOpenMembers: () -> Unit,
     onOpenSettings: () -> Unit,
+    deletedCouponFeedback: DeletedCouponFeedback? = null,
+    onDeletedFeedbackConsumed: () -> Unit = {},
     viewModel: RoomDetailViewModel = viewModel(key = "room-detail-$roomId")
 ) {
     LaunchedEffect(roomId) { viewModel.start(roomId) }
@@ -478,10 +492,19 @@ fun RoomDetailScreen(
     val title = (room as? UiState.Success<Room>)?.data?.name ?: "쿠폰방"
     val roomData = (room as? UiState.Success<Room>)?.data
     val isOwner = roomData?.ownerUid == viewModel.currentUid
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    CouponDeletedFeedbackEffect(
+        feedback = deletedCouponFeedback,
+        snackbarHostState = snackbarHostState,
+        onConsumed = onDeletedFeedbackConsumed,
+        onUndo = { couponId -> viewModel.restoreDeletedCoupon(roomId, couponId) }
+    )
 
     GDScaffold(
         title = title,
         onBack = onBack,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (roomId != AppConstants.PUSH_TEST_ROOM_ID) {
                 ExtendedFloatingActionButton(
@@ -519,6 +542,42 @@ fun RoomDetailScreen(
                 onOpenCoupon = onOpenCoupon,
                 onAddCoupon = onAddCoupon,
                 modifier = modifier
+            )
+        }
+    }
+}
+
+data class DeletedCouponFeedback(
+    val roomId: String,
+    val couponId: String,
+    val title: String
+)
+
+@Composable
+internal fun CouponDeletedFeedbackEffect(
+    feedback: DeletedCouponFeedback?,
+    snackbarHostState: SnackbarHostState,
+    onConsumed: () -> Unit,
+    onUndo: suspend (String) -> Result<Unit>
+) {
+    LaunchedEffect(feedback) {
+        val deleted = feedback ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "‘${deleted.title}’ 쿠폰을 복구함으로 이동했어요.",
+            actionLabel = "실행 취소",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long
+        )
+        onConsumed()
+        if (result == SnackbarResult.ActionPerformed) {
+            val restored = onUndo(deleted.couponId)
+            snackbarHostState.showSnackbar(
+                message = restored.fold(
+                    onSuccess = { "쿠폰을 목록으로 복원했어요." },
+                    onFailure = { it.localizedMessage ?: "쿠폰을 복원하지 못했어요." }
+                ),
+                withDismissAction = true,
+                duration = SnackbarDuration.Short
             )
         }
     }
@@ -907,6 +966,7 @@ fun RoomSettingsScreen(
     roomId: String,
     onBack: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenTrash: () -> Unit,
     onLeft: () -> Unit,
     roomViewModel: RoomDetailViewModel = viewModel(key = "room-settings-room-$roomId"),
     settingsViewModel: SettingsViewModel = viewModel(key = "room-settings-$roomId")
@@ -925,7 +985,13 @@ fun RoomSettingsScreen(
             is UiState.Success -> {
                 val room = state.data
                 val isOwner = room.ownerUid == roomViewModel.currentUid
-                Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(
+                    modifier = modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -966,6 +1032,14 @@ fun RoomSettingsScreen(
                         shape = MaterialTheme.shapes.small
                     ) {
                         Text("전체 알림 설정 열기")
+                    }
+                    OutlinedButton(
+                        onClick = onOpenTrash,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Icon(Icons.Default.RestoreFromTrash, contentDescription = null)
+                        Text("최근 삭제한 쿠폰", modifier = Modifier.padding(start = 6.dp))
                     }
                     OutlinedButton(
                         onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },
@@ -1031,6 +1105,151 @@ fun RoomSettingsScreen(
             }
         )
     }
+}
+
+@Composable
+fun CouponTrashScreen(
+    roomId: String,
+    onBack: () -> Unit,
+    viewModel: CouponTrashViewModel = viewModel(key = "coupon-trash-$roomId")
+) {
+    LaunchedEffect(roomId) { viewModel.load(roomId) }
+    val coupons by viewModel.coupons.collectAsStateWithLifecycle()
+    val busyCouponId by viewModel.busyCouponId.collectAsStateWithLifecycle()
+    val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
+
+    GDScaffold(title = "최근 삭제한 쿠폰", onBack = onBack) { modifier ->
+        CouponTrashContent(
+            coupons = coupons,
+            busyCouponId = busyCouponId,
+            busyAction = busyAction,
+            message = message,
+            onRetry = { viewModel.load(roomId) },
+            onRestore = { viewModel.restore(roomId, it) },
+            onPermanentlyDelete = { viewModel.permanentlyDelete(roomId, it) },
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+internal fun CouponTrashContent(
+    coupons: UiState<List<DeletedCoupon>>,
+    busyCouponId: String?,
+    busyAction: String?,
+    message: String?,
+    onRetry: () -> Unit,
+    onRestore: (String) -> Unit,
+    onPermanentlyDelete: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    now: Instant = Instant.now()
+) {
+    var permanentDeleteTarget by remember { mutableStateOf<DeletedCoupon?>(null) }
+    Column(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        GDInfoBanner(
+            title = "삭제 후 30일 동안 보관해요",
+            body = "복원하면 이미지와 댓글도 원래 상태로 돌아옵니다. 기간이 지나면 자동으로 영구 삭제됩니다.",
+            icon = Icons.Default.RestoreFromTrash
+        )
+        InlineMessage(message)
+        when (coupons) {
+            UiState.Loading -> LoadingState()
+            is UiState.Error -> ErrorState(coupons.message, actionLabel = "다시 시도", onAction = onRetry)
+            is UiState.Success -> if (coupons.data.isEmpty()) {
+                EmptyState(
+                    title = "복구함이 비어 있어요",
+                    message = "삭제한 쿠폰은 여기에 30일 동안 보관됩니다.",
+                    icon = Icons.Default.RestoreFromTrash
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(coupons.data, key = { it.couponId }) { coupon ->
+                        val busy = busyCouponId != null
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(coupon.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    listOfNotNull(
+                                        coupon.brand.takeIf { it.isNotBlank() },
+                                        coupon.expiresLocalDate?.let { "만료 $it" }
+                                    ).joinToString(" · ").ifBlank { "브랜드 정보 없음" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "영구 삭제까지 ${trashDaysRemaining(now, coupon.purgeAt)}일",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = { onRestore(coupon.couponId) },
+                                        enabled = !busy,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        if (busyCouponId == coupon.couponId && busyAction == "restore") ButtonProgressIndicator()
+                                        Text(if (busyCouponId == coupon.couponId && busyAction == "restore") "복원 중..." else "복원")
+                                    }
+                                    OutlinedButton(
+                                        onClick = { permanentDeleteTarget = coupon },
+                                        enabled = !busy,
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        if (busyCouponId == coupon.couponId && busyAction == "delete") {
+                                            ButtonProgressIndicator(color = MaterialTheme.colorScheme.error)
+                                        }
+                                        Icon(Icons.Default.DeleteForever, contentDescription = null)
+                                        Text(if (busyCouponId == coupon.couponId && busyAction == "delete") "삭제 중..." else "영구 삭제")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    permanentDeleteTarget?.let { coupon ->
+        AlertDialog(
+            onDismissRequest = { if (busyCouponId == null) permanentDeleteTarget = null },
+            title = { Text("영구 삭제할까요?") },
+            text = { Text("${coupon.title}의 이미지와 댓글이 삭제되며 더 이상 복원할 수 없습니다.") },
+            dismissButton = {
+                TextButton(onClick = { permanentDeleteTarget = null }, enabled = busyCouponId == null) {
+                    Text("취소")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        permanentDeleteTarget = null
+                        onPermanentlyDelete(coupon.couponId)
+                    },
+                    enabled = busyCouponId == null,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("영구 삭제")
+                }
+            }
+        )
+    }
+}
+
+internal fun trashDaysRemaining(now: Instant, purgeAt: Instant): Long {
+    val remainingSeconds = Duration.between(now, purgeAt).seconds.coerceAtLeast(0)
+    return (remainingSeconds + 86_399) / 86_400
 }
 
 @Composable

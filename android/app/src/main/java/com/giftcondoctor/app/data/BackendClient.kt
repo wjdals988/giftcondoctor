@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.PublicRoom
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.UploadedImage
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
@@ -119,12 +120,47 @@ class BackendClient(
         return JSONObject(response).optInt("sent", 0)
     }
 
-    suspend fun deleteCoupon(roomId: String, couponId: String) {
-        authedRequest(
+    suspend fun deleteCoupon(roomId: String, couponId: String): DeletedCoupon {
+        val response = authedRequest(
             Request.Builder()
-                .url("$baseUrl/api/coupons?roomId=$roomId&couponId=$couponId")
+                .url("$baseUrl/api/coupons?roomId=${Uri.encode(roomId)}&couponId=${Uri.encode(couponId)}")
                 .delete()
         )
+        return parseDeletedCoupon(JSONObject(response).getJSONObject("deletedCoupon"))
+            ?: throw IOException("삭제 결과를 확인하지 못했습니다.")
+    }
+
+    suspend fun deletedCoupons(roomId: String): List<DeletedCoupon> {
+        val response = authedRequest(
+            Request.Builder()
+                .url("$baseUrl/api/coupons/trash?roomId=${Uri.encode(roomId)}")
+                .get()
+        )
+        val items = JSONObject(response).optJSONArray("coupons") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                parseDeletedCoupon(items.optJSONObject(index))?.let(::add)
+            }
+        }
+    }
+
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {
+        postJson(
+            "/api/coupons/trash",
+            JSONObject().put("roomId", roomId).put("couponId", couponId)
+        )
+    }
+
+    suspend fun permanentlyDeleteCoupon(roomId: String, couponId: String): Boolean {
+        val response = authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/trash" +
+                        "?roomId=${Uri.encode(roomId)}&couponId=${Uri.encode(couponId)}"
+                )
+                .delete()
+        )
+        return JSONObject(response).optBoolean("cleanupPending", false)
     }
 
     suspend fun uploadCouponImage(
@@ -383,6 +419,25 @@ class BackendClient(
             runCatching { JSONObject(it).optString("error") }.getOrNull()
         }?.takeIf { it.isNotBlank() }
         return if (serverMessage != null) "$serverMessage ($code)" else "서버 요청에 실패했습니다. ($code)"
+    }
+
+    private fun parseDeletedCoupon(value: JSONObject?): DeletedCoupon? {
+        value ?: return null
+        val couponId = value.optString("couponId").takeIf { it.isNotBlank() } ?: return null
+        val deletedAt = runCatching { java.time.Instant.parse(value.optString("deletedAt")) }.getOrNull()
+            ?: return null
+        val purgeAt = runCatching { java.time.Instant.parse(value.optString("purgeAt")) }.getOrNull()
+            ?: return null
+        return DeletedCoupon(
+            couponId = couponId,
+            title = value.optString("title").ifBlank { "이름 없는 쿠폰" },
+            brand = value.optString("brand"),
+            expiresLocalDate = value.optString("expiresLocalDate")
+                .takeIf { it.isNotBlank() }
+                ?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() },
+            deletedAt = deletedAt,
+            purgeAt = purgeAt
+        )
     }
 }
 

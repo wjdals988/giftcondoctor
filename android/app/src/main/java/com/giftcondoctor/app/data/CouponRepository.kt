@@ -6,6 +6,7 @@ import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.DetectedCouponBarcode
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
 import com.giftcondoctor.app.data.model.toCoupon
 import com.giftcondoctor.app.data.model.toCouponComment
@@ -284,9 +285,17 @@ class CouponRepository(
         return upload.cleanupPending
     }
 
-    suspend fun deleteCoupon(roomId: String, couponId: String) {
+    suspend fun deleteCoupon(roomId: String, couponId: String): DeletedCoupon =
         backend.deleteCoupon(roomId, couponId)
+
+    suspend fun deletedCoupons(roomId: String): List<DeletedCoupon> = backend.deletedCoupons(roomId)
+
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {
+        backend.restoreDeletedCoupon(roomId, couponId)
     }
+
+    suspend fun permanentlyDeleteCoupon(roomId: String, couponId: String): Boolean =
+        backend.permanentlyDeleteCoupon(roomId, couponId)
 
     suspend fun addComment(roomId: String, couponId: String, body: String) {
         val user = auth.currentUser ?: error("로그인이 필요합니다.")

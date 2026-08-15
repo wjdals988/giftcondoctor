@@ -105,6 +105,7 @@ import com.giftcondoctor.app.core.shouldLoadOriginalImage
 import com.giftcondoctor.app.core.zoomOffsetForDoubleTap
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
@@ -480,7 +481,7 @@ fun CouponDetailScreen(
     roomId: String,
     couponId: String,
     onBack: () -> Unit,
-    onDeleted: () -> Unit,
+    onDeleted: (DeletedCoupon) -> Unit,
     showAddedFeedback: Boolean = false,
     onAddedFeedbackConsumed: () -> Unit = {},
     onAddAnother: () -> Unit = {},
@@ -887,7 +888,7 @@ private fun CouponDetailContent(
         AlertDialog(
             onDismissRequest = { if (!actionBusy) showDeleteDialog = false },
             title = { Text("쿠폰을 삭제할까요?") },
-            text = { Text("쿠폰 이미지와 댓글도 함께 삭제되며 되돌릴 수 없습니다.") },
+            text = { Text("목록에서 숨기고 복구함으로 이동합니다. 30일 동안 이미지와 댓글까지 복원할 수 있어요.") },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }, enabled = !actionBusy) { Text("취소") }
             },
@@ -898,7 +899,7 @@ private fun CouponDetailContent(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     if (busyAction == "delete") ButtonProgressIndicator()
-                    Text(if (busyAction == "delete") "삭제 중..." else "삭제")
+                    Text(if (busyAction == "delete") "이동 중..." else "복구함으로 이동")
                 }
             }
         )

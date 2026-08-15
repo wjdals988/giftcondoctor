@@ -12,7 +12,7 @@
 | 가독성 | 76 | 네트워크 callback과 확대 수학을 작은 함수로 분리했지만 대형 Screen 파일은 남음 |
 | 성능 | 93 | 64KB 원본 파일 스트리밍, 크기 독립 압축·bitmap LRU, 표시 영역 후축소, 취소 가능한 HTTP, 중복 요청 직렬화, R8·Baseline Profile. 스크롤 frame budget 초과 |
 | 명시적 I/O | 90 | HTTP status/body와 target size, viewport 입력·출력이 타입으로 드러남 |
-| 유지보수성 | 92 | Android 단위 28→55, 계측 0→19, Backend 50개, Rules 17개, Macrobenchmark 6개(3쌍 A/B)와 profile generator 2개로 회귀 범위 확대 |
+| 유지보수성 | 92 | Android 단위 28→55, 계측 0→21, Backend 단위 56개, Rules·저장소 통합 22개, Macrobenchmark와 profile generator로 회귀 범위 확대 |
 | 에러 처리 | 90 | cancellation 전파, 빈·10MB 초과 body, 부분 파일 삭제, Blob 재시도, stale 바코드 제거 경계 유지 |
 | 협업 | 96 | 성능 기준선, CI 컴파일 게이트, 사용자 변경 이력과 서명 차단 상태 동기화 |
 
@@ -21,10 +21,10 @@
 ## 통과 항목
 
 - Android 단위 테스트: 55/55
-- Android 16 emulator-5556 계측 테스트: 19/19
+- Android 16 AVD 2대 계측 테스트: 각 21/21, 총 42회 실행
 - ZXing Code 128 생성→재감지 왕복, 지원 형식 경계와 분석 bitmap 1600px 상한 검증
-- Firestore Rules Emulator: 17/17, 바코드 경계와 사용 완료 복원의 본인 허용·타인 거부·5분 만료 포함
-- Backend 단위 테스트: 50/50, 결정적 upload session 경로·병렬 처리·보상 삭제와 Blob cleanup queue 정책 포함
+- Firestore Rules·복구함 저장소 통합: 22/22, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존 포함
+- Backend 단위 테스트: 56/56, 결정적 upload session 경로·병렬 처리·보상 삭제·복구함 정책 포함
 - Release/R8 Baseline Profile A/B Macrobenchmark: 6/6, 각 5회
 - R8 release APK와 benchmark APK 빌드: 성공
 - 최종 100개 목록 cold start 중앙값: 1,264.3ms → 1,046.9ms, 17.2% 단축
@@ -56,7 +56,9 @@
 - 사용 완료 스낵바의 `실행 취소` 액션과 5분 내 처리자 본인만 허용하는 Rules 전이를 검증하고, 일반 정보 수정으로 상태 전이를 우회하던 등록자 권한을 차단
 - benchmark 생성물 1,043개를 `.gitignore`로 제외해 미추적 후보를 1,077개→실제 소스·문서 34개로 축소
 - 이미지 교체는 등록자 권한·원본 경로를 transaction에서 재검증하고 실패 시 새 원본·썸네일을 보상 삭제
-- 이미지 교체·쿠폰 삭제·방 삭제 Blob은 영속 cleanup queue에 기록하고 live-reference 방어·5회 backoff·lease·dead-letter와 health 집계로 무음 누수와 사용 중 이미지 삭제를 방지
+- 이미지 교체·쿠폰 영구 삭제·방 삭제 Blob은 영속 cleanup queue에 기록하고 live-reference 방어·5회 backoff·lease·dead-letter와 health 집계로 무음 누수와 사용 중 이미지 삭제를 방지
+- 쿠폰은 30일 soft-delete 후 복원하거나 확인 뒤 영구 삭제하며, 삭제 직후 목록의 실행 취소와 이미지·댓글·상태 복원을 UI·Firestore 통합 테스트로 검증
+- 삭제된 쿠폰의 Firestore 직접 읽기·이미지 API를 차단하고 비공개 복구함은 등록자에게만 보이도록 프라이버시 경계를 회귀 테스트로 고정
 
 ## 즉시 수정한 항목
 
@@ -86,7 +88,8 @@
 - upload session 정책은 단위 테스트와 production build까지 통과했지만 실제 Vercel Blob PUT·DELETE 경합 및 네트워크 fault injection은 수행하지 못했다.
 - 이미지 교체 API는 로컬 production build까지 통과했지만 미배포 상태라 실제 Vercel Blob·Firestore 통합 성공은 확인하지 못했다.
 - 업로드 49.0% 절감은 합성 JPEG 1장 기준이다. 실제 스크린샷·HEIC·저조도 사진과 LTE/Wi-Fi별 end-to-end 시간, 최적화 후 매장 바코드 인식률은 물리 검증 전 보장할 수 없다.
-- 쿠폰 삭제는 Blob·댓글까지 영구 제거하므로 soft-delete와 복구함이 구현되기 전에는 실행 취소를 제공하지 않는다.
+- 복구함 자동 정리는 일일 Cron이 한 번에 최대 100개를 처리하므로 대량 backlog가 생기면 여러 날 남을 수 있다. 운영 health에 due/purging 건수를 노출하지만 외부 경보 연결은 남아 있다.
+- 복구함 추가 후 목록 스크롤 재측정은 P50 22.1ms로 기준 대비 +0.5%였지만 P90 31.3ms로 +26.7%였다. 목록 코드는 그대로이고 에뮬레이터 변동성이 있으나 10% 회귀 한계를 넘었으므로 성능 합격으로 처리하지 않는다.
 - `npm audit --omit=dev`는 High/Critical 0건이지만 Firebase Admin 14.2.0→Cloud Storage→`uuid` 9.0.1 간접 경로의 Moderate 6건을 보고한다. 자동 수정안은 Firebase Admin 10.3.0 강제 다운그레이드이므로 적용하지 않았고 상위 의존성 갱신을 추적해야 한다.
 
 ## 다음 우선순위
@@ -95,10 +98,10 @@
 2. [P0] 새 release keystore 전환·Firebase 인증서 재등록·signed R8 release 회귀
 3. [P1] 실제 Vercel Blob cleanup 실패·재시도 운영 통합 테스트
 4. [P1] 실제 계정·Vercel Blob 24개 WebP의 인증 HTTP·Compose 최초 표시 시간·wire byte·release PSS 계측
-5. [P1] 프로필 적용 후에도 16.7ms를 넘는 목록 구성·측정 비용 추가 최적화
+5. [P1] P90 31.3ms 재측정 원인 분리와 프로필 적용 후에도 16.7ms를 넘는 목록 구성·측정 비용 추가 최적화
 6. [P1] QR·EAN·Code 128 실제 매장 스캐너와 저화질 이미지 감지 회귀
 7. [P1] 최근 쿠폰 암호화 로컬 캐시와 오프라인 매장 사용 경로
-8. [P1] 검색·필터·삭제·달력 UI 테스트 확대와 쿠폰 복구함 설계
+8. [P1] 검색·필터·달력 UI 테스트 확대와 복구함 100개 초과 paging
 9. [P2] Compose/AGP/compileSdk 업그레이드 별도 검증
 
 ## 긍정적 평가

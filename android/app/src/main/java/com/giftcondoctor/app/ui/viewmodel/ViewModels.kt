@@ -27,6 +27,7 @@ import com.giftcondoctor.app.data.PushTokenRepository
 import com.giftcondoctor.app.data.RoomRepository
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
@@ -267,6 +268,11 @@ class RoomDetailViewModel(
 
     fun retryCoupons() {
         couponPager?.refresh()
+    }
+
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String): Result<Unit> {
+        return runCatching { couponRepository.restoreDeletedCoupon(roomId, couponId) }
+            .onSuccess { couponPager?.refresh() }
     }
 
     override fun onCleared() {
@@ -585,8 +591,16 @@ class CouponDetailViewModel(
             repository.undoMarkUsed(roomId, couponId)
         }
 
-    fun delete(roomId: String, couponId: String, onDeleted: () -> Unit) = runAction("delete", onSuccess = onDeleted) {
-        repository.deleteCoupon(roomId, couponId)
+    fun delete(roomId: String, couponId: String, onDeleted: (DeletedCoupon) -> Unit) {
+        if (_busyAction.value != null) return
+        _busyAction.value = "delete"
+        viewModelScope.launch {
+            _message.value = null
+            runCatching { repository.deleteCoupon(roomId, couponId) }
+                .onSuccess(onDeleted)
+                .onFailure { _message.value = it.localizedMessage ?: "쿠폰을 삭제하지 못했습니다." }
+            _busyAction.value = null
+        }
     }
 
     fun addComment(roomId: String, couponId: String, body: String, onAdded: () -> Unit) {
@@ -754,6 +768,69 @@ class CouponDetailViewModel(
         CouponImageFileStore.delete(currentImageFile)
         currentImageFile = null
         super.onCleared()
+    }
+}
+
+class CouponTrashViewModel(
+    private val repository: CouponRepository = CouponRepository()
+) : ViewModel() {
+    private val _coupons = MutableStateFlow<UiState<List<DeletedCoupon>>>(UiState.Loading)
+    val coupons: StateFlow<UiState<List<DeletedCoupon>>> = _coupons
+
+    private val _busyCouponId = MutableStateFlow<String?>(null)
+    val busyCouponId: StateFlow<String?> = _busyCouponId
+
+    private val _busyAction = MutableStateFlow<String?>(null)
+    val busyAction: StateFlow<String?> = _busyAction
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
+
+    fun load(roomId: String) {
+        viewModelScope.launch { refresh(roomId) }
+    }
+
+    fun restore(roomId: String, couponId: String) = runCouponAction(roomId, couponId, "restore") {
+        repository.restoreDeletedCoupon(roomId, couponId)
+        "쿠폰을 목록으로 복원했습니다."
+    }
+
+    fun permanentlyDelete(roomId: String, couponId: String) = runCouponAction(roomId, couponId, "delete") {
+        val cleanupPending = repository.permanentlyDeleteCoupon(roomId, couponId)
+        if (cleanupPending) {
+            "쿠폰은 영구 삭제됐고 이미지 정리는 재시도됩니다."
+        } else {
+            "쿠폰을 영구 삭제했습니다."
+        }
+    }
+
+    private fun runCouponAction(
+        roomId: String,
+        couponId: String,
+        action: String,
+        block: suspend () -> String
+    ) {
+        if (_busyCouponId.value != null) return
+        _busyCouponId.value = couponId
+        _busyAction.value = action
+        viewModelScope.launch {
+            _message.value = null
+            runCatching { block() }
+                .onSuccess {
+                    _message.value = it
+                    refresh(roomId, preserveMessage = true)
+                }
+                .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
+            _busyCouponId.value = null
+            _busyAction.value = null
+        }
+    }
+
+    private suspend fun refresh(roomId: String, preserveMessage: Boolean = false) {
+        if (!preserveMessage) _message.value = null
+        runCatching { repository.deletedCoupons(roomId) }
+            .onSuccess { _coupons.value = UiState.Success(it) }
+            .onFailure { _coupons.value = UiState.Error(it.localizedMessage ?: "복구함을 불러오지 못했습니다.") }
     }
 }
 

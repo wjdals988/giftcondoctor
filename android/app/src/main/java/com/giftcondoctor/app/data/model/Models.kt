@@ -77,6 +77,15 @@ data class CouponComment(
     val createdAt: Instant?
 )
 
+data class DeletedCoupon(
+    val couponId: String,
+    val title: String,
+    val brand: String,
+    val expiresLocalDate: LocalDate?,
+    val deletedAt: Instant,
+    val purgeAt: Instant
+)
+
 data class UploadedImage(
     val blobPath: String,
     val thumbnailBlobPath: String?,

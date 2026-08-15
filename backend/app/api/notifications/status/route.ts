@@ -31,7 +31,10 @@ export async function GET(request: Request) {
       latestRunSnapshot,
       blobCleanupStatusSnapshots,
       blobCleanupDueSnapshot,
-      blobCleanupStaleSnapshot
+      blobCleanupStaleSnapshot,
+      deletedCouponSnapshot,
+      purgingCouponSnapshot,
+      dueTrashSnapshot
     ] = await Promise.all([
       Promise.all(
         STATUSES.map((status) => db.collection("notificationOutbox").where("status", "==", status).count().get())
@@ -47,7 +50,10 @@ export async function GET(request: Request) {
         )
       ),
       db.collection("blobCleanupQueue").where("nextAttemptAt", "<=", nowTimestamp).count().get(),
-      db.collection("blobCleanupQueue").where("leaseUntil", "<=", nowTimestamp).count().get()
+      db.collection("blobCleanupQueue").where("leaseUntil", "<=", nowTimestamp).count().get(),
+      db.collectionGroup("coupons").where("status", "==", "deleted").count().get(),
+      db.collectionGroup("coupons").where("status", "==", "purging").count().get(),
+      db.collectionGroup("coupons").where("purgeAt", "<=", nowTimestamp).count().get()
     ]);
 
     const counts = Object.fromEntries(
@@ -71,9 +77,15 @@ export async function GET(request: Request) {
       staleDeleting: blobCleanupStaleSnapshot.data().count
     };
     const blobCleanupState = blobCleanupHealth(blobCleanupMetrics);
+    const trashMetrics = {
+      deleted: deletedCouponSnapshot.data().count,
+      purging: purgingCouponSnapshot.data().count,
+      due: dueTrashSnapshot.data().count
+    };
+    const trashHealth = trashMetrics.purging > 0 || trashMetrics.due > 0 ? "warning" : "healthy";
     const health = notificationState === "critical" || blobCleanupState === "critical"
       ? "critical"
-      : notificationState === "warning" || blobCleanupState === "warning"
+      : notificationState === "warning" || blobCleanupState === "warning" || trashHealth === "warning"
         ? "warning"
         : "healthy";
 
@@ -84,6 +96,10 @@ export async function GET(request: Request) {
       blobCleanup: {
         health: blobCleanupState,
         metrics: blobCleanupMetrics
+      },
+      couponTrash: {
+        health: trashHealth,
+        metrics: trashMetrics
       },
       oldestDueAgeSeconds: oldestDue instanceof Timestamp
         ? ageSeconds(oldestDue.toDate(), now)

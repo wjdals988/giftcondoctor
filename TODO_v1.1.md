@@ -23,7 +23,7 @@
 - 이메일 없는 Google 계정 표시명 보강
 - OCR 다중 날짜·저화질 이미지 정확도 개선
 - [x] 100개 쿠폰 목록·고해상도 확대 Android instrumented UI 테스트
-- 검색·필터·삭제·달력 Android instrumented UI 테스트 확대
+- 검색·필터·달력 Android instrumented UI 테스트 확대
 - [x] 이미지 교체·쿠폰 삭제·방 삭제 Blob cleanup queue, live-reference 방어·5회 재시도·lease·dead-letter·운영 상태 집계
 - 방 탈퇴 전 쿠폰 소유권 이전 플로우
 - [x] 전체화면 쿠폰의 최대 밝기·화면 켜짐과 닫을 때 기존 상태 복원
@@ -31,7 +31,7 @@
 - [x] 자동 감지 실패 시 6개 주요 형식의 바코드 값 수동 입력과 저장 전 재생성 검증
 - QR·EAN·Code 128 실제 매장 스캐너와 저화질 이미지 회귀
 - [x] 사용 완료 직후 5분 내 처리자 본인 실행 취소 피드백
-- 쿠폰 삭제 soft-delete·복구함 설계와 실행 취소
+- [x] 쿠폰 삭제 30일 soft-delete·복구함·즉시 실행 취소·자동/수동 영구 삭제
 - Android 공유 시트와 갤러리 다중 선택 등록
 - 스크린샷 일괄 OCR과 중복 쿠폰 감지
 
