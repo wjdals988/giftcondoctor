@@ -2,6 +2,15 @@ name: Android Release APK
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "서명 검증만 수행하거나 실제 Release를 발행합니다."
+        required: true
+        default: signing-dry-run
+        type: choice
+        options:
+          - signing-dry-run
+          - release
 
 concurrency:
   group: android-release
@@ -13,11 +22,14 @@ env:
   DASHBOARD_DATA_FILE: src/lib/projects.json
   BUILD_TOOLS_VERSION: 35.0.0
   DEFAULT_API_BASE_URL: https://giftcondoctor.vercel.app
+  EXPECTED_PACKAGE_NAME: com.giftcondoctor.app
+  EXPECTED_FIREBASE_PROJECT_ID: giftcondoctor
+  EXPECTED_RELEASE_CERT_SHA256: 3b4a7f1f68e5c4977fd5fe625534529c86d8f025770def4119bce4451c8fb0ad
 
 jobs:
   build:
     name: Test, build, sign, and verify
-    if: github.ref == 'refs/heads/main'
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -31,6 +43,26 @@ jobs:
       release_url: ${{ steps.metadata.outputs.release_url }}
       download_url: ${{ steps.metadata.outputs.download_url }}
     steps:
+      - name: Validate invocation mode
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_MODE" in
+            signing-dry-run)
+              echo "Signing dry-run: Release and dashboard jobs will remain disabled."
+              ;;
+            release)
+              if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+                echo "A real release is allowed only from main, not $GITHUB_REF."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported mode: $RELEASE_MODE"
+              exit 1
+              ;;
+          esac
       - name: Checkout app repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,6 +106,8 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           ANDROID_API_BASE_URL: ${{ vars.ANDROID_API_BASE_URL }}
           ANDROID_GOOGLE_WEB_CLIENT_ID: ${{ secrets.ANDROID_GOOGLE_WEB_CLIENT_ID }}
         run: |
@@ -83,6 +117,31 @@ jobs:
           printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
           echo "ANDROID_RELEASE_KEYSTORE=$keystore_path" >> "$GITHUB_ENV"
           api_base_url="${ANDROID_API_BASE_URL:-$DEFAULT_API_BASE_URL}"
+          if [ "$api_base_url" != "$DEFAULT_API_BASE_URL" ]; then
+            echo "Release APK must use the production API: $DEFAULT_API_BASE_URL"
+            exit 1
+          fi
+          jq -e --arg package_name "$EXPECTED_PACKAGE_NAME" \
+            '.client[] | select(.client_info.android_client_info.package_name == $package_name)' \
+            android/app/google-services.json >/dev/null
+          jq -e --arg project_id "$EXPECTED_FIREBASE_PROJECT_ID" \
+            '.project_info.project_id == $project_id' android/app/google-services.json >/dev/null
+          jq -e --arg client_id "$ANDROID_GOOGLE_WEB_CLIENT_ID" \
+            '.client[].oauth_client[]? | select(.client_type == 3 and .client_id == $client_id)' \
+            android/app/google-services.json >/dev/null
+          keystore_cert_sha256="$(keytool -list -v \
+            -keystore "$keystore_path" \
+            -storepass "$ANDROID_RELEASE_STORE_PASSWORD" \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')"
+          if [ "$keystore_cert_sha256" != "$EXPECTED_RELEASE_CERT_SHA256" ]; then
+            echo "Release keystore certificate SHA-256 mismatch."
+            echo "Expected: $EXPECTED_RELEASE_CERT_SHA256"
+            echo "Actual:   ${keystore_cert_sha256:-missing}"
+            exit 1
+          fi
           printf '%s\n' \
             "sdk.dir=$ANDROID_HOME" \
             "apiBaseUrl=$api_base_url" \
@@ -148,6 +207,17 @@ jobs:
             --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
             --out "$asset_path" "$aligned_apk"
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "$asset_path"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" -c -v 4 "$asset_path" >/dev/null
+          apk_cert_sha256="$("$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" \
+            verify --print-certs "$asset_path" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+            | tr '[:upper:]' '[:lower:]')"
+          if [ "$apk_cert_sha256" != "$EXPECTED_RELEASE_CERT_SHA256" ]; then
+            echo "Signed APK certificate SHA-256 mismatch."
+            echo "Expected: $EXPECTED_RELEASE_CERT_SHA256"
+            echo "Actual:   ${apk_cert_sha256:-missing}"
+            exit 1
+          fi
           size_bytes="$(stat -c%s "$asset_path")"
           size_label="$(printf '%s bytes' "$(printf "%'d" "$size_bytes")")"
           sha256="$(sha256sum "$asset_path" | awk '{print $1}')"
@@ -164,14 +234,34 @@ jobs:
       - name: Upload verified APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: signed-release-apk
+          name: signed-release-apk-${{ github.run_id }}
           path: ${{ steps.metadata.outputs.asset_path }}
           if-no-files-found: error
           retention-days: 7
+      - name: Write signing summary
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          SHA256: ${{ steps.metadata.outputs.sha256 }}
+        run: |
+          {
+            echo "## Android signing result"
+            echo ""
+            echo "- mode: \`$RELEASE_MODE\`"
+            echo "- source: \`$GITHUB_REF@$GITHUB_SHA\`"
+            echo "- version: \`$VERSION_NAME ($VERSION_CODE)\`"
+            echo "- certificate SHA-256: \`$EXPECTED_RELEASE_CERT_SHA256\`"
+            echo "- APK SHA-256: \`$SHA256\`"
+            if [ "$RELEASE_MODE" = "signing-dry-run" ]; then
+              echo "- publish: disabled (no tag, Release, or dashboard change)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     name: Publish immutable GitHub Release
     needs: build
+    if: needs.build.result == 'success' && inputs.mode == 'release' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: production
     permissions:
@@ -180,7 +270,7 @@ jobs:
       - name: Download verified APK artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: signed-release-apk
+          name: signed-release-apk-${{ github.run_id }}
           path: dist
       - name: Refuse an existing release or tag
         env:
@@ -211,6 +301,10 @@ jobs:
           printf '%s\n' \
             '기프티콘닥터 Android release APK입니다.' \
             '' \
+            '> 중요: 이 버전은 새 서명 인증서로 전환되어 v0.1.12를 덮어쓸 수 없습니다.' \
+            '> 기존 사용자는 가능하면 먼저 로그아웃한 뒤 기존 앱 삭제 → 새 APK 설치 → 재로그인이 필요합니다.' \
+            '> 앱 삭제 시 로컬 데이터는 지워지며 Firebase 계정 데이터는 재로그인 후 다시 조회됩니다.' \
+            '' \
             "- versionName: $VERSION_NAME" \
             "- versionCode: $VERSION_CODE" \
             "- fileName: $ASSET_NAME" \
@@ -225,6 +319,7 @@ jobs:
   dashboard:
     name: Update dashboard after release
     needs: [build, publish]
+    if: needs.publish.result == 'success' && inputs.mode == 'release'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

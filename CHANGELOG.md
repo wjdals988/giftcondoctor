@@ -50,6 +50,8 @@
 
 ### 개발·검증
 
+- 분실된 v0.1.12 서명키 대신 새 RSA 4096bit 인증서로 전환하고, Actions 기본 실행을 tag·Release·대시보드를 변경하지 않는 signing dry-run으로 분리
+- GitHub Secrets의 Firebase project/package/Web OAuth client와 keystore·signed APK 인증서 SHA-256을 배포 전에 이중 검증
 - Android 단위 테스트 28개→55개, Android 계측 테스트 0개→27개
 - Backend 단위 테스트 58개·API 벤치마크 스크립트 테스트 4개와 Firestore Rules·복구함 저장소 통합 테스트 23개로 30일 만료·권한·댓글 보존·비공개 격리·105개 cursor paging 검증
 - 24개 썸네일 miss/hit·payload·PSS 5회 기준선과 동일 key 24개 동시 요청 fetch 1회 회귀 추가

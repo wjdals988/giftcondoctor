@@ -88,9 +88,9 @@ IP 연결은 되고 도메인만 실패하면 AVD를 정상 DNS로 재시작한 
 
 ## Android Release 자동화
 
-GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니다. 테스트·빌드·서명 검증을 먼저 끝낸 뒤 `v{versionName}` GitHub Release를 발행하고, 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
+GitHub Actions의 `Android Release APK` workflow는 기본 `signing-dry-run` 모드에서 선택한 branch의 테스트·빌드·서명·인증서 검증과 임시 artifact 업로드만 수행합니다. tag, GitHub Release, 대시보드는 변경하지 않습니다. 실제 `release` 모드는 `main`에서만 허용되며, 검증된 APK로 GitHub Release를 발행한 뒤 성공한 Release를 기준으로 `wjdals988/mydashboard`의 APK 메타데이터를 별도 job에서 갱신합니다.
 
-현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았습니다. `0.1.20 (21)`는 이미지 요청 취소·중복 억제, 탭 위치 중심 확대, 100개 목록 Release/R8 성능 기준선과 Baseline Profile까지 포함한 검증용 debug 버전이며, 새 서명키 전환 절차가 확정되기 전에는 정식 Release를 만들지 않습니다. 인증서 지문, 재설치 영향과 새 키 백업 원칙은 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
+현재 공식 `v0.1.12`의 기존 release keystore는 복구되지 않았고 `0.1.20 (21)`부터 새 인증서를 사용합니다. 따라서 기존 앱을 덮어쓸 수 없으며, 기존 사용자는 가능하면 먼저 로그아웃한 뒤 기존 앱 삭제 → 새 APK 설치 → 재로그인이 필요합니다. 앱 삭제 시 로컬 데이터와 권한은 지워지고 Firebase 계정 데이터는 같은 계정으로 다시 조회합니다. 인증서 지문, 검증 상태와 전환 절차는 [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)를 따릅니다.
 
 앱 저장소 GitHub Secrets에 아래 값을 설정해야 합니다.
 
@@ -102,7 +102,7 @@ GitHub Actions의 `Android Release APK` workflow는 `main`에서만 실행됩니
 - `ANDROID_RELEASE_KEY_PASSWORD`: release key 비밀번호
 - `DASHBOARD_UPDATE_TOKEN`: `wjdals988/mydashboard` contents read/write 권한 토큰
 
-선택 값으로 GitHub Actions Variables의 `ANDROID_API_BASE_URL`을 설정할 수 있습니다. 없으면 `https://giftcondoctor.vercel.app`를 사용합니다.
+선택 값으로 GitHub Actions Variables의 `ANDROID_API_BASE_URL`을 설정할 수 있지만 release 서명 workflow에서는 `https://giftcondoctor.vercel.app`와 정확히 같아야 합니다. 없으면 이 production URL을 사용합니다.
 
 동일한 Release 또는 tag가 있으면 실패합니다. 공개 버전은 덮어쓰거나 이동하지 않으며, 정정이 필요하면 `versionName`과 `versionCode`를 모두 증가시켜 새 버전으로 발행합니다. `production` environment에 승인 규칙을 설정하는 것을 권장합니다.
 
