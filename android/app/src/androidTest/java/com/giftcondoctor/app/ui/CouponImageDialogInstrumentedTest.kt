@@ -110,6 +110,36 @@ class CouponImageDialogInstrumentedTest {
     }
 
     @Test
+    fun earlyZoomDuringOriginalLoadUpgradesDirectlyToHighResolution() {
+        val bitmap = Bitmap.createBitmap(600, 1_200, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.WHITE)
+        }
+        val imageFile = createImageFile(bitmap)
+        var imageState by mutableStateOf<CouponOriginalImageState>(CouponOriginalImageState.Loading)
+
+        composeRule.setContent {
+            GDTheme {
+                CouponImageDialog(
+                    previewBitmap = bitmap.asImageBitmap(),
+                    imageState = imageState,
+                    onRetry = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("zoomed-coupon-image")
+            .performTouchInput { doubleClick() }
+        composeRule.onNodeWithText("2.0×").assertExists()
+        composeRule.runOnIdle { imageState = CouponOriginalImageState.Ready(imageFile) }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("확대용 원본 준비됨 · 두 손가락 확대 · 두 번 탭")
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
+                .isNotEmpty()
+        }
+    }
+
+    @Test
     fun keepsPreviewAndOffersRetryWhenOriginalFails() {
         val bitmap = Bitmap.createBitmap(600, 1_200, Bitmap.Config.ARGB_8888).apply {
             eraseColor(android.graphics.Color.WHITE)
