@@ -2,6 +2,7 @@ package com.giftcondoctor.app.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -66,7 +67,11 @@ class CouponImageDialogInstrumentedTest {
         composeRule.onNodeWithText("3.0×").assertExists()
         composeRule.onNodeWithText("원본 맞춤").performClick()
         composeRule.onNodeWithText("1.0×").assertExists()
-        composeRule.onNodeWithText("밝기 최적화됨 · 두 손가락 확대 · 두 번 탭").assertExists()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("확대용 원본 준비됨 · 두 손가락 확대 · 두 번 탭")
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
+                .isNotEmpty()
+        }
         composeRule.onNodeWithContentDescription("닫기").performClick()
         composeRule.runOnIdle { assertTrue(dismissed) }
     }
@@ -98,7 +103,7 @@ class CouponImageDialogInstrumentedTest {
             .assertExists()
         composeRule.runOnIdle { imageState = CouponOriginalImageState.Ready(imageFile) }
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("밝기 최적화됨 · 두 손가락 확대 · 두 번 탭")
+            composeRule.onAllNodesWithText("화면 맞춤 원본 준비됨 · 확대하면 더 선명해져요")
                 .fetchSemanticsNodes(atLeastOneRootRequired = false)
                 .isNotEmpty()
         }
@@ -126,6 +131,40 @@ class CouponImageDialogInstrumentedTest {
         composeRule.onNodeWithText("원본을 불러오지 못해 미리보기로 확대 중이에요").assertExists()
         composeRule.onNodeWithText("원본 다시 불러오기").performClick()
         composeRule.runOnIdle { assertTrue(retried) }
+    }
+
+    @Test
+    fun togglesImageControlsWithASingleTap() {
+        val bitmap = Bitmap.createBitmap(600, 1_200, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.WHITE)
+        }
+
+        composeRule.setContent {
+            GDTheme {
+                CouponImageDialog(
+                    previewBitmap = bitmap.asImageBitmap(),
+                    imageState = CouponOriginalImageState.Error("원본 요청 실패"),
+                    onRetry = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("닫기").assertExists()
+        composeRule.onNodeWithTag("zoomed-coupon-image").performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 3_000) {
+            composeRule.onAllNodesWithText("1.0×")
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
+                .isEmpty()
+        }
+        composeRule.onNodeWithContentDescription("닫기").assertDoesNotExist()
+        composeRule.onNodeWithTag("zoomed-coupon-image").performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 3_000) {
+            composeRule.onAllNodesWithText("1.0×")
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("닫기").assertExists()
     }
 
     private fun createImageFile(bitmap: Bitmap): CouponImageFile {

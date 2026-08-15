@@ -38,6 +38,16 @@ class CouponImageFilePerformanceInstrumentedTest {
         val previewMillis = elapsedMillis(previewStartedAt)
         assertNotNull(preview)
 
+        val displayStartedAt = SystemClock.elapsedRealtimeNanos()
+        val display = CouponImageLoader.decodeZoomBitmap(
+            file = source.file,
+            maxWidth = 1_080,
+            maxHeight = 1_920
+        )
+        val displayMillis = elapsedMillis(displayStartedAt)
+        assertNotNull(display)
+        val pssAfterDisplayKb = Debug.getPss()
+
         val zoomStartedAt = SystemClock.elapsedRealtimeNanos()
         val zoom = CouponImageLoader.decodeZoomBitmap(
             file = source.file,
@@ -49,27 +59,36 @@ class CouponImageFilePerformanceInstrumentedTest {
         val pssAfterKb = Debug.getPss()
 
         checkNotNull(preview)
+        checkNotNull(display)
         checkNotNull(zoom)
         assertTrue(source.byteCount in 1_000_000L..10L * 1024L * 1024L)
         assertEquals(720, preview.width)
         assertEquals(480, preview.height)
+        assertEquals(1_080, display.width)
+        assertEquals(720, display.height)
         assertTrue(zoom.width.toLong() * zoom.height <= 8_000_000L)
+        assertTrue(display.byteCount.toLong() * 3 <= zoom.byteCount.toLong())
         Log.i(
             PERF_TAG,
             String.format(
                 Locale.US,
-                "sourceBytes=%d previewMs=%.3f zoomMs=%.3f previewBitmapBytes=%d " +
-                    "zoomBitmapBytes=%d pssDeltaKb=%d",
+                "sourceBytes=%d previewMs=%.3f displayMs=%.3f zoomMs=%.3f " +
+                "previewBitmapBytes=%d displayBitmapBytes=%d zoomBitmapBytes=%d " +
+                    "displayPssDeltaKb=%d zoomPeakPssDeltaKb=%d",
                 source.byteCount,
                 previewMillis,
+                displayMillis,
                 zoomMillis,
                 preview.byteCount,
+                display.byteCount,
                 zoom.byteCount,
+                pssAfterDisplayKb - pssBeforeKb,
                 pssAfterKb - pssBeforeKb
             )
         )
 
         preview.recycle()
+        display.recycle()
         zoom.recycle()
         CouponImageFileStore.delete(source)
         assertFalse(destination.exists())

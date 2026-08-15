@@ -49,9 +49,11 @@ class CouponListBenchmark {
         compilationMode = compilationMode,
         iterations = 5,
         startupMode = StartupMode.WARM,
-        setupBlock = { pressHome() }
+        setupBlock = {
+            pressHome()
+            startCouponList()
+        }
     ) {
-        startCouponList()
         scrollCouponList()
     }
 }

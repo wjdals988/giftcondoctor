@@ -122,6 +122,7 @@ import com.giftcondoctor.app.ui.viewmodel.CouponOriginalImageState
 import com.giftcondoctor.app.ui.viewmodel.shouldCancelOriginalImageLoad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -1184,40 +1185,35 @@ internal fun CouponImageDialog(
     KeepScreenBrightWhileVisible()
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
-    val maxWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() * 2 }
-    val maxHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() * 2 }
-    val imageFile = (imageState as? CouponOriginalImageState.Ready)?.image
-    var highResolution by remember(imageFile, maxWidth, maxHeight) { mutableStateOf<ImageBitmap?>(null) }
-    var highResolutionFinished by remember(imageFile, maxWidth, maxHeight) { mutableStateOf(false) }
+    val displayWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val displayHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val imageFile = (imageState as? CouponOriginalImageState.Ready)?.image?.file
+    var zoomRequested by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    val resolution = rememberCouponImageResolution(
+        imageFile = imageFile,
+        displayWidth = displayWidth,
+        displayHeight = displayHeight,
+        zoomRequested = zoomRequested
+    )
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val updatedScale = (scale * zoomChange).coerceIn(1f, 4f)
         scale = updatedScale
+        if (updatedScale > 1f) zoomRequested = true
         offset = clampZoomOffset(offset + panChange, updatedScale, viewportSize)
     }
     fun setZoom(targetScale: Float) {
         val updatedScale = targetScale.coerceIn(1f, 4f)
         val ratio = if (scale > 0f) updatedScale / scale else 1f
         scale = updatedScale
+        if (updatedScale > 1f) zoomRequested = true
         offset = if (updatedScale == 1f) {
             Offset.Zero
         } else {
             clampZoomOffset(offset * ratio, updatedScale, viewportSize)
-        }
-    }
-
-    LaunchedEffect(imageFile, maxWidth, maxHeight) {
-        highResolution = null
-        highResolutionFinished = false
-        if (imageFile != null) {
-            highResolution = withContext(Dispatchers.Default) {
-                runCatching {
-                    CouponImageLoader.decodeZoomBitmap(imageFile.file, maxWidth, maxHeight)?.asImageBitmap()
-                }.getOrNull()
-            }
-            highResolutionFinished = true
         }
     }
 
@@ -1230,7 +1226,7 @@ internal fun CouponImageDialog(
             contentAlignment = Alignment.Center
         ) {
             Image(
-                bitmap = highResolution ?: previewBitmap,
+                bitmap = resolution.bitmap ?: previewBitmap,
                 contentDescription = "확대된 쿠폰 이미지",
                 modifier = Modifier
                     .fillMaxSize()
@@ -1244,93 +1240,198 @@ internal fun CouponImageDialog(
                         translationY = offset.y
                     )
                     .pointerInput(viewportSize) {
-                        detectTapGestures(onDoubleTap = { tap ->
-                            val updatedScale = if (scale > 1f) 1f else 2f
-                            scale = updatedScale
-                            offset = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
-                        })
+                        detectTapGestures(
+                            onTap = { controlsVisible = !controlsVisible },
+                            onDoubleTap = { tap ->
+                                controlsVisible = true
+                                val updatedScale = if (scale > 1f) 1f else 2f
+                                scale = updatedScale
+                                if (updatedScale > 1f) zoomRequested = true
+                                offset = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
+                            }
+                        )
                     }
                     .transformable(transformState),
                 contentScale = ContentScale.Fit
             )
-            if (imageState is CouponOriginalImageState.Idle ||
-                imageState is CouponOriginalImageState.Loading ||
-                imageState is CouponOriginalImageState.Ready && !highResolutionFinished) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text(
-                        if (imageState is CouponOriginalImageState.Idle ||
-                            imageState is CouponOriginalImageState.Loading) {
-                            "미리보기를 먼저 표시했어요 · 선명한 원본을 불러오는 중이에요"
-                        } else {
-                            "선명한 이미지를 준비하는 중이에요"
-                        },
-                        color = Color.White
-                    )
-                }
-            } else if (imageState is CouponOriginalImageState.Error) {
-                Column(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("원본을 불러오지 못해 미리보기로 확대 중이에요", color = Color.White)
-                    TextButton(onClick = onRetry) { Text("원본 다시 불러오기") }
-                }
-            } else {
-                Text(
-                    if (highResolution == null) {
-                        "원본 최적화 실패 · 미리보기로 확대 중"
-                    } else {
-                        "밝기 최적화됨 · 두 손가락 확대 · 두 번 탭"
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.small)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
-                )
+            CouponImageStatusOverlay(
+                imageState = imageState,
+                resolution = resolution,
+                zoomRequested = zoomRequested,
+                visible = controlsVisible,
+                onRetry = onRetry,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+            CouponImageControls(
+                visible = controlsVisible,
+                scale = scale,
+                onReset = { setZoom(1f) },
+                onZoomOut = { setZoom(scale - 1f) },
+                onZoomIn = { setZoom(scale + 1f) },
+                onDismiss = onDismiss,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CouponImageStatusOverlay(
+    imageState: CouponOriginalImageState,
+    resolution: CouponImageResolution,
+    zoomRequested: Boolean,
+    visible: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isLoading = imageState is CouponOriginalImageState.Idle ||
+        imageState is CouponOriginalImageState.Loading ||
+        imageState is CouponOriginalImageState.Ready && resolution.isPreparing
+    when {
+        isLoading -> Column(
+            modifier = modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text(couponImageLoadingText(imageState, resolution, zoomRequested), color = Color.White)
+        }
+        imageState is CouponOriginalImageState.Error -> Column(
+            modifier = modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("원본을 불러오지 못해 미리보기로 확대 중이에요", color = Color.White)
+            TextButton(onClick = onRetry) { Text("원본 다시 불러오기") }
+        }
+        else -> AnimatedVisibility(visible = visible, modifier = modifier) {
+            Text(
+                couponImageReadyText(resolution, zoomRequested),
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.small)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun CouponImageControls(
+    visible: Boolean,
+    scale: Float,
+    onReset: () -> Unit,
+    onZoomOut: () -> Unit,
+    onZoomIn: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(visible = visible, modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onReset, enabled = scale != 1f) {
+                Text("원본 맞춤", color = Color.White)
             }
             Row(
-                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.extraLarge),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
-                    onClick = { setZoom(1f) },
-                    enabled = scale != 1f
-                ) {
-                    Text("원본 맞춤", color = Color.White)
+                IconButton(onClick = onZoomOut, enabled = scale > 1f) {
+                    Icon(Icons.Default.ZoomOut, contentDescription = "축소", tint = Color.White)
                 }
-                Row(
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.extraLarge),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { setZoom(scale - 1f) }, enabled = scale > 1f) {
-                        Icon(Icons.Default.ZoomOut, contentDescription = "축소", tint = Color.White)
-                    }
-                    Text(
-                        String.format(Locale.US, "%.1f×", scale),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    IconButton(onClick = { setZoom(scale + 1f) }, enabled = scale < 4f) {
-                        Icon(Icons.Default.ZoomIn, contentDescription = "확대", tint = Color.White)
-                    }
+                Text(
+                    String.format(Locale.US, "%.1f×", scale),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                IconButton(onClick = onZoomIn, enabled = scale < 4f) {
+                    Icon(Icons.Default.ZoomIn, contentDescription = "확대", tint = Color.White)
                 }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "닫기", tint = Color.White)
-                }
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "닫기", tint = Color.White)
             }
         }
     }
 }
+
+private fun couponImageLoadingText(
+    imageState: CouponOriginalImageState,
+    resolution: CouponImageResolution,
+    zoomRequested: Boolean
+): String = when {
+    imageState is CouponOriginalImageState.Idle || imageState is CouponOriginalImageState.Loading ->
+        "미리보기를 먼저 표시했어요 · 선명한 원본을 불러오는 중이에요"
+    zoomRequested && resolution.displayFinished -> "확대 화면을 더 선명하게 준비하는 중이에요"
+    else -> "화면에 맞는 원본을 빠르게 준비하는 중이에요"
+}
+
+private fun couponImageReadyText(
+    resolution: CouponImageResolution,
+    zoomRequested: Boolean
+): String = when {
+    resolution.bitmap == null -> "원본 최적화 실패 · 미리보기로 확대 중"
+    resolution.zoomReady -> "확대용 원본 준비됨 · 두 손가락 확대 · 두 번 탭"
+    zoomRequested && resolution.zoomFinished -> "확대용 최적화 실패 · 화면 맞춤 원본 사용 중"
+    else -> "화면 맞춤 원본 준비됨 · 확대하면 더 선명해져요"
+}
+
+private data class CouponImageResolution(
+    val bitmap: ImageBitmap?,
+    val displayFinished: Boolean,
+    val isPreparing: Boolean,
+    val zoomFinished: Boolean,
+    val zoomReady: Boolean
+)
+
+@Composable
+private fun rememberCouponImageResolution(
+    imageFile: File?,
+    displayWidth: Int,
+    displayHeight: Int,
+    zoomRequested: Boolean
+): CouponImageResolution {
+    var displayBitmap by remember(imageFile, displayWidth, displayHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var displayFinished by remember(imageFile, displayWidth, displayHeight) { mutableStateOf(false) }
+    var zoomBitmap by remember(imageFile, displayWidth, displayHeight) { mutableStateOf<ImageBitmap?>(null) }
+    var zoomFinished by remember(imageFile, displayWidth, displayHeight) { mutableStateOf(false) }
+
+    LaunchedEffect(imageFile, displayWidth, displayHeight) {
+        displayBitmap = null
+        displayFinished = false
+        if (imageFile != null) {
+            displayBitmap = decodeCouponImage(imageFile, displayWidth, displayHeight)
+            displayFinished = true
+        }
+    }
+    LaunchedEffect(imageFile, zoomRequested, displayFinished, displayWidth, displayHeight) {
+        zoomBitmap = null
+        zoomFinished = false
+        if (imageFile != null && zoomRequested && displayFinished) {
+            zoomBitmap = decodeCouponImage(imageFile, displayWidth * 2, displayHeight * 2)
+            zoomFinished = true
+            if (zoomBitmap != null) displayBitmap = null
+        }
+    }
+
+    return CouponImageResolution(
+        bitmap = zoomBitmap ?: displayBitmap,
+        displayFinished = displayFinished,
+        isPreparing = !displayFinished || zoomRequested && !zoomFinished,
+        zoomFinished = zoomFinished,
+        zoomReady = zoomBitmap != null
+    )
+}
+
+private suspend fun decodeCouponImage(file: File, width: Int, height: Int): ImageBitmap? =
+    withContext(Dispatchers.Default) {
+        runCatching {
+            CouponImageLoader.decodeZoomBitmap(file, width, height)?.asImageBitmap()
+        }.getOrNull()
+    }
 
 private val commentTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.of(AppConstants.SEOUL_TIME_ZONE))

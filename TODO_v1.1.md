@@ -69,8 +69,10 @@
 - 중단 지점부터 이어 보내는 resumable upload 검토
 - [x] 상세 이미지 8MP 상한 고해상도 지연 디코딩·핀치/더블탭 확대
 - [x] 상세 이미지 1×~4× 명시적 확대/축소와 원본 맞춤 조작
+- [x] 전체화면 최초 1× 디코딩·실제 확대 시 2× 점진 준비와 단일 탭 조작부 표시 전환
 - [x] 취소 가능한 이미지 HTTP 요청·동시 중복 요청 억제·탭 위치 중심 확대
 - [x] 100개 목록 Release/R8 Macrobenchmark 기준선과 CI 컴파일 게이트
+- [x] 스크롤 Macrobenchmark에서 Activity 시작 비용을 분리한 순수 fling A/B 계측
 - [x] 앱 시작·100개 목록 Baseline Profile 생성, APK 패키징, 적용 전·후 5회 비교
 - [x] 생산 캐시·디코드 경로 24개 썸네일 miss/hit·payload·PSS 5회 계측과 동일 key 동시 요청 병합 검증
 - [x] 실제 RoomDashboard 24개 행 첫 순회·역방향 cache 순회와 재구성 중 fetch/decode 불변 검증
