@@ -47,7 +47,7 @@
 
 ML Kit bundled barcode 17.3.0을 넣은 R8 APK는 68,084,965B였고 4개 ABI의 `libbarhopper_v3.so`가 포함됐다. 기존 ZXing core로 정적 이미지 감지와 전체화면 재생성을 통합하고 업로드 EXIF 보정·교체 사전 준비까지 포함한 최종 APK는 46,908,846B로 21,176,119B(31.1%) 작아졌다. Code 128 생성→재감지 왕복 테스트는 통과했지만 실제 매장 스캐너 정확도는 아직 비교하지 않았으므로, 용량만으로 기능 우위를 주장하지 않는다.
 
-현재 unsigned 검증 APK는 46,908,846B이며 SHA-256은 `b66bfe35d5823430a8aad79cd58951779e9c38b24d8dea96b745ce7622563de7`이다. 기존 release 키로 서명한 배포 산출물이 아니므로 GitHub Release나 대시보드에 올리지 않는다.
+현재 unsigned 검증 APK는 46,908,846B이며 SHA-256은 `3308b80ad9f3d8abc9078d642a7d58a872acf99d674cccbfb0aecb46c8701e2a`이다. 기존 release 키로 서명한 배포 산출물이 아니므로 GitHub Release나 대시보드에 올리지 않는다.
 
 ## 업로드 사전 최적화 기준선
 

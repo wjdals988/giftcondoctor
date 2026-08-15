@@ -87,6 +87,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1239,6 +1242,13 @@ internal fun CouponImageDialog(
                         translationX = offset.x,
                         translationY = offset.y
                     )
+                    .semantics {
+                        stateDescription = String.format(Locale.US, "확대 배율 %.1f배", scale)
+                        onClick(label = if (controlsVisible) "이미지 조작부 숨기기" else "이미지 조작부 표시") {
+                            controlsVisible = !controlsVisible
+                            true
+                        }
+                    }
                     .pointerInput(viewportSize) {
                         detectTapGestures(
                             onTap = { controlsVisible = !controlsVisible },

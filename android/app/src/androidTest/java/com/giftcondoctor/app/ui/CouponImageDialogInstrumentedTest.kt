@@ -134,7 +134,7 @@ class CouponImageDialogInstrumentedTest {
     }
 
     @Test
-    fun togglesImageControlsWithASingleTap() {
+    fun togglesImageControlsWithTouchAndAccessibilityAction() {
         val bitmap = Bitmap.createBitmap(600, 1_200, Bitmap.Config.ARGB_8888).apply {
             eraseColor(android.graphics.Color.WHITE)
         }
@@ -151,7 +151,7 @@ class CouponImageDialogInstrumentedTest {
         }
 
         composeRule.onNodeWithContentDescription("닫기").assertExists()
-        composeRule.onNodeWithTag("zoomed-coupon-image").performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("확대된 쿠폰 이미지").performClick()
         composeRule.waitUntil(timeoutMillis = 3_000) {
             composeRule.onAllNodesWithText("1.0×")
                 .fetchSemanticsNodes(atLeastOneRootRequired = false)
