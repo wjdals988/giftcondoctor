@@ -51,4 +51,48 @@ class CouponTextParserTest {
 
         assertEquals(LocalDate.of(2026, 6, 30), suggestion.expiresLocalDate)
     }
+
+    @Test
+    fun compactLineDoesNotApplyFutureExpiryLabelToOrderDate() {
+        val suggestion = parseCouponText(
+            text = "주문일 2026.05.17 유효기간 2026.06.30",
+            today = LocalDate.of(2026, 5, 17)
+        )
+
+        assertEquals(LocalDate.of(2026, 6, 30), suggestion.expiresLocalDate)
+    }
+
+    @Test
+    fun issueDateIsPenalizedWhenExpiryIsOnNextLine() {
+        val suggestion = parseCouponText(
+            text = """
+                발행일 2026-05-20
+                만료일
+                2026-08-31
+            """.trimIndent(),
+            today = LocalDate.of(2026, 5, 17)
+        )
+
+        assertEquals(LocalDate.of(2026, 8, 31), suggestion.expiresLocalDate)
+    }
+
+    @Test
+    fun usagePeriodChoosesRangeEnd() {
+        val suggestion = parseCouponText(
+            text = "사용기간 2026.05.01 ~ 2026.12.31",
+            today = LocalDate.of(2026, 5, 17)
+        )
+
+        assertEquals(LocalDate.of(2026, 12, 31), suggestion.expiresLocalDate)
+    }
+
+    @Test
+    fun invalidAndPastDatesDoNotOverrideFutureExpiry() {
+        val suggestion = parseCouponText(
+            text = "구매일 2026.02.30 / 결제일 2026.05.01 / 만료일 2026.09.15",
+            today = LocalDate.of(2026, 5, 17)
+        )
+
+        assertEquals(LocalDate.of(2026, 9, 15), suggestion.expiresLocalDate)
+    }
 }
