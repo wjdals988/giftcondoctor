@@ -16,6 +16,7 @@
 - 단일·마지막 초안 보호와 빈 화면 즉시 이탈 단위 회귀, 확인창 유지·폐기 Compose 계측 회귀 추가
 - Android 단위 102/102, Android 16 AVD 계측 52/52, lint 오류 0건, R8 release/benchmark build 통과
 - Firestore Rules 24/24, Backend Vitest 58/58·도구 4/4, typecheck·Next production build와 npm High/Critical 0건 회귀 통과
+- GitHub signing dry-run `31884412198` 성공: signed APK 47,012,293 bytes, SHA-256 `f1569432c76004974696615fa9af3c59f347edc267eb095f8fd0243bc4e4f266`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.27 (28)
 
