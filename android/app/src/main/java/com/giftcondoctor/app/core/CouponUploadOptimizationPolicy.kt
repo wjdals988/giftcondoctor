@@ -39,8 +39,12 @@ fun shouldUseOptimizedCouponUpload(
     optimizedBytes: Long,
     requiresTranscode: Boolean = false
 ): Boolean {
-    if (optimizedBytes <= 0L || optimizedBytes > AppConstants.MAX_IMAGE_BYTES) return false
-    if (requiresTranscode) return true
-    if (sourceBytes == null || sourceBytes <= 0L) return true
+    if (optimizedBytes <= 0L || optimizedBytes > AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES) return false
+    if (
+        requiresTranscode ||
+        sourceBytes == null ||
+        sourceBytes > AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES
+    ) return true
+    if (sourceBytes <= 0L) return true
     return optimizedBytes * 100L <= sourceBytes * (100L - MIN_SAVING_PERCENT)
 }

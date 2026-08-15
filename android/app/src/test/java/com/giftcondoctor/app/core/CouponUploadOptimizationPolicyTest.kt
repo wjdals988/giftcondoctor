@@ -51,11 +51,39 @@ class CouponUploadOptimizationPolicyTest {
     @Test
     fun `unknown source length accepts bounded optimized output`() {
         assertTrue(shouldUseOptimizedCouponUpload(null, 900_000))
-        assertFalse(shouldUseOptimizedCouponUpload(null, AppConstants.MAX_IMAGE_BYTES.toLong() + 1L))
+        assertFalse(
+            shouldUseOptimizedCouponUpload(
+                null,
+                AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES.toLong() + 1L
+            )
+        )
     }
 
     @Test
     fun `required transcode accepts bounded output without saving`() {
         assertTrue(shouldUseOptimizedCouponUpload(500_000, 550_000, requiresTranscode = true))
+    }
+
+    @Test
+    fun `unknown source length alone does not force lossy recompression`() {
+        assertFalse(couponUploadOptimizationPlan(1_080, 1_920, null).shouldOptimize)
+    }
+
+    @Test
+    fun `server safe output wins even when saving is under ten percent`() {
+        val sourceBytes = AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES.toLong() + 200_000L
+        val uploadBytes = AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES.toLong()
+
+        assertTrue(shouldUseOptimizedCouponUpload(sourceBytes, uploadBytes))
+    }
+
+    @Test
+    fun `optimized output above function safe budget is rejected`() {
+        assertFalse(
+            shouldUseOptimizedCouponUpload(
+                AppConstants.MAX_IMAGE_BYTES.toLong(),
+                AppConstants.MAX_SERVER_UPLOAD_IMAGE_BYTES.toLong() + 1L
+            )
+        )
     }
 }
