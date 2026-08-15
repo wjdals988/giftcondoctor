@@ -15,6 +15,7 @@
 - 확대 의도가 먼저 확인된 경로에서 중간 해상도 디코드를 생략하는 순수 정책 회귀 테스트 추가
 - Android 단위 108/108, Android 16 AVD 계측 55/55, lint 오류 0건·기존 경고 14건, R8 release/benchmark build 통과
 - 합성 4.55MB 원본의 조기 확대 디코드 구간 463.383ms→281.429ms(39.3% 단축), 논리 bitmap peak 16,934,400B→13,824,000B(18.4% 감소)
+- GitHub signing dry-run `31887162874` 성공: signed APK 47,012,293 bytes, SHA-256 `eb2210dc24b4b204d1966d870f863285628b7996d7c9f26c96eb41d64b06cac3`, production API·새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.29 (30)
 
