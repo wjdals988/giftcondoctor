@@ -3,6 +3,8 @@ package com.giftcondoctor.app.core
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImageZoomMathTest {
@@ -34,5 +36,17 @@ class ImageZoomMathTest {
             Offset.Zero,
             clampZoomOffset(Offset(200f, 300f), 1f, IntSize(1_000, 2_000))
         )
+    }
+
+    @Test
+    fun smallPinchKeepsDisplayResolutionWithoutPreparingLargeBitmap() {
+        assertFalse(shouldPrepareHighResolutionZoom(1f))
+        assertFalse(shouldPrepareHighResolutionZoom(1.49f))
+    }
+
+    @Test
+    fun deliberateZoomPreparesHighResolutionBitmap() {
+        assertTrue(shouldPrepareHighResolutionZoom(1.5f))
+        assertTrue(shouldPrepareHighResolutionZoom(4f))
     }
 }

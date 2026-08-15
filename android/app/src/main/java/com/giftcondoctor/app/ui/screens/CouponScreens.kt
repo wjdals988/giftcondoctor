@@ -105,6 +105,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.clampZoomOffset
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.core.shouldLoadOriginalImage
+import com.giftcondoctor.app.core.shouldPrepareHighResolutionZoom
 import com.giftcondoctor.app.core.zoomOffsetForDoubleTap
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
@@ -1205,14 +1206,14 @@ internal fun CouponImageDialog(
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val updatedScale = (scale * zoomChange).coerceIn(1f, 4f)
         scale = updatedScale
-        if (updatedScale > 1f) zoomRequested = true
+        if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
         offset = clampZoomOffset(offset + panChange, updatedScale, viewportSize)
     }
     fun setZoom(targetScale: Float) {
         val updatedScale = targetScale.coerceIn(1f, 4f)
         val ratio = if (scale > 0f) updatedScale / scale else 1f
         scale = updatedScale
-        if (updatedScale > 1f) zoomRequested = true
+        if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
         offset = if (updatedScale == 1f) {
             Offset.Zero
         } else {
@@ -1256,7 +1257,7 @@ internal fun CouponImageDialog(
                                 controlsVisible = true
                                 val updatedScale = if (scale > 1f) 1f else 2f
                                 scale = updatedScale
-                                if (updatedScale > 1f) zoomRequested = true
+                                if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
                                 offset = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
                             }
                         )
