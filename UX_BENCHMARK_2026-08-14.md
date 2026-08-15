@@ -94,7 +94,8 @@
 - [완료] Android 64KB 스트리밍 업로드와 서버 원본 전송·썸네일 처리 병렬화
 - [완료] 업로드 응답 후 Firestore 저장 실패·화면 이탈 시 문서 확인 후 cleanup queue 보상
 - [완료] upload session ID·결정적 후보 경로·다음 일일 Cron용 선생성 안전망으로 응답 유실 Blob을 식별하고 안전한 명시적 취소 제공
-- [예정] 중단 지점부터 이어 보내는 resumable upload는 Vercel multipart 비용·복잡도 검토 후 적용
+- [완료] Vercel의 4.5MB Function 본문 제한을 넘는 고노이즈 사진을 4MiB 이하로 적응 압축하고 2,560px 해상도·CODE128 재감지 유지
+- [완료] multipart는 100MB 초과 권장·part당 최소 5MB·추가 operation 비용 때문에 10MB 쿠폰 이미지에는 미적용하고, 향후 입력 상한 확대 시 direct client upload로 재검토
 - [완료] 댓글을 최신 100개 기준으로 조회하도록 변경
 - [완료] Blob 업로드 후 Firestore 저장 실패 시 보상 삭제
 - [완료] 공개·본인 비공개 쿠폰을 각각 12개씩 cursor paging하고 끝 4개 전에 선조회, 로딩·끝·오류/재시도 상태 표시

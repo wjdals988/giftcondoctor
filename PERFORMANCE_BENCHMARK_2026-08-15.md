@@ -57,6 +57,20 @@ ML Kit bundled barcode 17.3.0을 넣은 R8 APK는 68,084,965B였고 4개 ABI의 
 
 선택 단계에서 만든 준비 파일의 소유권을 화면에 유지하도록 바꿨다. 전송 실패·사용자 취소 뒤에도 같은 이미지 재시도는 기존 파일을 다시 열어 전송하며, 성공·재선택·화면 종료 때만 삭제한다. 따라서 위 합성 샘플 기준 재시도마다 반복되던 537.294~598.459ms 전처리와 JPEG 쓰기를 제거한다. 네트워크 재전송과 서버 처리는 다시 수행되므로 이 수치를 전체 재시도 시간 단축으로 해석하면 안 된다.
 
+### Vercel Function payload 상한 대응
+
+Vercel Function은 요청 본문이 4.5MB를 넘으면 route handler 진입 전에 413을 반환한다. 앱은 입력 사진을 10MB까지 허용하므로 기존 JPEG 92 단일 압축만으로는 이 범위를 보장하지 못했다. multipart 경계 여유를 남기기 위해 실제 이미지 payload를 최대 4MiB(4,194,304B)로 제한하고, 92→80 품질 단계 조정 뒤에도 넘을 때만 해상도를 비율 축소한다. 입력 크기 메타데이터가 없으면 64KB 버퍼로 최대 10MB까지만 앱 cache에 복사해 크기를 확정하며, 작은 원본은 손실 재압축 없이 이 복사본을 재시도에 사용한다.
+
+Android 16 `emulator-5556`에서 2,560×2,560 고노이즈 배경에 CODE128을 합성한 JPEG를 계측했다. 원본은 5,626,688B였고 기존 JPEG 92 단일 결과도 4,588,586B로 Function 4.5MB 제한을 넘었다. 적응 결과는 해상도를 그대로 유지한 3,997,941B로 4MiB 예산보다 196,363B 작았고, 성공 실행 준비 시간은 756.871~810.851ms였으며 CODE128 값 `123456789012` 재감지에 성공했다. 원본 대비 1,628,747B(28.9%), q92 결과 대비 590,645B(12.9%) 감소다.
+
+같은 조건의 기존 3,000×2,000 일반 샘플은 5,707,065B→2,909,037B, 480.642~517.703ms, 2,559×1,706으로 기존 1회 압축 경로를 유지했다. 10Mbps payload 환산 시 고노이즈 샘플은 원본 직접 전송보다 약 1.30초를 줄이며 가장 느린 준비 시간을 빼도 약 0.49초 여유가 있지만, 실제 TLS·무선·Vercel 처리 시간은 포함하지 않는다. q92 단일 결과는 약 0.47초 덜 보내지만 운영에서 413이 예상되어 유효한 대안이 아니다.
+
+공식 Vercel Blob 문서는 multipart를 100MB 초과 파일에 권장하고 각 part는 마지막을 제외하면 최소 5MB여야 한다. 현재 입력 상한 10MB에서 multipart는 시작·part·완료 operation과 Android 프로토콜 복잡도를 늘리므로 도입하지 않았다. 향후 입력 상한을 늘리거나 실측에서 Function proxy 시간이 지배적이면 인증 token 교환 기반 direct client upload를 별도 설계한다.
+
+- Function 4.5MB 제한: https://vercel.com/docs/vercel-blob/server-upload
+- Client upload와 token 교환: https://vercel.com/docs/vercel-blob/client-upload
+- multipart 권장 크기·operation 비용: https://vercel.com/docs/vercel-blob/usage-and-pricing
+
 ## 24개 썸네일 디코드·메모리 캐시 기준선
 
 같은 `emulator-5556`의 debug 계측 프로세스에서 생산 코드의 압축·bitmap `LruCache`, 샘플 디코드, 동시 요청 병합 경로를 그대로 호출했다. 1280×720 합성 JPEG 1장(212,708B)을 서로 다른 바이트 배열 24개 응답으로 복제해 첫 조회와 bitmap 메모리 재조회를 5회 반복했다. 같은 객체를 여러 key에 넣어 PSS를 과소 측정하지 않도록 매 fetch마다 `copyOf()`를 반환하고 각 회차 전 GC 안정화 시간을 뒀다.

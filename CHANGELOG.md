@@ -30,6 +30,8 @@
 - 1.5× 미만의 작은 핀치는 1× bitmap으로 즉시 반응하고, 의도한 확대에서만 2× 준비를 시작해 불필요한 12,441,600B bitmap 디코드 방지
 - 핀치 중 배율·이동 상태를 lambda형 `graphicsLayer`에서 읽도록 지연해 동일 profile 6회 왕복×5회에서 CPU frame P90 11.65→9.83ms, P95 21.27→11.00ms로 단축
 - 실제 확대 다이얼로그 멀티터치 Macrobenchmark와 profile 수집 여정을 추가하고 앱 전용 baseline 규칙을 563개→826개로 보강
+- Vercel Function 4.5MB 본문 제한에 맞춰 10MB 이하 입력을 최대 4MiB payload로 적응 압축하고, 크기 미상 입력은 제한 스트리밍 복사 후 작은 원본을 재압축 없이 유지
+- 5.63MB 고노이즈+CODE128 샘플을 4.59MB(q92 단일) 대신 4.00MB로 준비하면서 2,560×2,560 해상도와 바코드 재감지를 유지
 - 스크롤 Macrobenchmark의 Activity 시작을 측정 구간에서 분리해 순수 fling 기준으로 교정
 - 복구함을 20개 cursor paging으로 전환해 첫 요청 문서 상한을 일반 멤버 21개·방장 42개로 제한
 
