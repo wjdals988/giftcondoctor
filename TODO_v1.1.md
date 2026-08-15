@@ -74,6 +74,8 @@
 - [x] 상세 이미지 1×~4× 명시적 확대/축소와 원본 맞춤 조작
 - [x] 전체화면 최초 1× 디코딩·실제 확대 시 2× 점진 준비와 단일 탭 조작부 표시 전환
 - [x] 1.5× 미만 작은 핀치에서 2× bitmap 준비를 생략해 확대 조작 중 불필요한 디코드 방지
+- [x] 핀치 배율·이동값을 lambda형 `graphicsLayer`에서 지연 읽기해 다이얼로그 전체 재구성 범위 축소
+- [x] 실제 확대 다이얼로그 6회 핀치 왕복×5회 Release/R8 Macrobenchmark·Perfetto trace·Baseline Profile 수집
 - [x] 전체화면 이미지의 현재 배율·조작부 표시/숨기기 TalkBack 액션
 - [x] 취소 가능한 이미지 HTTP 요청·동시 중복 요청 억제·탭 위치 중심 확대
 - [x] 100개 목록 Release/R8 Macrobenchmark 기준선과 CI 컴파일 게이트

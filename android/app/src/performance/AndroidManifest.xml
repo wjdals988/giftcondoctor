@@ -6,5 +6,9 @@
             android:name=".BenchmarkActivity"
             android:exported="true"
             android:theme="@style/Theme.Giftcondoctor" />
+        <activity
+            android:name=".BenchmarkImageActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Giftcondoctor" />
     </application>
 </manifest>

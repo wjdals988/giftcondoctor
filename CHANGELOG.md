@@ -28,6 +28,8 @@
 - 확대 이미지를 백그라운드에서 디코딩하고 실제 뷰포트 기준으로 이동 범위 제한
 - 전체화면 원본을 먼저 화면 크기 1×로 디코딩하고 실제 확대 시에만 2×를 준비해 최초 bitmap을 12,441,600B→3,110,400B로 75.0% 절감
 - 1.5× 미만의 작은 핀치는 1× bitmap으로 즉시 반응하고, 의도한 확대에서만 2× 준비를 시작해 불필요한 12,441,600B bitmap 디코드 방지
+- 핀치 중 배율·이동 상태를 lambda형 `graphicsLayer`에서 읽도록 지연해 동일 profile 6회 왕복×5회에서 CPU frame P90 11.65→9.83ms, P95 21.27→11.00ms로 단축
+- 실제 확대 다이얼로그 멀티터치 Macrobenchmark와 profile 수집 여정을 추가하고 앱 전용 baseline 규칙을 563개→826개로 보강
 - 스크롤 Macrobenchmark의 Activity 시작을 측정 구간에서 분리해 순수 fling 기준으로 교정
 - 복구함을 20개 cursor paging으로 전환해 첫 요청 문서 상한을 일반 멤버 21개·방장 42개로 제한
 
@@ -60,6 +62,7 @@
 - 같은 썸네일의 56×56→512×360 전환에서 압축 cache hit와 fetch 1회를 검증하고, 확대 화면의 미리보기→원본 교체 UI 회귀 추가
 - 파일 응답 스트리밍·10MB 초과·취소 시 부분 파일 삭제 단위 테스트와 3,000×2,000 파일 디코드 성능 회귀 추가
 - 실제 RoomDashboard의 24개 썸네일 순·역방향 스크롤에서 재구성 중 fetch·decode가 늘지 않는 UI 회귀 추가
+- 실제 `CouponImageDialog`에 UIAutomator 핀치 열기·닫기 6회를 수행하는 Release/R8 Macrobenchmark와 Perfetto 재구성 비교 추가
 - AndroidX Test를 JUnit 1.3.0·Espresso 3.7.0으로 갱신해 Android 16 테스트 호환성 확보
 - CI에서 debug뿐 아니라 R8 release, UI test APK, Macrobenchmark APK 컴파일을 차단 게이트로 추가
 - 새 benchmark 모듈의 `build/` 생성물을 Git에서 제외해 실제 신규 소스와 생성 파일이 섞이지 않도록 정리

@@ -66,6 +66,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -74,6 +75,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -90,6 +92,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1180,6 +1183,7 @@ private fun CouponImage(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 internal fun CouponImageDialog(
     previewBitmap: ImageBitmap,
     imageState: CouponOriginalImageState,
@@ -1194,8 +1198,8 @@ internal fun CouponImageDialog(
     val imageFile = (imageState as? CouponOriginalImageState.Ready)?.image?.file
     var zoomRequested by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    val scale = remember { mutableFloatStateOf(1f) }
+    val offset = remember { mutableStateOf(Offset.Zero) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val resolution = rememberCouponImageResolution(
         imageFile = imageFile,
@@ -1204,20 +1208,21 @@ internal fun CouponImageDialog(
         zoomRequested = zoomRequested
     )
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val updatedScale = (scale * zoomChange).coerceIn(1f, 4f)
-        scale = updatedScale
+        val updatedScale = (scale.floatValue * zoomChange).coerceIn(1f, 4f)
+        scale.floatValue = updatedScale
         if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
-        offset = clampZoomOffset(offset + panChange, updatedScale, viewportSize)
+        offset.value = clampZoomOffset(offset.value + panChange, updatedScale, viewportSize)
     }
     fun setZoom(targetScale: Float) {
         val updatedScale = targetScale.coerceIn(1f, 4f)
-        val ratio = if (scale > 0f) updatedScale / scale else 1f
-        scale = updatedScale
+        val currentScale = scale.floatValue
+        val ratio = if (currentScale > 0f) updatedScale / currentScale else 1f
+        scale.floatValue = updatedScale
         if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
-        offset = if (updatedScale == 1f) {
+        offset.value = if (updatedScale == 1f) {
             Offset.Zero
         } else {
-            clampZoomOffset(offset * ratio, updatedScale, viewportSize)
+            clampZoomOffset(offset.value * ratio, updatedScale, viewportSize)
         }
     }
 
@@ -1226,7 +1231,10 @@ internal fun CouponImageDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.94f)),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.94f))
+                .semantics { testTagsAsResourceId = true },
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -1237,14 +1245,14 @@ internal fun CouponImageDialog(
                     .testTag("zoomed-coupon-image")
                     .padding(16.dp)
                     .onSizeChanged { viewportSize = it }
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = offset.x,
-                        translationY = offset.y
-                    )
+                    .graphicsLayer {
+                        scaleX = scale.floatValue
+                        scaleY = scale.floatValue
+                        translationX = offset.value.x
+                        translationY = offset.value.y
+                    }
                     .semantics {
-                        stateDescription = String.format(Locale.US, "확대 배율 %.1f배", scale)
+                        stateDescription = String.format(Locale.US, "확대 배율 %.1f배", scale.floatValue)
                         onClick(label = if (controlsVisible) "이미지 조작부 숨기기" else "이미지 조작부 표시") {
                             controlsVisible = !controlsVisible
                             true
@@ -1255,10 +1263,10 @@ internal fun CouponImageDialog(
                             onTap = { controlsVisible = !controlsVisible },
                             onDoubleTap = { tap ->
                                 controlsVisible = true
-                                val updatedScale = if (scale > 1f) 1f else 2f
-                                scale = updatedScale
+                                val updatedScale = if (scale.floatValue > 1f) 1f else 2f
+                                scale.floatValue = updatedScale
                                 if (shouldPrepareHighResolutionZoom(updatedScale)) zoomRequested = true
-                                offset = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
+                                offset.value = zoomOffsetForDoubleTap(tap, updatedScale, viewportSize)
                             }
                         )
                     }
@@ -1277,8 +1285,8 @@ internal fun CouponImageDialog(
                 visible = controlsVisible,
                 scale = scale,
                 onReset = { setZoom(1f) },
-                onZoomOut = { setZoom(scale - 1f) },
-                onZoomIn = { setZoom(scale + 1f) },
+                onZoomOut = { setZoom(scale.floatValue - 1f) },
+                onZoomIn = { setZoom(scale.floatValue + 1f) },
                 onDismiss = onDismiss,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
@@ -1330,35 +1338,36 @@ private fun CouponImageStatusOverlay(
 @Composable
 private fun CouponImageControls(
     visible: Boolean,
-    scale: Float,
+    scale: State<Float>,
     onReset: () -> Unit,
     onZoomOut: () -> Unit,
     onZoomIn: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentScale by scale
     AnimatedVisibility(visible = visible, modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onReset, enabled = scale != 1f) {
+            TextButton(onClick = onReset, enabled = currentScale != 1f) {
                 Text("원본 맞춤", color = Color.White)
             }
             Row(
                 modifier = Modifier.background(Color.Black.copy(alpha = 0.62f), MaterialTheme.shapes.extraLarge),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onZoomOut, enabled = scale > 1f) {
+                IconButton(onClick = onZoomOut, enabled = currentScale > 1f) {
                     Icon(Icons.Default.ZoomOut, contentDescription = "축소", tint = Color.White)
                 }
                 Text(
-                    String.format(Locale.US, "%.1f×", scale),
+                    String.format(Locale.US, "%.1f×", currentScale),
                     color = Color.White,
                     style = MaterialTheme.typography.labelLarge
                 )
-                IconButton(onClick = onZoomIn, enabled = scale < 4f) {
+                IconButton(onClick = onZoomIn, enabled = currentScale < 4f) {
                     Icon(Icons.Default.ZoomIn, contentDescription = "확대", tint = Color.White)
                 }
             }

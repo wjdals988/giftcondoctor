@@ -26,13 +26,13 @@
 - Firestore Rules·복구함 저장소 통합: 23/23, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존·105개 paging 포함
 - Backend 단위 테스트: 58/58, 결정적 upload session 경로·원본 File 조기 전송·보상 삭제·cursor 검증 포함
 - 읽기 전용 이미지 API 벤치마크 도구 테스트: 4/4, HTTPS 제한·인증 header·stream byte·P50/P90 계산 검증
-- Release/R8 Baseline Profile A/B Macrobenchmark: 6/6, 각 5회
+- Release/R8 Baseline Profile A/B Macrobenchmark: 기존 6개와 확대 핀치 A/B 2개, 각 5회
 - R8 release APK와 benchmark APK 빌드: 성공
 - 최종 100개 목록 cold start 중앙값: 1,264.3ms → 1,046.9ms, 17.2% 단축
 - 교정 전 Activity 시작 포함 복합 스크롤 P50/P90/P99: 22.8/32.9/55.0ms → 22.5/32.1/42.9ms. 역사 비교용이며 합격 판정에서 제외
 - Activity 시작을 제외하도록 계측을 교정한 순수 스크롤 5회: P50/P90/P99 23.0/33.0/37.9ms → 22.1/23.8/27.2ms. P90/P99는 27.9%/28.2% 단축됐지만 적용 P90도 16.7ms 예산 초과
 - 실제 `MainActivity` cold start 중앙값: 1,061.2ms → 961.6ms, 9.4% 단축
-- 앱 전용 baseline 563개·startup 219개 규칙과 release APK 내 profile asset 패키징 확인
+- 앱 전용 baseline 826개·startup 219개 규칙과 release APK 내 profile asset 패키징 확인
 - Android lint 오류 0개, 경고 19개→14개로 정리. 잔여는 target SDK 36과 dependency 업그레이드 항목
 - 네트워크 취소 테스트: 진행 중 body 다운로드를 취소하면 OkHttp call도 취소됨
 - Android 업로드 버퍼는 8KB→64KB로 늘고 서버 원본 업로드와 썸네일 변환·업로드가 병렬 시작됨
@@ -58,6 +58,8 @@
 - 실제 목록 UI 24개 순차 방문은 첫 순회 3,274.261~3,400.052ms→cache 역순회 1,762.757~1,778.225ms로 45.7~47.9% 단축됐고 재구성 중 fetch·decode는 24회에서 증가하지 않음
 - 등록 완료 스낵바 노출과 `하나 더 등록` 액션·1회 소비 상태를 Compose UI 테스트로 검증
 - 전체화면 이미지의 현재 배율과 조작부 표시·숨기기를 TalkBack action으로 제공하고 터치·semantics 양쪽 전환을 UI 테스트로 검증
+- 실제 확대 다이얼로그 6회 핀치 왕복×5회에서 lambda형 `graphicsLayer` 지연 읽기로 CPU frame P90 11.654→9.830ms(15.6%), P95 21.266→11.002ms(48.3%) 단축
+- 대표 Perfetto trace의 `Recomposer:recompose` 총시간은 162.358→73.421ms(54.8%) 감소했고 확대 경로 앱 profile 규칙 263개를 추가
 - 사용 완료 스낵바의 `실행 취소` 액션과 5분 내 처리자 본인만 허용하는 Rules 전이를 검증하고, 일반 정보 수정으로 상태 전이를 우회하던 등록자 권한을 차단
 - benchmark 생성물 1,043개를 `.gitignore`로 제외해 미추적 후보를 1,077개→실제 소스·문서 34개로 축소
 - 이미지 교체는 등록자 권한·원본 경로를 transaction에서 재검증하고 실패 시 새 원본·썸네일을 보상 삭제

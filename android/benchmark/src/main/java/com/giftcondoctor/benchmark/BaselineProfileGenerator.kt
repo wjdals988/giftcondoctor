@@ -26,4 +26,12 @@ class BaselineProfileGenerator {
         startCouponList()
         scrollCouponList()
     }
+
+    @Test
+    fun couponImagePinch() = baselineProfileRule.collect(
+        packageName = TARGET_PACKAGE
+    ) {
+        startCouponImage()
+        pinchCouponImage()
+    }
 }
