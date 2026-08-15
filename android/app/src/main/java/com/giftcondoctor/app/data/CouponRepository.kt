@@ -78,13 +78,9 @@ class CouponRepository(
         onUploadProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
         onImageUploaded: () -> Unit = {}
     ): String {
-        val uid = auth.currentUser?.uid ?: run {
-            preparedUpload?.close()
-            error("로그인이 필요합니다.")
-        }
+        val uid = auth.currentUser?.uid ?: error("로그인이 필요합니다.")
         val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
         if (!contentType.startsWith("image/")) {
-            preparedUpload?.close()
             error("이미지 파일만 선택할 수 있습니다.")
         }
 
@@ -268,7 +264,6 @@ class CouponRepository(
     ): Boolean {
         val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
         if (!contentType.startsWith("image/")) {
-            preparedUpload?.close()
             error("이미지 파일만 선택할 수 있습니다.")
         }
         val upload = backend.replaceCouponImage(

@@ -70,6 +70,23 @@ class PreparedCouponUpload private constructor(
     }
 }
 
+/**
+ * Uses a caller-owned upload without closing it so the caller can retry.
+ * An upload created by [prepare] is owned here and always closed after [block].
+ */
+internal suspend fun <T> withPreparedCouponUpload(
+    borrowedUpload: PreparedCouponUpload?,
+    prepare: suspend () -> PreparedCouponUpload,
+    block: suspend (PreparedCouponUpload) -> T
+): T {
+    val upload = borrowedUpload ?: prepare()
+    return try {
+        block(upload)
+    } finally {
+        if (borrowedUpload == null) upload.close()
+    }
+}
+
 object CouponUploadOptimizer {
     private const val DIRECTORY_NAME = "coupon-upload-prepared"
     private const val JPEG_QUALITY = 92

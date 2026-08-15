@@ -238,13 +238,17 @@ class BackendClient(
         onRequestStarted: () -> Unit = {},
         onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit
     ): UploadedImage {
-        val prepared = preparedUpload ?: prepareCouponImage(
-            context = context,
-            imageUri = imageUri,
-            contentType = contentType,
-            fileName = fileName
-        )
-        return prepared.use { upload ->
+        return withPreparedCouponUpload(
+            borrowedUpload = preparedUpload,
+            prepare = {
+                prepareCouponImage(
+                    context = context,
+                    imageUri = imageUri,
+                    contentType = contentType,
+                    fileName = fileName
+                )
+            }
+        ) { upload ->
             onPrepared(upload.preparation)
             val imageBody = StreamingImageRequestBody(
                 openStream = upload::openStream,

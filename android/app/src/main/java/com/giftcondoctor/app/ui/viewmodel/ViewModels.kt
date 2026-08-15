@@ -78,6 +78,13 @@ private fun CouponUploadPreparation.toUploadState() = CouponUploadState(
     uploadBytes = uploadBytes
 )
 
+internal fun uploadCancellationMessage(hasPreparedUpload: Boolean): String =
+    if (hasPreparedUpload) {
+        "이미지 업로드를 취소했습니다. 준비한 이미지는 유지해 바로 다시 시도할 수 있어요."
+    } else {
+        "이미지 업로드를 취소했습니다. 전송된 임시 파일이 있으면 자동 정리합니다."
+    }
+
 sealed interface CouponOriginalImageState {
     data object Idle : CouponOriginalImageState
     data object Loading : CouponOriginalImageState
@@ -439,7 +446,6 @@ class AddCouponViewModel(
                     null
                 }
                 val upload = preparedUpload
-                preparedUpload = null
                 val couponId = repository.addCoupon(
                     context = context,
                     roomId = roomId,
@@ -470,12 +476,19 @@ class AddCouponViewModel(
                         )
                     }
                 )
+                if (preparedUpload === upload) {
+                    preparedUpload = null
+                    upload?.close()
+                }
                 onAdded(couponId)
             }.onFailure {
                 _message.value = if (it is CancellationException) {
-                    "이미지 업로드를 취소했습니다. 전송된 임시 파일이 있으면 자동 정리합니다."
+                    uploadCancellationMessage(preparedUpload != null)
                 } else {
-                    it.localizedMessage ?: "쿠폰을 추가하지 못했습니다."
+                    listOfNotNull(
+                        it.localizedMessage ?: "쿠폰을 추가하지 못했습니다.",
+                        preparedUpload?.let { "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요." }
+                    ).joinToString(" ")
                 }
             }
             _busy.value = false
@@ -714,7 +727,6 @@ class CouponDetailViewModel(
         replacementPreparationJob?.cancel()
         replacementPreparationJob = null
         val upload = preparedReplacementUpload
-        preparedReplacementUpload = null
         _imageReplaceState.value = upload?.preparation?.toUploadState()
             ?: CouponUploadState(CouponUploadStage.Preparing)
         viewModelScope.launch {
@@ -740,6 +752,10 @@ class CouponDetailViewModel(
                     }
                 )
             }.onSuccess { cleanupPending ->
+                if (preparedReplacementUpload === upload) {
+                    preparedReplacementUpload = null
+                    upload?.close()
+                }
                 _message.value = if (cleanupPending) {
                     "이미지를 교체했습니다. 이전 파일 정리가 지연되고 있습니다."
                 } else {
@@ -748,10 +764,18 @@ class CouponDetailViewModel(
                 loadOriginalImage(context, roomId, couponId, force = true)
                 onReplaced()
             }.onFailure {
-                _message.value = it.localizedMessage ?: "쿠폰 이미지를 교체하지 못했습니다."
+                _message.value = listOfNotNull(
+                    it.localizedMessage ?: "쿠폰 이미지를 교체하지 못했습니다.",
+                    preparedReplacementUpload?.let {
+                        "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요."
+                    }
+                ).joinToString(" ")
             }
             _busyAction.value = null
-            _imageReplaceState.value = CouponUploadState()
+            _imageReplaceState.value = preparedReplacementUpload?.preparation?.toUploadState()?.copy(
+                stage = CouponUploadStage.Idle,
+                percent = null
+            ) ?: CouponUploadState()
         }
     }
 
