@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -107,7 +108,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
                 }
             },
             enabled = !busy,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("login-google")
         ) {
             Text("G", fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
@@ -125,7 +126,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
             onValueChange = { email = it },
             label = { Text("이메일") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("login-email"),
             singleLine = true
         )
         OutlinedTextField(
@@ -134,7 +135,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
             label = { Text("비밀번호") },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("login-password"),
             singleLine = true
         )
 
@@ -143,7 +144,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
         OutlinedButton(
             onClick = { sessionViewModel.signIn(email.trim(), password) },
             enabled = !busy,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("login-submit"),
             shape = MaterialTheme.shapes.small
         ) {
             Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
@@ -152,7 +153,7 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
         TextButton(
             onClick = { sessionViewModel.createAccount(email.trim(), password) },
             enabled = !busy,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("login-register")
         ) {
             Icon(Icons.Default.PersonAdd, contentDescription = null)
             Spacer(Modifier.width(8.dp))

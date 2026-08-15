@@ -28,6 +28,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -39,6 +45,7 @@ import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
+import com.giftcondoctor.app.ui.components.NotificationPermissionState
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
@@ -81,101 +88,222 @@ fun NotificationSettingsScreen(
     }
 
     GDScaffold(title = "알림 설정", onBack = onBack) { modifier ->
-        Column(
-            modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        NotificationSettingsContent(
+            modifier = modifier,
+            state = NotificationSettingsUiState(
+                mode = mode,
+                pushEnabled = pushEnabled,
+                canUsePush = canUsePush,
+                busy = busy,
+                busyAction = busyAction,
+                testPushBusy = testPushBusy,
+                expiryTestPushBusy = expiryTestPushBusy,
+                joinedTestRoom = joinedTestRoom,
+                testRoomBusy = testRoomBusy,
+                testRoomMessage = testRoomMessage,
+                message = message
+            ),
+            notificationPermission = notificationPermission,
+            actions = NotificationSettingsActions(
+                onModeSelected = { mode = it },
+                onPushEnabledChanged = { pushEnabled = it },
+                onSave = { viewModel.updateDefault(mode, pushEnabled && canUsePush) },
+                onSendTestPush = viewModel::sendTestPush,
+                onSendExpiryTestPush = viewModel::sendExpiryReminderTestPush,
+                onJoinTestRoom = { roomListViewModel.joinPushTestRoom { } },
+                onOpenAppInfo = onOpenAppInfo
+            )
+        )
+    }
+}
+
+internal data class NotificationSettingsUiState(
+    val mode: NotificationMode,
+    val pushEnabled: Boolean,
+    val canUsePush: Boolean,
+    val busy: Boolean,
+    val busyAction: String?,
+    val testPushBusy: Boolean,
+    val expiryTestPushBusy: Boolean,
+    val joinedTestRoom: Boolean,
+    val testRoomBusy: Boolean,
+    val testRoomMessage: String?,
+    val message: String?
+)
+
+internal data class NotificationSettingsActions(
+    val onModeSelected: (NotificationMode) -> Unit,
+    val onPushEnabledChanged: (Boolean) -> Unit,
+    val onSave: () -> Unit,
+    val onSendTestPush: () -> Unit,
+    val onSendExpiryTestPush: () -> Unit,
+    val onJoinTestRoom: () -> Unit,
+    val onOpenAppInfo: () -> Unit
+)
+
+@Composable
+internal fun NotificationSettingsContent(
+    modifier: Modifier,
+    state: NotificationSettingsUiState,
+    notificationPermission: NotificationPermissionState,
+    actions: NotificationSettingsActions
+) {
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        NotificationDefaultsSection(state, notificationPermission, actions)
+        PushDiagnosticsSection(state, actions)
+        InlineMessage(state.testRoomMessage)
+        InlineMessage(state.message)
+        HorizontalDivider()
+        AppInfoCard(actions.onOpenAppInfo)
+    }
+}
+
+@Composable
+private fun NotificationDefaultsSection(
+    state: NotificationSettingsUiState,
+    permission: NotificationPermissionState,
+    actions: NotificationSettingsActions
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("기본 만료 알림", style = MaterialTheme.typography.titleMedium)
+        ReminderTimeBanner()
+        Text(
+            "최소: 3일 전/당일 · 기본: 7일 전/3일 전/1일 전/당일 · 꼼꼼: 7/5/3/2/1일 전/당일",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ModeChips(selected = state.mode, onSelected = actions.onModeSelected)
+        PushEnabledControl(
+            checked = state.pushEnabled && state.canUsePush,
+            enabled = state.canUsePush,
+            onCheckedChange = actions.onPushEnabledChanged
+        )
+        NotificationPermissionStatus(permission)
+        Button(
+            onClick = actions.onSave,
+            enabled = !state.busy,
+            modifier = Modifier.fillMaxWidth().testTag("notification-save"),
+            shape = MaterialTheme.shapes.small
         ) {
-            Text("기본 만료 알림", style = MaterialTheme.typography.titleMedium)
-            ReminderTimeBanner()
-            Text(
-                "최소: 3일 전/당일 · 기본: 7일 전/3일 전/1일 전/당일 · 꼼꼼: 7/5/3/2/1일 전/당일",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            ModeChips(selected = mode, onSelected = { mode = it })
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("푸시 알림 사용")
-                Switch(
-                    checked = pushEnabled && canUsePush,
-                    enabled = canUsePush,
-                    onCheckedChange = { pushEnabled = it }
-                )
-            }
-            NotificationPermissionStatus(notificationPermission)
-            Button(
-                onClick = { viewModel.updateDefault(mode, pushEnabled && canUsePush) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.small
-            ) {
-                val saving = busyAction == "default"
-                if (saving) ButtonProgressIndicator()
-                Text(if (saving) "저장 중..." else "저장")
-            }
-            Text("푸시 연결 확인", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "알림 권한 → FCM 기기 등록 → 서버 전송 순서로 확인합니다. 실패한 단계와 해결 방법을 바로 표시해요.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedButton(
-                onClick = { viewModel.sendTestPush() },
-                enabled = canUsePush && !testPushBusy,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.small
-            ) {
-                if (testPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                Text(if (testPushBusy) "3단계 확인 중..." else "푸시 연결 진단")
-            }
-            OutlinedButton(
-                onClick = { viewModel.sendExpiryReminderTestPush() },
-                enabled = canUsePush && pushEnabled && !expiryTestPushBusy,
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.small
-            ) {
-                if (expiryTestPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                Text(if (expiryTestPushBusy) "만료 알림 테스트 중..." else "만료 알림 형식 테스트")
-            }
-            Text(
-                "두 번째 테스트는 실제 만료 알림과 같은 짧은 형식으로 즉시 전송합니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (joinedTestRoom) {
-                Text(
-                    "매일 오전 9시 cron 푸시 테스트에 참여 중입니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                OutlinedButton(
-                    onClick = { roomListViewModel.joinPushTestRoom { } },
-                    enabled = canUsePush && !testRoomBusy,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (testRoomBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Text(if (testRoomBusy) "참여 중..." else "매일 오전 9시 cron 푸시도 확인")
+            val saving = state.busyAction == "default"
+            if (saving) ButtonProgressIndicator()
+            Text(if (saving) "저장 중..." else "저장")
+        }
+    }
+}
+
+@Composable
+private fun PushDiagnosticsSection(
+    state: NotificationSettingsUiState,
+    actions: NotificationSettingsActions
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("푸시 연결 확인", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "알림 권한 → FCM 기기 등록 → 서버 전송 순서로 확인합니다. 실패한 단계와 해결 방법을 바로 표시해요.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedButton(
+            onClick = actions.onSendTestPush,
+            enabled = state.canUsePush && !state.testPushBusy,
+            modifier = Modifier.fillMaxWidth().testTag("push-diagnostic"),
+            shape = MaterialTheme.shapes.small
+        ) {
+            if (state.testPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Text(if (state.testPushBusy) "3단계 확인 중..." else "푸시 연결 진단")
+        }
+        OutlinedButton(
+            onClick = actions.onSendExpiryTestPush,
+            enabled = state.canUsePush && state.pushEnabled && !state.expiryTestPushBusy,
+            modifier = Modifier.fillMaxWidth().testTag("expiry-push-test"),
+            shape = MaterialTheme.shapes.small
+        ) {
+            if (state.expiryTestPushBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Text(if (state.expiryTestPushBusy) "만료 알림 테스트 중..." else "만료 알림 형식 테스트")
+        }
+        Text(
+            "두 번째 테스트는 실제 만료 알림과 같은 짧은 형식으로 즉시 전송합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        PushTestRoomStatus(state, actions.onJoinTestRoom)
+    }
+}
+
+@Composable
+private fun PushTestRoomStatus(state: NotificationSettingsUiState, onJoin: () -> Unit) {
+    if (state.joinedTestRoom) {
+        Text(
+            "매일 오전 9시 cron 푸시 테스트에 참여 중입니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    } else {
+        OutlinedButton(
+            onClick = onJoin,
+            enabled = state.canUsePush && !state.testRoomBusy,
+            modifier = Modifier.fillMaxWidth().testTag("join-push-test-room")
+        ) {
+            if (state.testRoomBusy) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Text(if (state.testRoomBusy) "참여 중..." else "매일 오전 9시 cron 푸시도 확인")
+        }
+    }
+}
+
+@Composable
+private fun AppInfoCard(onOpen: () -> Unit) {
+    Card(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth().testTag("app-info"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        ListItem(
+            leadingContent = {
+                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            headlineContent = { Text("앱 정보") },
+            supportingContent = { AppVersionText() },
+            trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) }
+        )
+    }
+}
+
+@Composable
+private fun PushEnabledControl(
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val switchContent: @Composable () -> Unit = {
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier
+                .testTag("push-enabled-switch")
+                .semantics {
+                    contentDescription = "푸시 알림 사용"
+                    stateDescription = if (checked) "켜짐" else "꺼짐"
                 }
-            }
-            InlineMessage(testRoomMessage)
-            InlineMessage(message)
-            HorizontalDivider()
-            Card(
-                onClick = onOpenAppInfo,
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                ListItem(
-                    leadingContent = {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    headlineContent = { Text("앱 정보") },
-                    supportingContent = { AppVersionText() },
-                    trailingContent = {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null)
-                    }
-                )
-            }
+        )
+    }
+    if (LocalDensity.current.fontScale >= 1.5f) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("푸시 알림 사용")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { switchContent() }
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("푸시 알림 사용")
+            switchContent()
         }
     }
 }

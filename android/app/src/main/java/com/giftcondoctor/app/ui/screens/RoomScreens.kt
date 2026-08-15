@@ -1059,8 +1059,6 @@ fun RoomSettingsScreen(
     val message by settingsViewModel.message.collectAsStateWithLifecycle()
     val busy by settingsViewModel.busy.collectAsStateWithLifecycle()
     val busyAction by settingsViewModel.busyAction.collectAsStateWithLifecycle()
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
     GDScaffold(title = "방 설정", onBack = onBack) { modifier ->
         when (val state = roomState) {
             UiState.Loading -> LoadingState()
@@ -1068,125 +1066,186 @@ fun RoomSettingsScreen(
             is UiState.Success -> {
                 val room = state.data
                 val isOwner = room.ownerUid == roomViewModel.currentUid
-                Column(
+                RoomSettingsContent(
+                    state = RoomSettingsUiState(room, isOwner, busy, busyAction, message),
+                    actions = RoomSettingsActions(
+                        onRegenerateInvite = { settingsViewModel.regenerateInvite(roomId) },
+                        onOpenNotifications = onOpenNotifications,
+                        onOpenTrash = onOpenTrash,
+                        onLeave = { settingsViewModel.leaveRoom(roomId, onLeft) },
+                        onDelete = { settingsViewModel.deleteRoom(roomId, onLeft) }
+                    ),
                     modifier = modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(room.name, style = MaterialTheme.typography.headlineSmall)
-                        GDBadge(if (isOwner) "방장" else "멤버")
-                    }
-                    if (roomId == AppConstants.PUSH_TEST_ROOM_ID) {
-                        GDInfoBanner(
-                            title = "푸시 확인 전용 방",
-                            body = "전체 푸시 알림이 켜져 있으면 매일 오전 9시에 테스트 푸시가 옵니다.",
-                            icon = Icons.Default.Notifications
-                        )
-                    } else {
-                        Text("초대코드: ${room.inviteCode ?: "없음"}")
-                        Text("만료: ${room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
-                        Button(
-                            onClick = { settingsViewModel.regenerateInvite(roomId) },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            val loading = busyAction == "invite"
-                            if (loading) ButtonProgressIndicator()
-                            Text(if (loading) "처리 중..." else "초대코드 재발급")
-                        }
-                    }
-                    HorizontalDivider()
-                    GDInfoBanner(
-                        title = "알림은 개인 설정으로 통합됐어요",
-                        body = "모든 방의 만료 푸시는 쿠폰방 목록 우측 상단 알림 설정에서 한 번에 관리합니다.",
-                        icon = Icons.Default.Notifications
-                    )
-                    OutlinedButton(
-                        onClick = onOpenNotifications,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Text("전체 알림 설정 열기")
-                    }
-                    OutlinedButton(
-                        onClick = onOpenTrash,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Icon(Icons.Default.RestoreFromTrash, contentDescription = null)
-                        Text("최근 삭제한 쿠폰", modifier = Modifier.padding(start = 6.dp))
-                    }
-                    OutlinedButton(
-                        onClick = { settingsViewModel.leaveRoom(roomId, onLeft) },
-                        enabled = !busy && !isOwner,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        val leaving = busyAction == "leave"
-                        if (leaving) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Text(
-                            when {
-                                leaving -> "처리 중..."
-                                isOwner -> "방장은 방 삭제를 사용해 주세요"
-                                else -> "방 나가기"
-                            }
-                        )
-                    }
-                    if (isOwner && roomId != AppConstants.PUSH_TEST_ROOM_ID) {
-                        Button(
-                            onClick = { showDeleteDialog = true },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            val deleting = busyAction == "deleteRoom"
-                            if (deleting) ButtonProgressIndicator()
-                            Icon(Icons.Default.Delete, contentDescription = null)
-                            Text(if (deleting) "삭제 중..." else "방 삭제", modifier = Modifier.padding(start = 6.dp))
-                        }
-                        Text(
-                            "방을 삭제하면 멤버, 쿠폰, 댓글, 쿠폰 이미지가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    InlineMessage(message)
-                }
+                )
             }
         }
     }
+}
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("방 삭제") },
-            text = { Text("이 방과 등록된 쿠폰, 댓글, 이미지를 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.") },
-            confirmButton = {
-                TextButton(
-                    enabled = !busy,
-                    onClick = {
-                        showDeleteDialog = false
-                        settingsViewModel.deleteRoom(roomId, onLeft)
-                    }
-                ) {
-                    Text("삭제")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("취소")
-                }
-            }
+internal data class RoomSettingsUiState(
+    val room: Room,
+    val isOwner: Boolean,
+    val busy: Boolean,
+    val busyAction: String?,
+    val message: String?
+)
+
+internal data class RoomSettingsActions(
+    val onRegenerateInvite: () -> Unit,
+    val onOpenNotifications: () -> Unit,
+    val onOpenTrash: () -> Unit,
+    val onLeave: () -> Unit,
+    val onDelete: () -> Unit
+)
+
+@Composable
+internal fun RoomSettingsContent(
+    state: RoomSettingsUiState,
+    actions: RoomSettingsActions,
+    modifier: Modifier = Modifier
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        RoomSettingsHeader(state.room.name, state.isOwner)
+        RoomInviteSection(state, actions.onRegenerateInvite)
+        HorizontalDivider()
+        GDInfoBanner(
+            title = "알림은 개인 설정으로 통합됐어요",
+            body = "모든 방의 만료 푸시는 쿠폰방 목록 우측 상단 알림 설정에서 한 번에 관리합니다.",
+            icon = Icons.Default.Notifications
         )
+        RoomNavigationActions(actions)
+        RoomExitActions(state, actions.onLeave, onDeleteClick = { showDeleteDialog = true })
+        InlineMessage(state.message)
+    }
+    if (showDeleteDialog) RoomDeleteDialog(state.busy, onDismiss = { showDeleteDialog = false }) {
+        showDeleteDialog = false
+        actions.onDelete()
+    }
+}
+
+@Composable
+private fun RoomInviteSection(state: RoomSettingsUiState, onRegenerate: () -> Unit) {
+    if (state.room.id == AppConstants.PUSH_TEST_ROOM_ID) {
+        GDInfoBanner(
+            title = "푸시 확인 전용 방",
+            body = "전체 푸시 알림이 켜져 있으면 매일 오전 9시에 테스트 푸시가 옵니다.",
+            icon = Icons.Default.Notifications
+        )
+        return
+    }
+    Text("초대코드: ${state.room.inviteCode ?: "없음"}")
+    Text("만료: ${state.room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
+    if (state.isOwner) {
+        Button(
+            onClick = onRegenerate,
+            enabled = !state.busy,
+            modifier = Modifier.fillMaxWidth().testTag("regenerate-invite"),
+            shape = MaterialTheme.shapes.small
+        ) {
+            val loading = state.busyAction == "invite"
+            if (loading) ButtonProgressIndicator()
+            Text(if (loading) "처리 중..." else "초대코드 재발급")
+        }
+    }
+}
+
+@Composable
+private fun RoomNavigationActions(actions: RoomSettingsActions) {
+    OutlinedButton(
+        onClick = actions.onOpenNotifications,
+        modifier = Modifier.fillMaxWidth().testTag("open-notification-settings"),
+        shape = MaterialTheme.shapes.small
+    ) { Text("전체 알림 설정 열기") }
+    OutlinedButton(
+        onClick = actions.onOpenTrash,
+        modifier = Modifier.fillMaxWidth().testTag("open-trash"),
+        shape = MaterialTheme.shapes.small
+    ) {
+        Icon(Icons.Default.RestoreFromTrash, contentDescription = null)
+        Text("최근 삭제한 쿠폰", modifier = Modifier.padding(start = 6.dp))
+    }
+}
+
+@Composable
+private fun RoomExitActions(
+    state: RoomSettingsUiState,
+    onLeave: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        OutlinedButton(
+            onClick = onLeave,
+            enabled = !state.busy && !state.isOwner,
+            modifier = Modifier.fillMaxWidth().testTag("leave-room"),
+            shape = MaterialTheme.shapes.small
+        ) {
+            val leaving = state.busyAction == "leave"
+            if (leaving) ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Text(
+                when {
+                    leaving -> "처리 중..."
+                    state.isOwner -> "방장은 방 삭제를 사용해 주세요"
+                    else -> "방 나가기"
+                }
+            )
+        }
+        if (state.isOwner && state.room.id != AppConstants.PUSH_TEST_ROOM_ID) {
+            Button(
+                onClick = onDeleteClick,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth().testTag("delete-room"),
+                shape = MaterialTheme.shapes.small,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                val deleting = state.busyAction == "deleteRoom"
+                if (deleting) ButtonProgressIndicator()
+                Icon(Icons.Default.Delete, contentDescription = null)
+                Text(if (deleting) "삭제 중..." else "방 삭제", modifier = Modifier.padding(start = 6.dp))
+            }
+            Text(
+                "방을 삭제하면 멤버, 쿠폰, 댓글, 쿠폰 이미지가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+@Composable
+private fun RoomDeleteDialog(busy: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("방 삭제") },
+        text = { Text("이 방과 등록된 쿠폰, 댓글, 이미지를 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.") },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = onConfirm) { Text("삭제") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
+}
+
+@Composable
+private fun RoomSettingsHeader(roomName: String, isOwner: Boolean) {
+    if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(roomName, style = MaterialTheme.typography.headlineSmall)
+            GDBadge(if (isOwner) "방장" else "멤버")
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(roomName, style = MaterialTheme.typography.headlineSmall)
+            GDBadge(if (isOwner) "방장" else "멤버")
+        }
     }
 }
 
@@ -1410,7 +1469,8 @@ fun MemberListScreen(
 }
 
 @Composable
-private fun MemberRow(member: RoomMember, canRemove: Boolean, onRemove: () -> Unit) {
+internal fun MemberRow(member: RoomMember, canRemove: Boolean, onRemove: () -> Unit) {
+    var showRemoveDialog by remember { mutableStateOf(false) }
     Card(modifier = Modifier.fillMaxWidth()) {
         ListItem(
             headlineContent = { Text(member.displayName) },
@@ -1419,13 +1479,39 @@ private fun MemberRow(member: RoomMember, canRemove: Boolean, onRemove: () -> Un
             },
             trailingContent = {
                 if (canRemove) {
-                    OutlinedButton(onClick = onRemove) {
+                    OutlinedButton(
+                        onClick = { showRemoveDialog = true },
+                        modifier = Modifier.testTag("remove-member-${member.uid}")
+                    ) {
                         Text("제거")
                     }
                 }
             }
         )
     }
+    if (showRemoveDialog) MemberRemoveDialog(
+        memberName = member.displayName,
+        onDismiss = { showRemoveDialog = false },
+        onConfirm = {
+            showRemoveDialog = false
+            onRemove()
+        }
+    )
+}
+
+@Composable
+private fun MemberRemoveDialog(memberName: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("멤버 제거") },
+        text = { Text("${memberName}님을 이 방에서 제거할까요?") },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm-remove-member")) {
+                Text("제거")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1436,7 +1522,8 @@ fun ModeChips(selected: NotificationMode, onSelected: (NotificationMode) -> Unit
             FilterChip(
                 selected = selected == mode,
                 onClick = { onSelected(mode) },
-                label = { Text("${mode.label} · ${reminderDaysLabel(mode)}") }
+                label = { Text("${mode.label} · ${reminderDaysLabel(mode)}") },
+                modifier = Modifier.testTag("notification-mode-${mode.wire}")
             )
         }
     }
