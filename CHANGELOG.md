@@ -16,6 +16,7 @@
 - 자동 입력·수동 수정 경쟁, 바코드 제외 후 재감지 차단 단위 테스트 3개와 saved-state 복원 Compose 계측 1개 추가
 - Android 단위 101/101, Android 16 AVD 계측 51/51, lint 오류 0건, R8 release/benchmark build 통과
 - Firestore Rules 24/24, Backend Vitest 58/58·도구 4/4, typecheck·Next production build와 npm High/Critical 0건 회귀 통과
+- GitHub signing dry-run `31882944090` 성공: signed APK 47,012,293 bytes, SHA-256 `a29e633f005b0d84742e8b3fdf7ba36c124285cea5effd1a152377487c6df1ac`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.26 (27)
 
