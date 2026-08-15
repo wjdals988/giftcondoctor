@@ -2,7 +2,22 @@
 
 이 프로젝트는 공개된 버전을 덮어쓰지 않고 새 `versionName`과 `versionCode`로 발행합니다.
 
-## Unreleased — 0.1.26 (27)
+## Unreleased — 0.1.27 (28)
+
+### UI/UX
+
+- 쿠폰 등록 중 화면 회전·Activity 재생성 뒤에도 이름·브랜드·만료일·바코드와 공유 옵션을 복원
+- 사용자가 한 번 수정한 필드는 늦게 끝난 OCR·바코드 분석이 다시 덮어쓰지 않고 수동 입력을 최종값으로 유지
+- 다음 이미지로 이동하면 새 이미지용 초깃값으로 분리해 이전 쿠폰의 수정값이 일괄 등록 다음 장에 섞이지 않도록 제한
+
+### 안정성·검증
+
+- 자동 입력 전용 상태와 사용자 수정 여부를 한 객체로 분리해 화면의 개별 상태 분기 6개를 제거
+- 자동 입력·수동 수정 경쟁, 바코드 제외 후 재감지 차단 단위 테스트 3개와 saved-state 복원 Compose 계측 1개 추가
+- Android 단위 101/101, Android 16 AVD 계측 51/51, lint 오류 0건, R8 release/benchmark build 통과
+- Firestore Rules 24/24, Backend Vitest 58/58·도구 4/4, typecheck·Next production build와 npm High/Critical 0건 회귀 통과
+
+## 배포 대기 — 0.1.26 (27)
 
 ### UI/UX
 
