@@ -59,14 +59,56 @@ class SharedImageIntentInstrumentedTest {
         }
     }
 
+    @Test
+    fun actionSendMultipleCopiesEveryImageAndKeepsBatchAcrossActivityRecreation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val resolver = context.contentResolver
+        val imageBytes = Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII="
+        )
+        val sourceUris = (1..3).map { index ->
+            resolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "giftcondoctor-multi-$index.png")
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                }
+            )?.also { uri -> resolver.openOutputStream(uri)?.use { it.write(imageBytes) } }
+                ?: error("테스트 이미지 $index 을 만들 수 없습니다.")
+        }
+        val importDirectory = File(context.cacheDir, "shared-coupon-imports")
+        importDirectory.listFiles()?.forEach { SharedImageImportStore.delete(context, Uri.fromFile(it)) }
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_SEND_MULTIPLE
+            type = "image/png"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(sourceUris))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+                val firstImports = waitForImportedFiles(importDirectory, expectedCount = 3)
+                assertEquals(3, firstImports.size)
+                assertTrue(firstImports.all { it.extension == "png" && it.length() > 0L })
+
+                scenario.recreate()
+                val filesAfterRecreation = waitForImportedFiles(importDirectory, expectedCount = 3)
+                assertEquals(firstImports.map(File::getName).sorted(), filesAfterRecreation.map(File::getName).sorted())
+            }
+        } finally {
+            importDirectory.listFiles()?.forEach { SharedImageImportStore.delete(context, Uri.fromFile(it)) }
+            sourceUris.forEach { resolver.delete(it, null, null) }
+        }
+    }
+
     private fun waitForImportedFile(directory: File): File = waitForImportedFiles(directory).single()
 
-    private fun waitForImportedFiles(directory: File): List<File> {
+    private fun waitForImportedFiles(directory: File, expectedCount: Int = 1): List<File> {
         repeat(100) {
             val files = directory.listFiles()?.filter(File::isFile).orEmpty()
-            if (files.isNotEmpty()) return files
+            if (files.size == expectedCount && files.none { it.extension == "source" }) return files
             Thread.sleep(50)
         }
-        error("공유 이미지가 5초 안에 앱 캐시로 복사되지 않았습니다.")
+        error("공유 이미지 $expectedCount 장이 5초 안에 앱 캐시로 복사되지 않았습니다.")
     }
 }

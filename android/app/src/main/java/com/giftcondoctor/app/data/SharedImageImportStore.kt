@@ -70,6 +70,35 @@ object SharedImageImportStore {
         }
     }
 
+    suspend fun importAll(
+        context: Context,
+        sourceUris: List<Uri>,
+        declaredType: String? = null,
+        onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> }
+    ): List<Uri> {
+        require(sourceUris.size in 1..AppConstants.MAX_SHARED_IMAGE_COUNT) {
+            "공유 이미지는 한 번에 최대 ${AppConstants.MAX_SHARED_IMAGE_COUNT}장까지 등록할 수 있습니다."
+        }
+        val importedUris = mutableListOf<Uri>()
+        var importedBytes = 0L
+        onProgress(0, sourceUris.size)
+        try {
+            sourceUris.forEachIndexed { index, sourceUri ->
+                val importedUri = import(context, sourceUri, declaredType)
+                importedUris += importedUri
+                importedBytes += importedUri.path?.let(::File)?.length() ?: 0L
+                if (exceedsSharedImageTotalLimit(importedBytes)) {
+                    throw IOException("공유 이미지 전체 크기는 최대 50MB까지 등록할 수 있습니다.")
+                }
+                onProgress(index + 1, sourceUris.size)
+            }
+            return importedUris
+        } catch (error: Exception) {
+            importedUris.forEach { delete(context, it) }
+            throw error
+        }
+    }
+
     fun delete(context: Context, uri: Uri?) {
         val ownedUri = uri ?: return
         if (!ownedUri.scheme.equals("file", ignoreCase = true)) return
@@ -88,6 +117,9 @@ object SharedImageImportStore {
         val isOwned = runCatching { file.canonicalFile.parentFile == directory.canonicalFile }.getOrDefault(false)
         return uri.takeIf { isOwned && file.isFile && file.length() in 1..AppConstants.MAX_IMAGE_BYTES.toLong() }
     }
+
+    fun restoreOwned(context: Context, values: List<String>?): List<Uri> =
+        values.orEmpty().mapNotNull { restoreOwned(context, it) }
 
     internal fun copyWithinLimit(
         readBytes: (ByteArray) -> Int,
@@ -171,3 +203,6 @@ object SharedImageImportStore {
 
 internal fun shouldPurgeSharedImport(lastModifiedMillis: Long, nowMillis: Long): Boolean =
     lastModifiedMillis <= 0L || nowMillis - lastModifiedMillis > SharedImageImportStore.ABANDONED_FILE_AGE_MILLIS
+
+internal fun exceedsSharedImageTotalLimit(totalBytes: Long): Boolean =
+    totalBytes > AppConstants.MAX_SHARED_IMAGE_TOTAL_BYTES

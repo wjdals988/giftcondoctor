@@ -160,13 +160,15 @@ class AccessibilityFlowsInstrumentedTest {
         var dismissed = false
         setLargeFontContent {
             SharedImageImportBanner(
-                state = SharedImageImportState.Ready(Uri.parse("file:///tmp/shared-coupon.image")),
+                state = SharedImageImportState.Ready(
+                    List(3) { index -> Uri.parse("file:///tmp/shared-coupon-$index.image") }
+                ),
                 onDismiss = { dismissed = true }
             )
         }
 
-        composeRule.onNodeWithText("등록할 쿠폰방을 선택하세요").assertIsDisplayed()
-        composeRule.onNodeWithText("공유한 이미지는 방을 선택한 뒤 자동으로 등록 화면에 들어갑니다.")
+        composeRule.onNodeWithText("3장을 등록할 쿠폰방을 선택하세요").assertIsDisplayed()
+        composeRule.onNodeWithText("방을 고른 뒤 한 장씩 내용을 확인하고 저장합니다.")
             .assertIsDisplayed()
         assertMinimumTarget("dismiss-shared-image")
         composeRule.onNodeWithTag("dismiss-shared-image").performClick()

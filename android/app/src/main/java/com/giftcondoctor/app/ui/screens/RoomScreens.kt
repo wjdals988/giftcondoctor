@@ -248,12 +248,15 @@ internal fun SharedImageImportBanner(
 ) {
     when (state) {
         SharedImageImportState.None -> Unit
-        SharedImageImportState.Copying -> Card(
+        is SharedImageImportState.Copying -> Card(
             modifier = Modifier.fillMaxWidth().testTag("shared-image-copying"),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("공유한 이미지를 안전하게 준비하고 있어요", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "공유 이미지 ${state.completed}/${state.total}장 준비 중",
+                    fontWeight = FontWeight.SemiBold
+                )
                 Text(
                     "준비가 끝나면 등록할 쿠폰방을 선택할 수 있어요.",
                     style = MaterialTheme.typography.bodySmall,
@@ -270,12 +273,16 @@ internal fun SharedImageImportBanner(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    if (canSelectRoom) "등록할 쿠폰방을 선택하세요" else "공유한 이미지를 안전하게 보관했어요",
+                    if (canSelectRoom) {
+                        "${state.uris.size}장을 등록할 쿠폰방을 선택하세요"
+                    } else {
+                        "공유 이미지 ${state.uris.size}장을 안전하게 보관했어요"
+                    },
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     if (canSelectRoom) {
-                        "공유한 이미지는 방을 선택한 뒤 자동으로 등록 화면에 들어갑니다."
+                        "방을 고른 뒤 한 장씩 내용을 확인하고 저장합니다."
                     } else {
                         "로그인하면 등록할 쿠폰방을 선택할 수 있어요."
                     },

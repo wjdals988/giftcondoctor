@@ -74,7 +74,7 @@ cd android
 
 디버그 APK는 `android/app/build/outputs/apk/debug/giftcondoctor-{versionName}-{versionCode}-debug.apk` 형식으로 생성됩니다.
 
-Android 사진 앱이나 갤러리에서 이미지 1장을 공유할 때 기프티콘닥터를 선택하면, 앱이 파일을 최대 10MB의 전용 cache로 안전하게 복사합니다. 로그인 전이라면 로그인 뒤 등록할 쿠폰방을 선택하고, 등록 화면에서 OCR·바코드 결과를 확인한 다음 저장합니다. 여러 이미지를 한 번에 가져오는 흐름은 아직 지원하지 않습니다.
+Android 사진 앱이나 갤러리에서 최대 10장을 선택하거나 공유할 수 있습니다. 외부 공유 파일은 장당 최대 10MB·묶음 전체 50MB의 앱 전용 cache로 64KB씩 복사하며, 로그인 전이라면 로그인 뒤 등록할 쿠폰방을 선택합니다. 등록 화면에서는 `1/N` 순서대로 OCR·바코드·만료일을 확인한 뒤 한 장씩 저장하므로 잘못 읽은 내용을 자동으로 일괄 저장하지 않습니다.
 
 에뮬레이터에서 푸시 token이 생성되지 않고 `Firebase Installations Service is unavailable`이 보이면 앱 설정보다 DNS를 먼저 확인합니다.
 

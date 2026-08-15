@@ -1,5 +1,6 @@
 package com.giftcondoctor.app.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -7,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -79,22 +82,58 @@ fun GiftcondoctorApp(
     val currentRoute = currentBackStackEntry?.destination?.route
     var newlyAddedCouponId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletedCouponFeedback by remember { mutableStateOf<DeletedCouponFeedback?>(null) }
-    var activeSharedImageUriValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var activeSharedImageUriValues by rememberSaveable {
+        mutableStateOf<List<String>>(arrayListOf())
+    }
+    var sharedBatchTotal by rememberSaveable { mutableIntStateOf(0) }
     var routedSharedImportKey by rememberSaveable { mutableStateOf<String?>(null) }
-    val activeSharedImageUri = activeSharedImageUriValue?.let(Uri::parse)
-    val readySharedImageUri = (sharedImageImport as? SharedImageImportState.Ready)?.uri
+    val activeSharedImageUris = activeSharedImageUriValues.map(Uri::parse)
+    val activeSharedImageUri = activeSharedImageUris.firstOrNull()
+    val readySharedImageUris = (sharedImageImport as? SharedImageImportState.Ready)?.uris.orEmpty()
     val sharedImportRoutingKey = when (sharedImageImport) {
-        is SharedImageImportState.Ready -> "ready:${sharedImageImport.uri}"
+        is SharedImageImportState.Ready -> "ready:${sharedImageImport.uris.joinToString()}"
         is SharedImageImportState.Error -> "error:${sharedImageImport.message}"
-        SharedImageImportState.None, SharedImageImportState.Copying -> null
+        SharedImageImportState.None, is SharedImageImportState.Copying -> null
+    }
+
+    fun releaseImageAccess(uri: Uri) {
+        SharedImageImportStore.delete(context.applicationContext, uri)
+        if (uri.scheme.equals("content", ignoreCase = true)) {
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+        }
+    }
+
+    fun clearActiveImageQueue() {
+        activeSharedImageUris.forEach(::releaseImageAccess)
+        activeSharedImageUriValues = arrayListOf()
+        sharedBatchTotal = 0
+    }
+
+    fun replaceActiveImageQueue(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        clearActiveImageQueue()
+        uris.forEach { uri ->
+            if (uri.scheme.equals("content", ignoreCase = true)) {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+        }
+        activeSharedImageUriValues = ArrayList(uris.map(Uri::toString))
+        sharedBatchTotal = uris.size
     }
 
     fun startSharedImageRegistration(roomId: String): Boolean {
-        val sharedImage = readySharedImageUri ?: return false
-        activeSharedImageUri?.let { previous ->
-            SharedImageImportStore.delete(context.applicationContext, previous)
-        }
-        activeSharedImageUriValue = sharedImage.toString()
+        if (readySharedImageUris.isEmpty()) return false
+        replaceActiveImageQueue(readySharedImageUris)
         onSharedImageHandled()
         navController.navigate("rooms/$roomId/coupons/add")
         return true
@@ -219,23 +258,37 @@ fun GiftcondoctorApp(
                     arguments = listOf(navArgument("roomId") { type = NavType.StringType })
                 ) {
                     val roomId = it.arguments?.getString("roomId").orEmpty()
-                    AddCouponScreen(
-                        roomId = roomId,
-                        initialImageUri = activeSharedImageUri,
-                        onBack = {
-                            SharedImageImportStore.delete(context.applicationContext, activeSharedImageUri)
-                            activeSharedImageUriValue = null
-                            navController.popBackStack()
-                        },
-                        onAdded = { couponId ->
-                            SharedImageImportStore.delete(context.applicationContext, activeSharedImageUri)
-                            activeSharedImageUriValue = null
-                            newlyAddedCouponId = couponId
-                            navController.navigate("rooms/$roomId/coupons/$couponId") {
-                                popUpTo("rooms/$roomId")
+                    key(activeSharedImageUri?.toString(), sharedBatchTotal) {
+                        AddCouponScreen(
+                            roomId = roomId,
+                            initialImageUri = activeSharedImageUri,
+                            batchPosition = if (sharedBatchTotal > 1) {
+                                sharedBatchTotal - activeSharedImageUris.size + 1
+                            } else {
+                                0
+                            },
+                            batchTotal = sharedBatchTotal,
+                            onImagesSelected = ::replaceActiveImageQueue,
+                            onBack = {
+                                clearActiveImageQueue()
+                                navController.popBackStack()
+                            },
+                            onAdded = { couponId ->
+                                activeSharedImageUri?.let(::releaseImageAccess)
+                                val remainingUris = activeSharedImageUris.drop(1)
+                                if (remainingUris.isNotEmpty()) {
+                                    activeSharedImageUriValues = ArrayList(remainingUris.map(Uri::toString))
+                                } else {
+                                    activeSharedImageUriValues = arrayListOf()
+                                    sharedBatchTotal = 0
+                                    newlyAddedCouponId = couponId
+                                    navController.navigate("rooms/$roomId/coupons/$couponId") {
+                                        popUpTo("rooms/$roomId")
+                                    }
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
                 composable(
                     route = Routes.CouponDetail,

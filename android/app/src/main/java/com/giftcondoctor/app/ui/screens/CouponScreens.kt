@@ -151,9 +151,12 @@ private val manualBarcodeFormats = listOf(
 fun AddCouponScreen(
     roomId: String,
     initialImageUri: Uri? = null,
+    batchPosition: Int = 0,
+    batchTotal: Int = 0,
+    onImagesSelected: (List<Uri>) -> Unit,
     onBack: () -> Unit,
     onAdded: (String) -> Unit,
-    viewModel: AddCouponViewModel = viewModel(key = "add-coupon-$roomId")
+    viewModel: AddCouponViewModel = viewModel(key = "add-coupon-$roomId-${initialImageUri.orEmptyKey()}")
 ) {
     val context = LocalContext.current
     val busy by viewModel.busy.collectAsStateWithLifecycle()
@@ -164,7 +167,7 @@ fun AddCouponScreen(
     val barcode by viewModel.barcode.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
-    var imageUri by remember(initialImageUri) { mutableStateOf(initialImageUri) }
+    val imageUri = initialImageUri
     var title by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
     var barcodeValue by remember { mutableStateOf("") }
@@ -177,8 +180,10 @@ fun AddCouponScreen(
     var ownerOnly by remember { mutableStateOf(false) }
     var showSharingOptions by remember { mutableStateOf(false) }
     val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        imageUri = uri
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(AppConstants.MAX_SHARED_IMAGE_COUNT)
+    ) { uris ->
+        if (uris.isNotEmpty()) onImagesSelected(uris)
     }
 
     LaunchedEffect(imageUri) {
@@ -204,7 +209,11 @@ fun AddCouponScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "1  이미지 선택   ·   2  정보 확인   ·   3  저장",
+                if (batchTotal > 1) {
+                    "일괄 등록 $batchPosition/$batchTotal   ·   확인 후 한 장씩 저장"
+                } else {
+                    "1  이미지 선택   ·   2  정보 확인   ·   3  저장"
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
@@ -229,8 +238,8 @@ fun AddCouponScreen(
                         )
                         Text(
                             when {
-                                imageUri == null -> "갤러리에서 쿠폰 선택"
-                                imageUri == initialImageUri -> "공유한 이미지가 선택됐어요"
+                                imageUri == null -> "갤러리에서 쿠폰 선택 · 최대 10장"
+                                batchTotal > 1 -> "선택한 이미지 $batchPosition/$batchTotal · 묶음 바꾸기"
                                 else -> "다른 이미지 선택"
                             },
                             color = MaterialTheme.colorScheme.primary,
@@ -388,6 +397,8 @@ fun AddCouponScreen(
                     if (busy) ButtonProgressIndicator()
                     Text(
                         when {
+                            !busy && batchTotal > 1 && batchPosition < batchTotal -> "저장하고 다음 쿠폰 확인"
+                            !busy && batchTotal > 1 -> "마지막 쿠폰 등록하기"
                             !busy -> "쿠폰 등록하기"
                             uploadState.stage == CouponUploadStage.Preparing -> "이미지 최적화 중..."
                             uploadState.stage == CouponUploadStage.Cancelling -> "정리 중..."
@@ -401,6 +412,8 @@ fun AddCouponScreen(
         }
     }
 }
+
+private fun Uri?.orEmptyKey(): String = this?.toString() ?: "empty"
 
 @Composable
 internal fun CouponImageProcessingStatus(

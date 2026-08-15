@@ -67,4 +67,16 @@ class SharedImageImportStoreTest {
         )
         org.junit.Assert.assertTrue(shouldPurgeSharedImport(0, now))
     }
+
+    @Test
+    fun `다중 공유 전체 크기는 50MB까지 허용한다`() {
+        org.junit.Assert.assertFalse(
+            exceedsSharedImageTotalLimit(com.giftcondoctor.app.core.AppConstants.MAX_SHARED_IMAGE_TOTAL_BYTES)
+        )
+        org.junit.Assert.assertTrue(
+            exceedsSharedImageTotalLimit(
+                com.giftcondoctor.app.core.AppConstants.MAX_SHARED_IMAGE_TOTAL_BYTES + 1L
+            )
+        )
+    }
 }
