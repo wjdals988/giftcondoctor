@@ -15,6 +15,7 @@
 - 이름 공백과 ISO 날짜 유효성을 순수 상태로 분리하고 ViewModel의 최종 방어 검증은 유지
 - 잘못된 입력에서 중복 조회·이미지 업로드 시작 횟수를 1회에서 0회로 제한
 - Android 단위 106/106, Android 16 AVD 계측 54/54, lint 오류 0건·기존 경고 14건, R8 release/benchmark build 통과
+- GitHub signing dry-run `31885274307` 성공: signed APK 47,012,293 bytes, SHA-256 `52fef7b7a3f206634bd3a364a0794eb5c46bb6322fefbb04b4fb552ab051e022`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.28 (29)
 
