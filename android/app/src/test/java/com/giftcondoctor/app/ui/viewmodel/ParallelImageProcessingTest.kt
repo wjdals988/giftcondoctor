@@ -1,6 +1,7 @@
 package com.giftcondoctor.app.ui.viewmodel
 
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,5 +91,31 @@ class ParallelImageProcessingTest {
 
         assertTrue(analysisCancelled)
         assertTrue(preparationCancelled)
+    }
+
+    @Test
+    fun `one image lookahead hides preparation time inside current review time`() = runTest {
+        val lookahead = async {
+            processImageSelectionInParallel(
+                analyze = {
+                    delay(600)
+                    "다음 자동 입력"
+                },
+                prepare = {
+                    delay(800)
+                    "다음 업로드 파일"
+                },
+                onAnalysisComplete = {},
+                onPreparationComplete = {}
+            )
+        }
+
+        advanceTimeBy(1_000)
+        val result = lookahead.await()
+
+        assertEquals(1_000L, currentTime)
+        assertEquals("다음 자동 입력", result.analysis.getOrThrow())
+        assertEquals("다음 업로드 파일", result.preparation.getOrThrow())
+        assertEquals(800L, 1_800L - currentTime)
     }
 }

@@ -351,6 +351,10 @@ class AddCouponViewModel(
     private val _duplicateCandidates = MutableStateFlow<List<CouponDuplicateCandidate>>(emptyList())
     val duplicateCandidates: StateFlow<List<CouponDuplicateCandidate>> = _duplicateCandidates
 
+    private val _nextCouponPrefetchState = MutableStateFlow(NextCouponPrefetchState())
+    internal val nextCouponPrefetchState: StateFlow<NextCouponPrefetchState> =
+        _nextCouponPrefetchState
+
     private var addCouponJob: Job? = null
     private var imageAnalysisJob: Job? = null
     private var imageAnalysisRequestId = 0L
@@ -358,15 +362,27 @@ class AddCouponViewModel(
     private var analysisResultMessage: String? = null
     private var preparationResultMessage: String? = null
     private var cancelledRegistrationStage: CouponUploadStage? = null
+    private var nextImagePrefetchJob: Job? = null
+    private var nextImagePrefetchRequestId = 0L
+    private var prefetchedCouponImage: PrefetchedCouponImage? = null
+
+    private data class PrefetchedCouponImage(
+        val source: String,
+        val analysis: Result<Pair<CouponTextSuggestion, DetectedCouponBarcode?>>,
+        val preparation: Result<PreparedCouponUpload>
+    )
 
     fun recognizeCouponImage(context: Context, imageUri: Uri) {
         imageAnalysisJob?.cancel()
+        val source = imageUri.toString()
+        val prefetchedImage = takeCompletedNextImagePrefetch(source)
+        if (prefetchedImage == null) discardNextImagePrefetch()
         preparedUpload?.close()
         preparedUpload = null
         val requestId = ++imageAnalysisRequestId
-        _analysisSource.value = imageUri.toString()
-        _analysisBusy.value = true
-        _imagePreparationBusy.value = true
+        _analysisSource.value = source
+        _analysisBusy.value = prefetchedImage == null
+        _imagePreparationBusy.value = prefetchedImage == null
         analysisResultMessage = null
         preparationResultMessage = null
         _message.value = null
@@ -375,6 +391,11 @@ class AddCouponViewModel(
         _analysisMessage.value = null
         _suggestion.value = null
         _barcode.value = null
+        if (prefetchedImage != null) {
+            handleAnalysisResult(requestId, prefetchedImage.analysis)
+            handlePreparationResult(requestId, prefetchedImage.preparation)
+            return
+        }
         imageAnalysisJob = viewModelScope.launch {
             try {
                 processImageSelectionInParallel(
@@ -399,6 +420,109 @@ class AddCouponViewModel(
                 }
             }
         }
+    }
+
+    internal fun prefetchCouponImage(
+        context: Context,
+        currentImageUri: Uri?,
+        nextImageUri: Uri?
+    ) {
+        val currentSource = currentImageUri?.toString()
+        val requestedSource = nextImageUri?.toString() ?: return
+        if (_analysisSource.value != currentSource || !shouldStartNextCouponPrefetch(
+                currentSource = currentSource,
+                requestedSource = requestedSource,
+                currentImageProcessing = _analysisBusy.value || _imagePreparationBusy.value,
+                registrationBusy = _busy.value,
+                existingState = _nextCouponPrefetchState.value
+            )
+        ) return
+
+        val imageUri = nextImageUri ?: return
+        discardNextImagePrefetch()
+        val requestId = ++nextImagePrefetchRequestId
+        _nextCouponPrefetchState.value = NextCouponPrefetchState(
+            source = requestedSource,
+            stage = NextCouponPrefetchStage.Processing
+        )
+        launchNextImagePrefetch(context.applicationContext, imageUri, requestedSource, requestId)
+    }
+
+    private fun launchNextImagePrefetch(
+        context: Context,
+        imageUri: Uri,
+        source: String,
+        requestId: Long
+    ) {
+        nextImagePrefetchJob = viewModelScope.launch {
+            var preparedResult: Result<PreparedCouponUpload>? = null
+            var ownershipTransferred = false
+            try {
+                val result = processImageSelectionInParallel(
+                    analyze = { analyzeCouponImage(context, imageUri) },
+                    prepare = { repository.prepareCouponImage(context, imageUri) },
+                    onAnalysisComplete = {},
+                    onPreparationComplete = { preparedResult = it }
+                )
+                ownershipTransferred = storeNextImagePrefetch(requestId, source, result)
+            } catch (error: CancellationException) {
+                throw error
+            } finally {
+                finishNextImagePrefetch(requestId, preparedResult, ownershipTransferred)
+            }
+        }
+    }
+
+    private fun storeNextImagePrefetch(
+        requestId: Long,
+        source: String,
+        result: ParallelImageProcessingResult<
+            Pair<CouponTextSuggestion, DetectedCouponBarcode?>,
+            PreparedCouponUpload
+        >
+    ): Boolean {
+        if (requestId != nextImagePrefetchRequestId) return false
+        if (result.analysis.isFailure && result.preparation.isFailure) return false
+        prefetchedCouponImage = PrefetchedCouponImage(source, result.analysis, result.preparation)
+        nextImagePrefetchJob = null
+        _nextCouponPrefetchState.value = NextCouponPrefetchState(
+            source = source,
+            stage = NextCouponPrefetchStage.Ready,
+            analysisReady = result.analysis.isSuccess,
+            uploadReady = result.preparation.isSuccess
+        )
+        return true
+    }
+
+    private fun finishNextImagePrefetch(
+        requestId: Long,
+        preparedResult: Result<PreparedCouponUpload>?,
+        ownershipTransferred: Boolean
+    ) {
+        if (!ownershipTransferred) preparedResult?.getOrNull()?.close()
+        if (requestId != nextImagePrefetchRequestId || nextImagePrefetchJob == null) return
+        nextImagePrefetchJob = null
+        _nextCouponPrefetchState.value = NextCouponPrefetchState()
+    }
+
+    internal fun cancelInFlightNextImagePrefetch() {
+        if (nextImagePrefetchJob != null) discardNextImagePrefetch()
+    }
+
+    private fun takeCompletedNextImagePrefetch(source: String): PrefetchedCouponImage? {
+        val prefetched = prefetchedCouponImage?.takeIf { it.source == source } ?: return null
+        prefetchedCouponImage = null
+        _nextCouponPrefetchState.value = NextCouponPrefetchState()
+        return prefetched
+    }
+
+    private fun discardNextImagePrefetch() {
+        nextImagePrefetchRequestId += 1
+        nextImagePrefetchJob?.cancel()
+        nextImagePrefetchJob = null
+        prefetchedCouponImage?.preparation?.getOrNull()?.close()
+        prefetchedCouponImage = null
+        _nextCouponPrefetchState.value = NextCouponPrefetchState()
     }
 
     private suspend fun analyzeCouponImage(
@@ -497,6 +621,7 @@ class AddCouponViewModel(
         onAdded: (String) -> Unit
     ) {
         if (_busy.value) return
+        cancelInFlightNextImagePrefetch()
         _duplicateCandidates.value = emptyList()
         addCouponJob = viewModelScope.launch {
             _busy.value = true
@@ -631,6 +756,7 @@ class AddCouponViewModel(
     override fun onCleared() {
         addCouponJob?.cancel()
         imageAnalysisJob?.cancel()
+        discardNextImagePrefetch()
         preparedUpload?.close()
         preparedUpload = null
         super.onCleared()
