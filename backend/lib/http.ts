@@ -29,6 +29,14 @@ export async function readJson<T>(request: Request): Promise<T> {
   }
 }
 
+export function serverTiming(metrics: Array<{ name: string; durationMs: number }>): string {
+  return metrics.map(({ name, durationMs }) => {
+    if (!/^[a-z][a-z0-9_-]*$/.test(name)) throw new Error("Server-Timing metric name is invalid.");
+    const safeDuration = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+    return `${name};dur=${safeDuration.toFixed(1)}`;
+  }).join(", ");
+}
+
 export function requireCronSecret(request: Request): void {
   const expected = process.env.CRON_SECRET;
   if (!expected) {

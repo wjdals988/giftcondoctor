@@ -12,7 +12,7 @@
 | 가독성 | 80 | cursor 검증·권한별 쿼리·병합·페이지 생성을 분리해 변경 함수 최대 복잡도 11→8, 대형 Screen 파일은 남음 |
 | 성능 | 94 | 기존 이미지 최적화에 복구함 20개 paging을 더해 초기 읽기 상한을 일반 멤버 21개·방장 42개로 제한. 스크롤 frame budget 초과 |
 | 명시적 I/O | 92 | HTTP 페이지 응답과 nullable cursor, Android paging 상태가 타입으로 드러남 |
-| 유지보수성 | 94 | Android 단위 55개·계측 27개, Backend 단위 57개, Rules·저장소 통합 23개, 105개 paging 회귀 포함 |
+| 유지보수성 | 94 | Android 단위 55개·계측 27개, Backend 단위 58개·벤치마크 도구 4개, Rules·저장소 통합 23개, 105개 paging 회귀 포함 |
 | 에러 처리 | 92 | paging 자동 재시도 loop 차단·수동 retry와 기존 cancellation·Blob 재시도 경계 유지 |
 | 협업 | 96 | 성능 기준선, CI 컴파일 게이트, 사용자 변경 이력과 서명 차단 상태 동기화 |
 
@@ -24,7 +24,8 @@
 - Android 16 AVD 2대 계측 테스트: 각 27/27, 총 54회 실행
 - ZXing Code 128 생성→재감지 왕복, 지원 형식 경계와 분석 bitmap 1600px 상한 검증
 - Firestore Rules·복구함 저장소 통합: 23/23, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존·105개 paging 포함
-- Backend 단위 테스트: 57/57, 결정적 upload session 경로·병렬 처리·보상 삭제·cursor 검증 포함
+- Backend 단위 테스트: 58/58, 결정적 upload session 경로·원본 File 조기 전송·보상 삭제·cursor 검증 포함
+- 읽기 전용 이미지 API 벤치마크 도구 테스트: 4/4, HTTPS 제한·인증 header·stream byte·P50/P90 계산 검증
 - Release/R8 Baseline Profile A/B Macrobenchmark: 6/6, 각 5회
 - R8 release APK와 benchmark APK 빌드: 성공
 - 최종 100개 목록 cold start 중앙값: 1,264.3ms → 1,046.9ms, 17.2% 단축
@@ -35,6 +36,7 @@
 - Android lint 오류 0개, 경고 19개→14개로 정리. 잔여는 target SDK 36과 dependency 업그레이드 항목
 - 네트워크 취소 테스트: 진행 중 body 다운로드를 취소하면 OkHttp call도 취소됨
 - Android 업로드 버퍼는 8KB→64KB로 늘고 서버 원본 업로드와 썸네일 변환·업로드가 병렬 시작됨
+- 서버는 전체 원본 Buffer 복사를 기다리지 않고 앞 12바이트 검증 후 File Blob 전송을 시작하며 업로드·조회 단계별 `Server-Timing`을 제공
 - 이미지 선택 직후 OCR·교체 확인과 업로드 준비를 병렬 실행하고 5,707,065B 입력을 2,909,037B로 49.0% 줄임. 준비 537.294~598.459ms·PSS 247~267KB이며 10Mbps payload 환산 순절감은 약 1.64초 이상
 - 2,560px·6,553,600px·JPEG 92 상한과 최소 10% 절감 조건, EXIF 방향 보정, 취소·재선택·재시작 임시 파일 정리를 단위·계측 회귀로 고정
 - 업로드 응답 후 Firestore 저장 실패·화면 이탈 시 서버가 Admin 조회로 live-reference와 등록자 권한을 확인해 이미 커밋된 쿠폰 이미지 삭제 방지
@@ -77,6 +79,7 @@
 8. 샘플 bitmap이 표시 영역보다 큰 문제를 후축소하고 bitmap cache 크기 회귀를 고정
 9. 확대 화면의 즉시 2× 디코딩을 1× 최초 표시→사용자 확대 시 2× 준비로 분리하고 상태·조작부를 별도 Composable로 추출
 10. 스크롤 계측 블록에 섞였던 Activity 시작을 setup 구간으로 옮겨 프레임 지표의 의미를 교정
+11. 서버 원본 전송을 전체 썸네일용 Buffer 읽기보다 앞당기고 인증 이미지 API의 TTFB·전체 시간·body byte 계측 도구를 추가
 
 ## 남은 위험
 
@@ -93,6 +96,7 @@
 - cleanup queue는 기존 daily Cron에서 처리하므로 즉시 삭제가 실패하면 다음 정기 실행까지 이전 Blob이 남을 수 있다.
 - cleanup queue의 live-reference 방어는 단위·Rules 테스트로 검증했지만 실제 Vercel Blob 삭제 부분 실패는 로컬에서 재현하지 못했다.
 - upload session 정책은 단위 테스트와 production build까지 통과했지만 실제 Vercel Blob PUT·DELETE 경합 및 네트워크 fault injection은 수행하지 못했다.
+- 원본 File 조기 전송은 실행 순서를 단위 테스트로 증명했지만 Preview의 실제 Blob 시간 개선률은 Firebase ID token과 접근 가능한 쿠폰이 없어 측정하지 못했다.
 - 이미지 교체 API는 로컬 production build까지 통과했지만 미배포 상태라 실제 Vercel Blob·Firestore 통합 성공은 확인하지 못했다.
 - 업로드 49.0% 절감은 합성 JPEG 1장 기준이다. 실제 스크린샷·HEIC·저조도 사진과 LTE/Wi-Fi별 end-to-end 시간, 최적화 후 매장 바코드 인식률은 물리 검증 전 보장할 수 없다.
 - 복구함 자동 정리는 일일 Cron이 한 번에 최대 100개를 처리하므로 대량 backlog가 생기면 여러 날 남을 수 있다. 운영 health에 due/purging 건수를 노출하지만 외부 경보 연결은 남아 있다.

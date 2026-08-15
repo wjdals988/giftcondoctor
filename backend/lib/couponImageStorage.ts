@@ -21,7 +21,7 @@ export type StoredCouponImage = {
 type CouponImageStorageDependencies = {
   putImage: (
     path: string,
-    data: Buffer,
+    data: Buffer | File,
     options: { access: "private"; contentType: string; addRandomSuffix: false }
   ) => Promise<{ pathname?: string }>;
   createThumbnail: typeof createCouponThumbnail;
@@ -70,28 +70,36 @@ export async function storeCouponImage(
     throw new ApiError(413, "이미지는 최대 10MB까지 업로드할 수 있습니다.");
   }
 
-  const buffer = Buffer.from(await image.arrayBuffer());
-  const detected = detectSupportedImage(buffer);
+  // Only inspect the bytes required by the allowlist before starting the
+  // original upload. The full copy is still needed by Sharp, but it no longer
+  // delays or duplicates the body used for the original Blob transfer.
+  const header = new Uint8Array(await image.slice(0, 12).arrayBuffer());
+  const detected = detectSupportedImage(header);
   const prefix = couponBlobPrefix(roomId, couponId);
   const uploadId = requireCouponUploadId(options.uploadId ?? randomUUID());
   const dependencies = options.dependencies ?? defaultDependencies;
   const path = `${prefix}${uploadId}-original.${detected.extension}`;
   const thumbnailPath = `${prefix}${uploadId}-thumbnail.webp`;
 
-  const [blobResult, thumbnailBlobResult] = await Promise.allSettled([
-    dependencies.putImage(path, buffer, {
-      access: "private",
-      contentType: detected.contentType,
-      addRandomSuffix: false
-    }),
-    dependencies.createThumbnail(buffer).then(async (thumbnail) => ({
+  const originalUpload = dependencies.putImage(path, image, {
+    access: "private",
+    contentType: detected.contentType,
+    addRandomSuffix: false
+  });
+  const thumbnailUpload = image.arrayBuffer()
+    .then((bytes) => dependencies.createThumbnail(Buffer.from(bytes)))
+    .then(async (thumbnail) => ({
       thumbnail,
       blob: await dependencies.putImage(thumbnailPath, thumbnail.data, {
         access: "private",
         contentType: "image/webp",
         addRandomSuffix: false
       })
-    }))
+    }));
+
+  const [blobResult, thumbnailBlobResult] = await Promise.allSettled([
+    originalUpload,
+    thumbnailUpload
   ]);
 
   if (blobResult.status === "rejected" || thumbnailBlobResult.status === "rejected") {

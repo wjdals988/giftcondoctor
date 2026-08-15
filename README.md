@@ -36,6 +36,18 @@ npm run typecheck
 npm run build
 ```
 
+이미지 API는 쓰기 없이 health 또는 인증된 기존 쿠폰의 thumbnail/original 응답을 1~100회 측정할 수 있습니다. Firebase ID token은 URL이나 명령 인자에 넣지 않고 환경 변수로만 전달합니다.
+
+```bash
+IMAGE_BENCHMARK_BASE_URL=https://giftcondoctor.vercel.app \
+IMAGE_BENCHMARK_MODE=health IMAGE_BENCHMARK_RUNS=5 npm run benchmark:image-api
+
+IMAGE_BENCHMARK_BASE_URL=https://your-preview.vercel.app \
+IMAGE_BENCHMARK_MODE=image IMAGE_BENCHMARK_VARIANT=thumbnail \
+IMAGE_BENCHMARK_ROOM_ID="$ROOM_ID" IMAGE_BENCHMARK_COUPON_ID="$COUPON_ID" \
+IMAGE_BENCHMARK_ID_TOKEN="$FIREBASE_ID_TOKEN" npm run benchmark:image-api
+```
+
 Vercel Cron은 `backend/vercel.json`의 `0 0 * * *` 스케줄을 사용합니다. UTC 00:00은 Asia/Seoul 기준 09:00입니다.
 같은 날짜의 중복 실행은 Firestore `cronLeases`의 6분 lease로 차단하고, 수신자별 알림은 결정적 ID의 `notificationOutbox`에 먼저 기록합니다. 전송은 2분 lease로 claim하며 일시적 FCM 실패를 최대 5회 지수 backoff 후 dead letter 처리합니다. 클라이언트는 lease/outbox 문서를 읽거나 쓸 수 없습니다.
 서버 운영자는 `CRON_SECRET` 인증이 필요한 `GET /api/notifications/status`에서 알림, 이미지 Blob 정리 큐, 30일 복구함의 상태별 건수와 최근 Cron 결과를 확인할 수 있습니다. 완료된 outbox·notification log·Blob cleanup 기록은 일 1회 최대 각 200개씩 정리하고, 보관 기한이 지난 쿠폰은 일 100개씩 영구 삭제합니다.
@@ -114,7 +126,7 @@ PR과 `main` push에서는 다음 항목을 자동 검증합니다.
 - 기존 쿠폰은 인증된 목록 조회 시 전용 POST API가 쿠폰별 고정 썸네일을 1회 생성하며, 실패하면 원본 fallback으로 표시합니다.
 - 쿠폰 목록은 공개·본인 비공개 쿠폰을 각각 12개씩 cursor로 조회하고, 스크롤 끝 4개 전에 다음 페이지를 가져옵니다.
 - 복구함은 20개 단위 cursor paging을 사용합니다. 일반 멤버는 본인 삭제 쿠폰만, 방장은 본인 삭제 쿠폰과 원래 공개였던 쿠폰만 서버 쿼리 단계에서 합치며 타인의 비공개 쿠폰 ID를 cursor에 노출하지 않습니다.
-- Android 업로드는 원본 전체를 메모리에 복사하지 않고 64KB 버퍼로 전송합니다. 신규 등록은 이미지 선택 직후 OCR과, 이미지 교체는 확인 단계와 업로드 준비를 병렬 실행합니다. 1.5MB 이상 또는 2,560px 초과 입력은 JPEG 품질 92로 준비해 10% 이상 작을 때만 전송합니다. 준비·진행률·취소·정리·서버 저장 단계와 최적화 전후 용량을 표시합니다. upload session ID와 다음 일일 Cron용 선생성 cleanup 안전망으로 응답을 잃어도 후보 경로를 추적하고, 서버는 live-reference를 확인해 미사용 Blob만 정리합니다.
+- Android 업로드는 원본 전체를 메모리에 복사하지 않고 64KB 버퍼로 전송합니다. 서버도 magic byte에 필요한 앞 12바이트만 검사한 뒤 원본 `File`의 Blob 전송을 시작하고, 전체 `Buffer` 복사는 썸네일 생성에만 사용합니다. 신규 등록은 이미지 선택 직후 OCR과, 이미지 교체는 확인 단계와 업로드 준비를 병렬 실행합니다. 1.5MB 이상 또는 2,560px 초과 입력은 JPEG 품질 92로 준비해 10% 이상 작을 때만 전송합니다. 준비·진행률·취소·정리·서버 저장 단계와 최적화 전후 용량을 표시합니다. upload session ID와 다음 일일 Cron용 선생성 cleanup 안전망으로 응답을 잃어도 후보 경로를 추적하고, 서버는 live-reference를 확인해 미사용 Blob만 정리합니다.
 - 등록 성공 후 상세 화면에서 완료 스낵바를 보여 주며 `하나 더 등록`으로 연속 등록을 바로 시작할 수 있습니다.
 - 사용 완료 직후에는 `실행 취소`를 제공하며 Firestore Rules가 5분 이내 처리자 본인의 복원만 허용합니다.
 - 쿠폰 삭제는 이미지·댓글·기존 상태를 30일 보존하는 복구함으로 이동하며 목록에서 즉시 실행 취소할 수 있습니다. 공개 쿠폰은 등록자와 방장, 비공개 쿠폰은 등록자만 복원하거나 영구 삭제할 수 있습니다. 보관 기한이 지나면 Cron이 문서·댓글을 삭제하고 Blob cleanup queue로 이미지 정리를 보장합니다.

@@ -87,6 +87,14 @@ ML Kit bundled barcode 17.3.0을 넣은 R8 APK는 68,084,965B였고 4개 ABI의 
 
 썸네일이 있는 쿠폰은 상세 진입만으로 원본 파일을 만들지 않고 확대 탭 또는 썸네일 실패 때만 원본을 요청한다. 따라서 확대를 사용하지 않는 상세 세션의 원본 HTTP·disk write는 논리적으로 1회→0회다. Idle/Loading/Ready/Error 정책, Loading·Ready 중 중복 억제, 확대 닫기 중 Loading 취소를 8개 단위 경계로 검증했지만 실제 Vercel wire byte 절감률은 운영 계측 전까지 확정하지 않는다.
 
+## 서버 이미지 전송 시작과 API 계측
+
+서버는 최대 10MB 원본 전체를 `Buffer`로 복사한 뒤 원본 Blob 전송을 시작하던 구조에서, JPEG/PNG/WebP 판별에 필요한 앞 12바이트만 읽고 원본 `File` 전송을 먼저 시작하도록 변경했다. 전체 `Buffer`는 Sharp 썸네일 생성에만 사용한다. 지연된 전체 읽기가 끝나기 전에 원본 `File`이 저장 계층으로 전달되고, 썸네일에는 `Buffer`가 전달되는 순서를 단위 테스트로 고정했다. 다만 `request.formData()`가 요청 본문을 이미 파싱한 이후의 최적화이므로 Android→Vercel 인입 전송 자체가 스트리밍으로 바뀐 것은 아니다.
+
+업로드·교체 응답은 `prepare/blob-store/commit/cleanup`, 이미지 조회는 `access/blob-get` 단계의 `Server-Timing`을 제공한다. 새 읽기 전용 벤치마크는 TTFB, 전체 응답 시간, 실제 읽은 body bytes, `Content-Length`, `Server-Timing`을 1~100회 수집하며 Firebase token을 URL에 넣지 않는다.
+
+공개 production `/api/health`로 도구를 5회 smoke한 결과 TTFB P50/P90은 303.687/2,006.335ms, 전체 P50/P90은 305.328/2,010.479ms, 응답은 매번 153B였다. 이는 기존 production health의 네트워크·cold start 변동을 포함한 도구 검증값이지 이번 미배포 이미지 코드의 성능 수치가 아니다. 실제 Preview 이미지 API는 유효한 Firebase ID token과 접근 가능한 room/coupon ID가 없어 측정하지 않았으며, 이 항목은 완료로 판정하지 않는다.
+
 UI 값은 24개를 한 화면에 동시에 표시한 시간이 아니라 테스트가 각 행을 순서대로 스크롤하고 이미지 semantics가 나타날 때까지 기다린 총시간이다. debug 실행이고 Compose 테스트 동기화 비용까지 포함하므로 체감 프레임이나 release 성능 합격선으로 사용하지 않는다. 다만 재구성 시 추가 HTTP·decode가 일어나지 않는다는 회귀는 직접 증명한다.
 
 ## 판정

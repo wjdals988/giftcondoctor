@@ -4,12 +4,13 @@ import { requireCouponBlobPath } from "@/lib/blobPath";
 import { enqueueBlobCleanup } from "@/lib/blobCleanupQueue";
 import { deleteCouponImages, storeCouponImage } from "@/lib/couponImageStorage";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { ApiError, json, jsonError } from "@/lib/http";
+import { ApiError, json, jsonError, serverTiming } from "@/lib/http";
 import { enforceUserRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const startedAt = performance.now();
   try {
     const token = await requireUser(request);
     await enforceUserRateLimit(token.uid, { action: "coupon-image-replace", limit: 20, windowSeconds: 3600 });
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
     const oldThumbnailBlobPath = oldThumbnailValue
       ? requireCouponBlobPath(oldThumbnailValue, roomId, couponId)
       : null;
+    const storageStartedAt = performance.now();
     const stored = await storeCouponImage(roomId, couponId, image);
+    const commitStartedAt = performance.now();
     const db = getAdminDb();
 
     try {
@@ -62,6 +65,7 @@ export async function POST(request: Request) {
       throw error;
     }
 
+    const cleanupStartedAt = performance.now();
     const oldPaths = [oldBlobPath, oldThumbnailBlobPath].filter((path): path is string => path !== null);
     let cleanupJob = null;
     try {
@@ -86,7 +90,17 @@ export async function POST(request: Request) {
         });
       }
     }
-    return json({ ...stored, cleanupPending });
+    const finishedAt = performance.now();
+    return json({ ...stored, cleanupPending }, {
+      headers: {
+        "Server-Timing": serverTiming([
+          { name: "prepare", durationMs: storageStartedAt - startedAt },
+          { name: "blob-store", durationMs: commitStartedAt - storageStartedAt },
+          { name: "commit", durationMs: cleanupStartedAt - commitStartedAt },
+          { name: "cleanup", durationMs: finishedAt - cleanupStartedAt }
+        ])
+      }
+    });
   } catch (error) {
     return jsonError(error);
   }

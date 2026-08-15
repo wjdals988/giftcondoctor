@@ -62,6 +62,7 @@
 - [x] 복구함 20개 cursor paging·105개 무중복 순회·자동 선조회·오류 수동 재시도
 - [x] Android 이미지 스트리밍 업로드·진행률·저장 단계 피드백
 - [x] 64KB 업로드 버퍼와 원본 전송·썸네일 생성 병렬화, 부분 실패 보상 테스트
+- [x] 서버 원본 File 조기 전송, 업로드·조회 `Server-Timing`, 비파괴 인증 이미지 API 벤치마크 도구
 - [x] 업로드 응답 후 Firestore 커밋 확인과 미사용 Blob cleanup queue 보상
 - [x] upload session ID 기반 응답 유실 Blob 정리와 안전한 업로드 취소
 - [x] 이미지 선택 시 OCR·업로드 전처리 병렬 실행, 2,560px/JPEG 92/최소 10% 절감 정책과 전후 용량 표시

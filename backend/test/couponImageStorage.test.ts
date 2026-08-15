@@ -22,7 +22,14 @@ describe("coupon image storage boundaries", () => {
     await expect(storeCouponImage("room-1", "coupon-1", image)).rejects.toMatchObject({ status: 415 });
   });
 
-  it("starts the original upload before thumbnail processing finishes", async () => {
+  it("starts the original File upload before the full thumbnail read finishes", async () => {
+    let resolveFullRead: ((value: ArrayBuffer) => void) | undefined;
+    const fullRead = new Promise<ArrayBuffer>((resolve) => { resolveFullRead = resolve; });
+    class DeferredFullReadFile extends File {
+      override arrayBuffer(): Promise<ArrayBuffer> {
+        return fullRead;
+      }
+    }
     let resolveThumbnail: ((value: {
       data: Buffer;
       width: number;
@@ -38,22 +45,37 @@ describe("coupon image storage boundaries", () => {
       sourceHeight: number;
     }>((resolve) => { resolveThumbnail = resolve; });
     const uploaded: string[] = [];
+    const uploadedBodies: Array<Buffer | File> = [];
+    let thumbnailStarted = false;
+    const image = new DeferredFullReadFile(
+      [new Uint8Array([0xff, 0xd8, 0xff, 0x00])],
+      "image.jpg",
+      { type: "image/jpeg" }
+    );
     const operation = storeCouponImage(
       "room-1",
       "coupon-1",
-      new File([new Uint8Array([0xff, 0xd8, 0xff, 0x00])], "image.jpg", { type: "image/jpeg" }),
+      image,
       { dependencies: {
-        putImage: async (path) => {
+        putImage: async (path, body) => {
           uploaded.push(path);
+          uploadedBodies.push(body);
           return { pathname: path };
         },
-        createThumbnail: async () => thumbnail,
+        createThumbnail: async () => {
+          thumbnailStarted = true;
+          return thumbnail;
+        },
         deleteImages: async () => undefined
       } }
     );
 
     await vi.waitFor(() => expect(uploaded).toHaveLength(1));
     expect(uploaded[0]).not.toContain("thumbnail");
+    expect(uploadedBodies[0]).toBe(image);
+    expect(thumbnailStarted).toBe(false);
+    resolveFullRead?.(new Uint8Array([0xff, 0xd8, 0xff, 0x00]).buffer);
+    await vi.waitFor(() => expect(thumbnailStarted).toBe(true));
     resolveThumbnail?.({
       data: Buffer.from("thumbnail"),
       width: 256,
@@ -63,6 +85,7 @@ describe("coupon image storage boundaries", () => {
     });
     const result = await operation;
     expect(uploaded).toHaveLength(2);
+    expect(Buffer.isBuffer(uploadedBodies[1])).toBe(true);
     expect(result.thumbnailWidth).toBe(256);
     expect(result.imageWidth).toBe(1024);
   });
