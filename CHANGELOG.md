@@ -52,7 +52,7 @@
 
 - 분실된 v0.1.12 서명키 대신 새 RSA 4096bit 인증서로 전환하고, Actions 기본 실행을 tag·Release·대시보드를 변경하지 않는 signing dry-run으로 분리
 - GitHub Secrets의 Firebase project/package/Web OAuth client와 keystore·signed APK 인증서 SHA-256을 배포 전에 이중 검증
-- Android 단위 테스트 28개→55개, Android 계측 테스트 0개→27개
+- Android 단위 테스트 28개→58개, Android 계측 테스트 0개→27개
 - Backend 단위 테스트 58개·API 벤치마크 스크립트 테스트 4개와 Firestore Rules·복구함 저장소 통합 테스트 23개로 30일 만료·권한·댓글 보존·비공개 격리·105개 cursor paging 검증
 - 24개 썸네일 miss/hit·payload·PSS 5회 기준선과 동일 key 24개 동시 요청 fetch 1회 회귀 추가
 - 같은 썸네일의 56×56→512×360 전환에서 압축 cache hit와 fetch 1회를 검증하고, 확대 화면의 미리보기→원본 교체 UI 회귀 추가
@@ -72,6 +72,7 @@
 - 쿠폰 ID와 Blob 경로를 서버·Firestore Rules 양쪽에서 결합 검증
 - 방 생성·가입, 이미지 업로드, 테스트 푸시 등에 사용자별 rate limit 적용
 - 로그아웃 시 FCM token 문서와 로컬 token 정리
+- FCM token 정리에 실패하면 인증 세션을 유지해 다음 계정에 이전 사용자의 알림이 노출되는 fail-open 로그아웃 차단
 - Next.js 16.3.0, Firebase Admin 14.2.0, Vitest 4.1.10으로 갱신
 - production audit의 High/Critical 0건을 유지하고, 강제 Firebase Admin 다운그레이드가 필요한 간접 `uuid` Moderate 6건은 알려진 잔여 위험으로 기록
 

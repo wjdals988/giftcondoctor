@@ -17,6 +17,7 @@
 - [ ] 권한 허용 후 `users/{uid}/pushTokens/{tokenId}` 저장
 - [ ] FCM token refresh 시 같은 경로가 갱신됨
 - [ ] 로그아웃 직전 현재 `users/{uid}/pushTokens/{tokenId}`가 삭제되고 로컬 FCM token이 교체됨
+- [ ] 오프라인 등으로 token 정리가 실패하면 로그아웃을 중단하고 현재 계정을 유지하며 재시도 안내
 - [ ] 계정 A 로그아웃 → 계정 B 로그인 뒤 A의 쿠폰 제목·브랜드 알림이 B 세션/잠금화면에 노출되지 않음
 - [ ] 알림 설정에서 pushEnabled 변경 저장
 

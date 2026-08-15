@@ -52,20 +52,11 @@ class PushTokenRepository(
     }
 
     suspend fun deleteCurrentToken() {
-        val uid = auth.currentUser?.uid
-        val token = runCatching { messaging.token.await() }.getOrNull()
-        var cleanupFailure: Throwable? = null
-
-        if (uid != null && token != null) {
-            runCatching {
-                firestore.document("users/$uid/pushTokens/${sha256(token)}").delete().await()
-            }.onFailure { cleanupFailure = it }
+        val token = messaging.token.await()
+        auth.currentUser?.uid?.let { uid ->
+            firestore.document("users/$uid/pushTokens/${sha256(token)}").delete().await()
         }
-
-        runCatching { messaging.deleteToken().await() }
-            .onFailure { if (cleanupFailure == null) cleanupFailure = it }
-
-        cleanupFailure?.let { throw it }
+        messaging.deleteToken().await()
     }
 }
 

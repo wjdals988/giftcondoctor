@@ -51,6 +51,19 @@ import java.time.LocalDate
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
 enum class CouponUploadStage { Idle, Preparing, Uploading, Cancelling, Saving }
 
+internal suspend fun performSafeSignOut(
+    deletePushToken: suspend () -> Unit,
+    signOutAuth: () -> Unit
+): Result<Unit> = try {
+    deletePushToken()
+    signOutAuth()
+    Result.success(Unit)
+} catch (error: CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    Result.failure(error)
+}
+
 data class CouponUploadState(
     val stage: CouponUploadStage = CouponUploadStage.Idle,
     val percent: Int? = null,
@@ -134,10 +147,12 @@ class SessionViewModel(
     fun signOut() {
         viewModelScope.launch {
             _busy.value = true
-            val cleanup = runCatching { pushTokenRepository.deleteCurrentToken() }
-            authRepository.signOut()
-            cleanup.onFailure {
-                _message.value = "로그아웃했지만 알림 토큰 정리가 지연될 수 있습니다."
+            _message.value = null
+            performSafeSignOut(
+                deletePushToken = { pushTokenRepository.deleteCurrentToken() },
+                signOutAuth = { authRepository.signOut() }
+            ).onFailure {
+                _message.value = "알림 토큰을 안전하게 정리하지 못해 로그아웃하지 않았습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요."
             }
             _busy.value = false
         }

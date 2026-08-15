@@ -5,14 +5,14 @@
 
 ## 전체 평가: A (89/100)
 
-`code-quality-reviewer`의 6개 가중치로 수동 평가했다. 전체 자동 스크립트는 전역 ESLint 의존과 자체 산술 오류로 완주하지 못해 총점은 N/A로 처리했다. 별도 AST 복잡도 검사는 이번 Backend 변경의 최대값을 11→8로 낮춘 뒤 통과했으며, Kotlin 컴파일, unit/UI/Macrobenchmark, R8 release 빌드를 함께 근거로 점수화했다.
+`code-quality-reviewer`의 6개 가중치로 수동 평가했다. 전체 자동 스크립트는 전역 ESLint 의존과 자체 산술 오류로 완주하지 못해 총점은 N/A로 처리했다. 별도 AST 복잡도 검사에서 이번 cursor paging 변경 함수는 최대값을 11→8로 낮췄다. 범위를 큰 Backend production 파일 8개로 넓히면 기존 Cron·upload·replace handler의 최대 복잡도는 17이므로 후속 분리가 필요하다. Kotlin 컴파일, unit/UI/Macrobenchmark, R8 release 빌드를 함께 근거로 점수화했다.
 
 | 평가축 | 점수 | 근거 |
 |---|---:|---|
-| 가독성 | 80 | cursor 검증·권한별 쿼리·병합·페이지 생성을 분리해 변경 함수 최대 복잡도 11→8, 대형 Screen 파일은 남음 |
+| 가독성 | 80 | cursor 검증·권한별 쿼리·병합·페이지 생성을 분리해 변경 함수 최대 복잡도 11→8, 전체 큰 Backend 파일은 최대 17이고 대형 Screen 파일도 남음 |
 | 성능 | 94 | 기존 이미지 최적화에 복구함 20개 paging을 더해 초기 읽기 상한을 일반 멤버 21개·방장 42개로 제한. 스크롤 frame budget 초과 |
 | 명시적 I/O | 92 | HTTP 페이지 응답과 nullable cursor, Android paging 상태가 타입으로 드러남 |
-| 유지보수성 | 94 | Android 단위 55개·계측 27개, Backend 단위 58개·벤치마크 도구 4개, Rules·저장소 통합 23개, 105개 paging 회귀 포함 |
+| 유지보수성 | 94 | Android 단위 58개·계측 27개, Backend 단위 58개·벤치마크 도구 4개, Rules·저장소 통합 23개, 105개 paging 회귀 포함 |
 | 에러 처리 | 92 | paging 자동 재시도 loop 차단·수동 retry와 기존 cancellation·Blob 재시도 경계 유지 |
 | 협업 | 96 | 성능 기준선, CI 컴파일 게이트, 사용자 변경 이력과 서명 차단 상태 동기화 |
 
@@ -20,7 +20,7 @@
 
 ## 통과 항목
 
-- Android 단위 테스트: 55/55
+- Android 단위 테스트: 58/58
 - Android 16 AVD 2대 계측 테스트: 각 27/27, 총 54회 실행
 - ZXing Code 128 생성→재감지 왕복, 지원 형식 경계와 분석 bitmap 1600px 상한 검증
 - Firestore Rules·복구함 저장소 통합: 23/23, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존·105개 paging 포함
@@ -103,6 +103,7 @@
 - 복구함 query용 composite index 2개가 프로덕션에 생성되기 전에 Backend를 배포하면 목록 API가 `FAILED_PRECONDITION`으로 실패한다. 인덱스 선배포와 실제 쿼리 smoke가 릴리스 게이트다.
 - 복구함 추가 후 목록 스크롤 1차 재측정 P50/P90은 22.1/31.3ms였지만 2차는 22.0/24.6ms로 기존 22.0/24.7ms와 같아 퇴행이 재현되지 않았다. 다만 P90 변동 범위 24.6~31.3ms가 넓고 모두 16.7ms를 넘으므로 물리 기기 A/B 전에는 절대 성능 합격으로 처리하지 않는다.
 - `npm audit --omit=dev`는 High/Critical 0건이지만 Firebase Admin 14.2.0→Cloud Storage→`uuid` 9.0.1 간접 경로의 Moderate 6건을 보고한다. 자동 수정안은 Firebase Admin 10.3.0 강제 다운그레이드이므로 적용하지 않았고 상위 의존성 갱신을 추적해야 한다.
+- 큰 Backend production 파일 8개의 AST 복잡도는 Cron·upload·replace handler에서 최대 17이다. 동작 회귀는 통과하지만 15 초과 handler는 단계별 함수로 더 분리해야 한다.
 
 ## 다음 우선순위
 
@@ -115,6 +116,7 @@
 7. [P1] 최근 쿠폰 암호화 로컬 캐시와 오프라인 매장 사용 경로
 8. [P1] 복구함 페이지별 Firestore read·latency 운영 관측과 인덱스 smoke 자동화
 9. [P2] Compose/AGP/compileSdk 업그레이드 별도 검증
+10. [P2] 복잡도 15 초과 Cron·upload·replace handler 단계별 함수 분리
 
 ## 긍정적 평가
 
