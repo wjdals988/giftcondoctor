@@ -18,6 +18,11 @@ export type CouponTrashMetadata = {
   state: CouponTrashState;
 };
 
+export type CouponTrashCursor = {
+  deletedAtMillis: number;
+  couponId: string;
+};
+
 export function createCouponTrashMetadata(
   coupon: Record<string, unknown>,
   deletedByUid: string,
@@ -76,6 +81,31 @@ export function isCouponTrashStatus(status: unknown): boolean {
 
 export function isCouponTrashExpired(purgeAtMillis: number, nowMillis: number): boolean {
   return purgeAtMillis <= nowMillis;
+}
+
+export function encodeCouponTrashCursor(cursor: CouponTrashCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+export function decodeCouponTrashCursor(value: string): CouponTrashCursor | null {
+  if (value.length === 0 || value.length > 512) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+    const deletedAtMillis = parsed.deletedAtMillis;
+    const couponId = parsed.couponId;
+    if (!isValidDeletedAtMillis(deletedAtMillis) || !isValidCouponId(couponId)) return null;
+    return { deletedAtMillis, couponId };
+  } catch {
+    return null;
+  }
+}
+
+function isValidDeletedAtMillis(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isValidCouponId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 256 && !value.includes("/");
 }
 
 function stringField(value: unknown, message: string): string {

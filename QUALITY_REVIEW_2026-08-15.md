@@ -3,28 +3,28 @@
 검토일: 2026-08-15
 대상: `0.1.19 (20)` → `0.1.20 (21)` Android 이미지·목록·바코드 및 Backend 안정성 변경분
 
-## 전체 평가: A (87/100)
+## 전체 평가: A (89/100)
 
-`code-quality-reviewer`의 6개 가중치로 수동 평가했다. 자동 스크립트는 TypeScript/ESLint 전용이라 Kotlin 소스를 인식하지 못했고 자체 `awk` 계산 오류도 발생했다. 자동 결과 `0점`은 무효로 처리하고 Kotlin 컴파일, unit/UI/Macrobenchmark, R8 release 빌드를 근거로 점수화했다.
+`code-quality-reviewer`의 6개 가중치로 수동 평가했다. 전체 자동 스크립트는 전역 ESLint 의존과 자체 산술 오류로 완주하지 못해 총점은 N/A로 처리했다. 별도 AST 복잡도 검사는 이번 Backend 변경의 최대값을 11→8로 낮춘 뒤 통과했으며, Kotlin 컴파일, unit/UI/Macrobenchmark, R8 release 빌드를 함께 근거로 점수화했다.
 
 | 평가축 | 점수 | 근거 |
 |---|---:|---|
-| 가독성 | 76 | 네트워크 callback과 확대 수학을 작은 함수로 분리했지만 대형 Screen 파일은 남음 |
-| 성능 | 93 | 64KB 원본 파일 스트리밍, 크기 독립 압축·bitmap LRU, 표시 영역 후축소, 취소 가능한 HTTP, 중복 요청 직렬화, R8·Baseline Profile. 스크롤 frame budget 초과 |
-| 명시적 I/O | 90 | HTTP status/body와 target size, viewport 입력·출력이 타입으로 드러남 |
-| 유지보수성 | 92 | Android 단위 28→55, 계측 0→21, Backend 단위 56개, Rules·저장소 통합 22개, Macrobenchmark와 profile generator로 회귀 범위 확대 |
-| 에러 처리 | 90 | cancellation 전파, 빈·10MB 초과 body, 부분 파일 삭제, Blob 재시도, stale 바코드 제거 경계 유지 |
+| 가독성 | 80 | cursor 검증·권한별 쿼리·병합·페이지 생성을 분리해 변경 함수 최대 복잡도 11→8, 대형 Screen 파일은 남음 |
+| 성능 | 94 | 기존 이미지 최적화에 복구함 20개 paging을 더해 초기 읽기 상한을 일반 멤버 21개·방장 42개로 제한. 스크롤 frame budget 초과 |
+| 명시적 I/O | 92 | HTTP 페이지 응답과 nullable cursor, Android paging 상태가 타입으로 드러남 |
+| 유지보수성 | 94 | Android 단위 55개·계측 26개, Backend 단위 57개, Rules·저장소 통합 23개, 105개 paging 회귀 포함 |
+| 에러 처리 | 92 | paging 자동 재시도 loop 차단·수동 retry와 기존 cancellation·Blob 재시도 경계 유지 |
 | 협업 | 96 | 성능 기준선, CI 컴파일 게이트, 사용자 변경 이력과 서명 차단 상태 동기화 |
 
-가중 총점은 `76×0.25 + 93×0.20 + 90×0.15 + 92×0.25 + 90×0.10 + 96×0.05 = 87.9`다. 물리 기기·매장 스캐너·실네트워크 이미지 성능 검증이 빠진 점을 보수적으로 반영해 최종 87점으로 판정했다.
+가중 총점은 `80×0.25 + 94×0.20 + 92×0.15 + 94×0.25 + 92×0.10 + 96×0.05 = 90.1`이다. 물리 기기·매장 스캐너·실네트워크·운영 인덱스 검증이 빠진 점을 보수적으로 반영해 최종 89점으로 판정했다.
 
 ## 통과 항목
 
 - Android 단위 테스트: 55/55
-- Android 16 AVD 2대 계측 테스트: 각 21/21, 총 42회 실행
+- Android 16 AVD 2대 계측 테스트: 각 26/26, 총 52회 실행
 - ZXing Code 128 생성→재감지 왕복, 지원 형식 경계와 분석 bitmap 1600px 상한 검증
-- Firestore Rules·복구함 저장소 통합: 22/22, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존 포함
-- Backend 단위 테스트: 56/56, 결정적 upload session 경로·병렬 처리·보상 삭제·복구함 정책 포함
+- Firestore Rules·복구함 저장소 통합: 23/23, 비공개 삭제 쿠폰 격리·30일 만료·댓글 보존·105개 paging 포함
+- Backend 단위 테스트: 57/57, 결정적 upload session 경로·병렬 처리·보상 삭제·cursor 검증 포함
 - Release/R8 Baseline Profile A/B Macrobenchmark: 6/6, 각 5회
 - R8 release APK와 benchmark APK 빌드: 성공
 - 최종 100개 목록 cold start 중앙값: 1,264.3ms → 1,046.9ms, 17.2% 단축
@@ -59,6 +59,8 @@
 - 이미지 교체·쿠폰 영구 삭제·방 삭제 Blob은 영속 cleanup queue에 기록하고 live-reference 방어·5회 backoff·lease·dead-letter와 health 집계로 무음 누수와 사용 중 이미지 삭제를 방지
 - 쿠폰은 30일 soft-delete 후 복원하거나 확인 뒤 영구 삭제하며, 삭제 직후 목록의 실행 취소와 이미지·댓글·상태 복원을 UI·Firestore 통합 테스트로 검증
 - 삭제된 쿠폰의 Firestore 직접 읽기·이미지 API를 차단하고 비공개 복구함은 등록자에게만 보이도록 프라이버시 경계를 회귀 테스트로 고정
+- 복구함 100개 고정 상한을 20개 cursor paging으로 바꾸고, 권한별 쿼리를 분리해 일반 멤버 첫 요청 21개·방장 최대 42개로 제한
+- 검색·사용 완료 필터·만료일 달력과 복구함 자동 선조회·오류 수동 재시도를 Android Compose 계측으로 고정
 
 ## 즉시 수정한 항목
 
@@ -89,6 +91,7 @@
 - 이미지 교체 API는 로컬 production build까지 통과했지만 미배포 상태라 실제 Vercel Blob·Firestore 통합 성공은 확인하지 못했다.
 - 업로드 49.0% 절감은 합성 JPEG 1장 기준이다. 실제 스크린샷·HEIC·저조도 사진과 LTE/Wi-Fi별 end-to-end 시간, 최적화 후 매장 바코드 인식률은 물리 검증 전 보장할 수 없다.
 - 복구함 자동 정리는 일일 Cron이 한 번에 최대 100개를 처리하므로 대량 backlog가 생기면 여러 날 남을 수 있다. 운영 health에 due/purging 건수를 노출하지만 외부 경보 연결은 남아 있다.
+- 복구함 query용 composite index 2개가 프로덕션에 생성되기 전에 Backend를 배포하면 목록 API가 `FAILED_PRECONDITION`으로 실패한다. 인덱스 선배포와 실제 쿼리 smoke가 릴리스 게이트다.
 - 복구함 추가 후 목록 스크롤 1차 재측정 P50/P90은 22.1/31.3ms였지만 2차는 22.0/24.6ms로 기존 22.0/24.7ms와 같아 퇴행이 재현되지 않았다. 다만 P90 변동 범위 24.6~31.3ms가 넓고 모두 16.7ms를 넘으므로 물리 기기 A/B 전에는 절대 성능 합격으로 처리하지 않는다.
 - `npm audit --omit=dev`는 High/Critical 0건이지만 Firebase Admin 14.2.0→Cloud Storage→`uuid` 9.0.1 간접 경로의 Moderate 6건을 보고한다. 자동 수정안은 Firebase Admin 10.3.0 강제 다운그레이드이므로 적용하지 않았고 상위 의존성 갱신을 추적해야 한다.
 
@@ -101,7 +104,7 @@
 5. [P1] P90 24.6~31.3ms 변동 원인 분리와 프로필 적용 후에도 16.7ms를 넘는 목록 구성·측정 비용 추가 최적화
 6. [P1] QR·EAN·Code 128 실제 매장 스캐너와 저화질 이미지 감지 회귀
 7. [P1] 최근 쿠폰 암호화 로컬 캐시와 오프라인 매장 사용 경로
-8. [P1] 검색·필터·달력 UI 테스트 확대와 복구함 100개 초과 paging
+8. [P1] 복구함 페이지별 Firestore read·latency 운영 관측과 인덱스 smoke 자동화
 9. [P2] Compose/AGP/compileSdk 업그레이드 별도 검증
 
 ## 긍정적 평가

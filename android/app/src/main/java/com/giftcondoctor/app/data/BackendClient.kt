@@ -7,6 +7,7 @@ import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.DeletedCoupon
+import com.giftcondoctor.app.data.model.DeletedCouponPage
 import com.giftcondoctor.app.data.model.UploadedImage
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
@@ -130,18 +131,28 @@ class BackendClient(
             ?: throw IOException("삭제 결과를 확인하지 못했습니다.")
     }
 
-    suspend fun deletedCoupons(roomId: String): List<DeletedCoupon> {
+    suspend fun deletedCoupons(roomId: String, cursor: String? = null): DeletedCouponPage {
+        val cursorQuery = cursor?.let { "&cursor=${Uri.encode(it)}" }.orEmpty()
         val response = authedRequest(
             Request.Builder()
-                .url("$baseUrl/api/coupons/trash?roomId=${Uri.encode(roomId)}")
+                .url("$baseUrl/api/coupons/trash?roomId=${Uri.encode(roomId)}$cursorQuery")
                 .get()
         )
-        val items = JSONObject(response).optJSONArray("coupons") ?: JSONArray()
-        return buildList {
+        val payload = JSONObject(response)
+        val items = payload.optJSONArray("coupons") ?: JSONArray()
+        val coupons = buildList {
             for (index in 0 until items.length()) {
                 parseDeletedCoupon(items.optJSONObject(index))?.let(::add)
             }
         }
+        return DeletedCouponPage(
+            coupons = coupons,
+            nextCursor = if (payload.isNull("nextCursor")) {
+                null
+            } else {
+                payload.optString("nextCursor").takeIf { it.isNotBlank() }
+            }
+        )
     }
 
     suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {

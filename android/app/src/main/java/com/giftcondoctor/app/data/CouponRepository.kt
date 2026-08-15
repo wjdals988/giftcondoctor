@@ -7,6 +7,7 @@ import com.giftcondoctor.app.core.DetectedCouponBarcode
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.model.DeletedCoupon
+import com.giftcondoctor.app.data.model.DeletedCouponPage
 import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
 import com.giftcondoctor.app.data.model.toCoupon
 import com.giftcondoctor.app.data.model.toCouponComment
@@ -288,7 +289,8 @@ class CouponRepository(
     suspend fun deleteCoupon(roomId: String, couponId: String): DeletedCoupon =
         backend.deleteCoupon(roomId, couponId)
 
-    suspend fun deletedCoupons(roomId: String): List<DeletedCoupon> = backend.deletedCoupons(roomId)
+    suspend fun deletedCoupons(roomId: String, cursor: String? = null): DeletedCouponPage =
+        backend.deletedCoupons(roomId, cursor)
 
     suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {
         backend.restoreDeletedCoupon(roomId, couponId)

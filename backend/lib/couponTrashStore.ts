@@ -1,9 +1,12 @@
 import {
+  FieldPath,
   FieldValue,
   Timestamp,
+  type CollectionReference,
   type DocumentData,
   type DocumentReference,
   type DocumentSnapshot,
+  type Query,
   type QueryDocumentSnapshot
 } from "firebase-admin/firestore";
 import { requireCouponBlobPath } from "./blobPath";
@@ -11,9 +14,11 @@ import { enqueueBlobCleanup } from "./blobCleanupQueue";
 import {
   canManageDeletedCoupon,
   createCouponTrashMetadata,
+  encodeCouponTrashCursor,
   isCouponTrashExpired,
   isCouponTrashStatus,
-  parseCouponTrashState
+  parseCouponTrashState,
+  type CouponTrashCursor
 } from "./couponTrash";
 import { deleteCouponImages } from "./couponImageStorage";
 import { getAdminDb } from "./firebaseAdmin";
@@ -28,6 +33,13 @@ export type DeletedCouponSummary = {
   deletedAt: string;
   purgeAt: string;
 };
+
+export type DeletedCouponPage = {
+  coupons: DeletedCouponSummary[];
+  nextCursor: string | null;
+};
+
+export const DELETED_COUPON_PAGE_SIZE = 20;
 
 export async function softDeleteCoupon(
   roomId: string,
@@ -72,21 +84,24 @@ export async function softDeleteCoupon(
   });
 }
 
-export async function listDeletedCoupons(roomId: string, uid: string): Promise<DeletedCouponSummary[]> {
+export async function listDeletedCoupons(
+  roomId: string,
+  uid: string,
+  cursor: CouponTrashCursor | null = null
+): Promise<DeletedCouponPage> {
   const db = getAdminDb();
-  const [room, member, deleted] = await Promise.all([
+  const [room, member] = await Promise.all([
     db.doc(`rooms/${roomId}`).get(),
-    db.doc(`rooms/${roomId}/members/${uid}`).get(),
-    db.collection(`rooms/${roomId}/coupons`).where("status", "==", "deleted").limit(100).get()
+    db.doc(`rooms/${roomId}/members/${uid}`).get()
   ]);
   if (!member.exists) throw new ApiError(403, "방 멤버만 접근할 수 있습니다.");
 
   const roomOwnerUid = stringOrNull(room.get("ownerUid"));
-  return deleted.docs
-    .filter((coupon) => canManageDeletedCoupon(coupon.data(), uid, roomOwnerUid))
-    .map((coupon) => summaryFromDeleted(coupon))
-    .filter((coupon): coupon is DeletedCouponSummary => coupon !== null)
-    .sort((left, right) => right.deletedAt.localeCompare(left.deletedAt));
+  const coupons = db.collection(`rooms/${roomId}/coupons`);
+  const sources = deletedCouponSources(coupons, uid, roomOwnerUid === uid);
+  const sourceDocs = await Promise.all(sources.map((source) => fetchDeletedCouponSource(source, cursor)));
+  const visible = mergeVisibleDeletedCoupons(sourceDocs.flat(), uid, roomOwnerUid);
+  return createDeletedCouponPage(visible);
 }
 
 export async function restoreDeletedCoupon(
@@ -248,4 +263,53 @@ function timestampOrNull(value: unknown): Timestamp | null {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function compareDeletedCoupons(left: DeletedCouponSummary, right: DeletedCouponSummary): number {
+  const byDate = right.deletedAt.localeCompare(left.deletedAt);
+  return byDate !== 0 ? byDate : right.couponId.localeCompare(left.couponId);
+}
+
+function deletedCouponSources(
+  coupons: CollectionReference<DocumentData>,
+  uid: string,
+  isRoomOwner: boolean
+): Query<DocumentData>[] {
+  const own = coupons.where("status", "==", "deleted").where("ownerUid", "==", uid);
+  if (!isRoomOwner) return [own];
+  const shared = coupons
+    .where("status", "==", "deleted")
+    .where("trashState.visibility", "==", "room");
+  return [own, shared];
+}
+
+async function fetchDeletedCouponSource(
+  source: Query<DocumentData>,
+  cursor: CouponTrashCursor | null
+): Promise<QueryDocumentSnapshot[]> {
+  let query = source.orderBy("deletedAt", "desc").orderBy(FieldPath.documentId(), "desc");
+  if (cursor) query = query.startAfter(Timestamp.fromMillis(cursor.deletedAtMillis), cursor.couponId);
+  return (await query.limit(DELETED_COUPON_PAGE_SIZE + 1).get()).docs;
+}
+
+function mergeVisibleDeletedCoupons(
+  documents: QueryDocumentSnapshot[],
+  uid: string,
+  roomOwnerUid: string | null
+): DeletedCouponSummary[] {
+  const unique = new Map(documents.map((document) => [document.id, document]));
+  return [...unique.values()]
+    .filter((document) => canManageDeletedCoupon(document.data(), uid, roomOwnerUid))
+    .map(summaryFromDeleted)
+    .filter((coupon): coupon is DeletedCouponSummary => coupon !== null)
+    .sort(compareDeletedCoupons);
+}
+
+function createDeletedCouponPage(visible: DeletedCouponSummary[]): DeletedCouponPage {
+  const coupons = visible.slice(0, DELETED_COUPON_PAGE_SIZE);
+  const last = coupons.at(-1);
+  const nextCursor = visible.length > DELETED_COUPON_PAGE_SIZE && last
+    ? encodeCouponTrashCursor({ deletedAtMillis: Date.parse(last.deletedAt), couponId: last.couponId })
+    : null;
+  return { coupons, nextCursor };
 }

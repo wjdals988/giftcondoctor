@@ -7,11 +7,17 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.ui.screens.RoomDashboard
@@ -60,6 +66,46 @@ class RoomDashboardInstrumentedTest {
         composeRule.onNodeWithText("불러온 100개 중 100개 · 만료 임박순").assertExists()
         composeRule.onNodeWithTag("coupon-list").performScrollToNode(hasText("쿠폰 100"))
         composeRule.onNodeWithText("쿠폰 100").assertExists()
+    }
+
+    @Test
+    fun searchesByBrandAndFiltersByUsedStatus() {
+        val source = testCoupons(3, hasImages = false)
+        val coupons = listOf(
+            source[0].copy(title = "아메리카노", brand = "스타벅스", status = "active"),
+            source[1].copy(title = "치즈 피자", brand = "도미노", status = "used"),
+            source[2].copy(title = "편의점 상품권", brand = "GS25", status = "active")
+        )
+
+        composeRule.setContent {
+            GDTheme {
+                RoomDashboard(
+                    roomId = "search-room",
+                    coupons = coupons,
+                    isOwner = false,
+                    hasMore = false,
+                    isLoadingMore = false,
+                    pagingError = null,
+                    onLoadMore = {},
+                    onRetry = {},
+                    onOpenCoupon = {},
+                    onAddCoupon = {},
+                    modifier = Modifier
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("coupon-search").performScrollTo().performTextInput("스타벅스")
+        composeRule.onNodeWithText("아메리카노").assertExists()
+        composeRule.onAllNodesWithText("치즈 피자").assertCountEquals(0)
+        composeRule.onNodeWithText("불러온 3개 중 1개 · 만료 임박순").assertExists()
+
+        composeRule.onNodeWithTag("coupon-search").performTextClearance()
+        composeRule.onNodeWithTag("coupon-filter-used").performClick()
+        composeRule.onNodeWithTag("coupon-list").performScrollToNode(hasText("치즈 피자"))
+        composeRule.onNodeWithText("치즈 피자").assertExists()
+        composeRule.onAllNodesWithText("아메리카노").assertCountEquals(0)
+        composeRule.onNodeWithText("불러온 3개 중 1개 · 만료 임박순").assertExists()
     }
 
     @Test

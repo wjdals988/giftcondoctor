@@ -5,6 +5,7 @@
 - 물리 디바이스 푸시 6개 상태 조합과 A→B 교차 계정 개인정보 회귀 검증
 - `main` branch protection과 Backend·Android 필수 check 강제
 - Firestore Rules·Indexes rollback 경로 자동화
+- 복구함 cursor query용 composite index 2개를 프로덕션에 선배포하고 실제 쿼리 smoke 확인
 - [x] Cron 6분 lease, 수신자별 outbox, 2분 delivery claim, 일시 실패 최대 5회 지수 backoff
 - [x] notificationOutbox 상태별 건수, retry/deadLetter, 최장 대기시간, 최근 Cron 결과 조회와 30일 보존 정리
 - notificationOutbox `warning/critical` 상태를 외부 운영 경보 채널로 전달
@@ -23,7 +24,7 @@
 - 이메일 없는 Google 계정 표시명 보강
 - OCR 다중 날짜·저화질 이미지 정확도 개선
 - [x] 100개 쿠폰 목록·고해상도 확대 Android instrumented UI 테스트
-- 검색·필터·달력 Android instrumented UI 테스트 확대
+- [x] 검색·필터·달력 Android instrumented UI 테스트 확대
 - [x] 이미지 교체·쿠폰 삭제·방 삭제 Blob cleanup queue, live-reference 방어·5회 재시도·lease·dead-letter·운영 상태 집계
 - 방 탈퇴 전 쿠폰 소유권 이전 플로우
 - [x] 전체화면 쿠폰의 최대 밝기·화면 켜짐과 닫을 때 기존 상태 복원
@@ -58,6 +59,7 @@
 - [x] 512px 비공개 WebP 썸네일 API·목록 우선 로딩·원본 fallback
 - [x] 기존 쿠폰 인증 POST 기반 1회성 썸네일 백필·동시 요청 고정 경로 수렴
 - [x] 공개·본인 비공개 쿠폰 12개 단위 cursor paging·끝 4개 전 선조회·오류 재시도
+- [x] 복구함 20개 cursor paging·105개 무중복 순회·자동 선조회·오류 수동 재시도
 - [x] Android 이미지 스트리밍 업로드·진행률·저장 단계 피드백
 - [x] 64KB 업로드 버퍼와 원본 전송·썸네일 생성 병렬화, 부분 실패 보상 테스트
 - [x] 업로드 응답 후 Firestore 커밋 확인과 미사용 Blob cleanup queue 보상

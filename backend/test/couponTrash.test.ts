@@ -3,6 +3,8 @@ import {
   COUPON_TRASH_RETENTION_MS,
   canManageDeletedCoupon,
   createCouponTrashMetadata,
+  decodeCouponTrashCursor,
+  encodeCouponTrashCursor,
   isCouponTrashExpired,
   isCouponTrashStatus,
   parseCouponTrashState
@@ -81,5 +83,12 @@ describe("coupon trash policy", () => {
     expect(isCouponTrashStatus("active")).toBe(false);
     expect(isCouponTrashExpired(1_000, 999)).toBe(false);
     expect(isCouponTrashExpired(1_000, 1_000)).toBe(true);
+  });
+
+  it("round-trips only bounded coupon trash cursors", () => {
+    const cursor = { deletedAtMillis: 1_786_742_400_000, couponId: "coupon-20" };
+    expect(decodeCouponTrashCursor(encodeCouponTrashCursor(cursor))).toEqual(cursor);
+    expect(decodeCouponTrashCursor("not-json")).toBeNull();
+    expect(decodeCouponTrashCursor(encodeCouponTrashCursor({ ...cursor, couponId: "rooms/bad" }))).toBeNull();
   });
 });

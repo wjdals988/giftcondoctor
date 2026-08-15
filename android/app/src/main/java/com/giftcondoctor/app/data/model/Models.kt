@@ -86,6 +86,11 @@ data class DeletedCoupon(
     val purgeAt: Instant
 )
 
+data class DeletedCouponPage(
+    val coupons: List<DeletedCoupon>,
+    val nextCursor: String?
+)
+
 data class UploadedImage(
     val blobPath: String,
     val thumbnailBlobPath: String?,

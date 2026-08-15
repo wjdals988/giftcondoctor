@@ -620,14 +620,14 @@ internal fun RoomDashboard(
     val visibleCoupons = remember(coupons, searchQuery, selectedFilter, today) {
         filterAndSortCoupons(coupons, searchQuery, selectedFilter, today)
     }
-    val shouldLoadMore by remember(listState, hasMore, isLoadingMore) {
+    val shouldLoadMore by remember(listState, hasMore, isLoadingMore, pagingError) {
         derivedStateOf {
             val layout = listState.layoutInfo
             val lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
             shouldLoadNextPage(
                 lastVisibleIndex = lastVisibleIndex,
                 totalItems = layout.totalItemsCount,
-                hasMore = hasMore,
+                hasMore = hasMore && pagingError == null,
                 isLoading = isLoadingMore
             )
         }
@@ -708,7 +708,7 @@ internal fun RoomDashboard(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     label = { Text("쿠폰 이름·브랜드 검색") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("coupon-search"),
                     singleLine = true
                 )
             }
@@ -721,7 +721,8 @@ internal fun RoomDashboard(
                         FilterChip(
                             selected = selectedFilter == filter,
                             onClick = { selectedFilter = filter },
-                            label = { Text(couponFilterLabel(filter)) }
+                            label = { Text(couponFilterLabel(filter)) },
+                            modifier = Modifier.testTag("coupon-filter-${filter.name.lowercase()}")
                         )
                     }
                 }
@@ -812,7 +813,8 @@ private fun CouponPagingFooter(
     isLoadingMore: Boolean,
     errorMessage: String?,
     onLoadMore: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    itemLabel: String = "쿠폰"
 ) {
     when {
         errorMessage != null -> Card(modifier = Modifier.fillMaxWidth()) {
@@ -828,13 +830,13 @@ private fun CouponPagingFooter(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            Text("다음 쿠폰을 불러오는 중...")
+            Text("다음 ${itemLabel}을 불러오는 중...")
         }
         hasMore -> OutlinedButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
-            Text("다음 쿠폰 불러오기")
+            Text("다음 ${itemLabel} 불러오기")
         }
         hasCoupons -> Text(
-            "모든 쿠폰을 확인했어요.",
+            "모든 ${itemLabel}을 확인했어요.",
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1118,6 +1120,9 @@ fun CouponTrashScreen(
     val busyCouponId by viewModel.busyCouponId.collectAsStateWithLifecycle()
     val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
+    val pagingError by viewModel.pagingError.collectAsStateWithLifecycle()
 
     GDScaffold(title = "최근 삭제한 쿠폰", onBack = onBack) { modifier ->
         CouponTrashContent(
@@ -1125,9 +1130,13 @@ fun CouponTrashScreen(
             busyCouponId = busyCouponId,
             busyAction = busyAction,
             message = message,
-            onRetry = { viewModel.load(roomId) },
+            onRetry = { viewModel.retry(roomId) },
             onRestore = { viewModel.restore(roomId, it) },
             onPermanentlyDelete = { viewModel.permanentlyDelete(roomId, it) },
+            onLoadMore = { viewModel.loadMore(roomId) },
+            hasMore = hasMore,
+            isLoadingMore = isLoadingMore,
+            pagingError = pagingError,
             modifier = modifier
         )
     }
@@ -1143,9 +1152,28 @@ internal fun CouponTrashContent(
     onRestore: (String) -> Unit,
     onPermanentlyDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onLoadMore: () -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    pagingError: String? = null,
     now: Instant = Instant.now()
 ) {
     var permanentDeleteTarget by remember { mutableStateOf<DeletedCoupon?>(null) }
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember(listState, hasMore, isLoadingMore, pagingError) {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            shouldLoadNextPage(
+                lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                totalItems = layout.totalItemsCount,
+                hasMore = hasMore && pagingError == null,
+                isLoading = isLoadingMore
+            )
+        }
+    }
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) onLoadMore()
+    }
     Column(
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1159,7 +1187,9 @@ internal fun CouponTrashContent(
         when (coupons) {
             UiState.Loading -> LoadingState()
             is UiState.Error -> ErrorState(coupons.message, actionLabel = "다시 시도", onAction = onRetry)
-            is UiState.Success -> if (coupons.data.isEmpty()) {
+            is UiState.Success -> if (
+                coupons.data.isEmpty() && !hasMore && !isLoadingMore && pagingError == null
+            ) {
                 EmptyState(
                     title = "복구함이 비어 있어요",
                     message = "삭제한 쿠폰은 여기에 30일 동안 보관됩니다.",
@@ -1167,7 +1197,8 @@ internal fun CouponTrashContent(
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    state = listState,
+                    modifier = Modifier.weight(1f).testTag("trash-list"),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(coupons.data, key = { it.couponId }) { coupon ->
@@ -1215,6 +1246,17 @@ internal fun CouponTrashContent(
                                 }
                             }
                         }
+                    }
+                    item(key = "trash-paging-footer") {
+                        CouponPagingFooter(
+                            hasCoupons = coupons.data.isNotEmpty(),
+                            hasMore = hasMore,
+                            isLoadingMore = isLoadingMore,
+                            errorMessage = pagingError,
+                            onLoadMore = onLoadMore,
+                            onRetry = onRetry,
+                            itemLabel = "삭제 쿠폰"
+                        )
                     }
                 }
             }

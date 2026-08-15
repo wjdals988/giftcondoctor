@@ -786,8 +786,41 @@ class CouponTrashViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore
+
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
+
+    private val _pagingError = MutableStateFlow<String?>(null)
+    val pagingError: StateFlow<String?> = _pagingError
+
+    private var nextCursor: String? = null
+
     fun load(roomId: String) {
         viewModelScope.launch { refresh(roomId) }
+    }
+
+    fun loadMore(roomId: String) {
+        val cursor = nextCursor ?: return
+        if (_isLoadingMore.value) return
+        _isLoadingMore.value = true
+        _pagingError.value = null
+        viewModelScope.launch {
+            runCatching { repository.deletedCoupons(roomId, cursor) }
+                .onSuccess { page ->
+                    val current = (_coupons.value as? UiState.Success)?.data.orEmpty()
+                    _coupons.value = UiState.Success((current + page.coupons).distinctBy(DeletedCoupon::couponId))
+                    nextCursor = page.nextCursor
+                    _hasMore.value = page.nextCursor != null
+                }
+                .onFailure { _pagingError.value = it.localizedMessage ?: "다음 쿠폰을 불러오지 못했습니다." }
+            _isLoadingMore.value = false
+        }
+    }
+
+    fun retry(roomId: String) {
+        if (_pagingError.value != null && nextCursor != null) loadMore(roomId) else load(roomId)
     }
 
     fun restore(roomId: String, couponId: String) = runCouponAction(roomId, couponId, "restore") {
@@ -818,7 +851,8 @@ class CouponTrashViewModel(
             runCatching { block() }
                 .onSuccess {
                     _message.value = it
-                    refresh(roomId, preserveMessage = true)
+                    val current = (_coupons.value as? UiState.Success)?.data.orEmpty()
+                    _coupons.value = UiState.Success(current.filterNot { coupon -> coupon.couponId == couponId })
                 }
                 .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
             _busyCouponId.value = null
@@ -826,10 +860,19 @@ class CouponTrashViewModel(
         }
     }
 
-    private suspend fun refresh(roomId: String, preserveMessage: Boolean = false) {
-        if (!preserveMessage) _message.value = null
+    private suspend fun refresh(roomId: String) {
+        _message.value = null
+        _coupons.value = UiState.Loading
+        _pagingError.value = null
+        _isLoadingMore.value = false
+        nextCursor = null
+        _hasMore.value = false
         runCatching { repository.deletedCoupons(roomId) }
-            .onSuccess { _coupons.value = UiState.Success(it) }
+            .onSuccess { page ->
+                _coupons.value = UiState.Success(page.coupons)
+                nextCursor = page.nextCursor
+                _hasMore.value = page.nextCursor != null
+            }
             .onFailure { _coupons.value = UiState.Error(it.localizedMessage ?: "복구함을 불러오지 못했습니다.") }
     }
 }

@@ -45,7 +45,7 @@
 
 ### P0 — 출시·운영 게이트
 
-- [완료] 로컬 Backend 단위 56개, Rules·저장소 통합 22개, Android 단위 55개·계측 21개 테스트와 build/audit 전체 통과
+- [완료] 로컬 Backend 단위 57개, Rules·저장소 통합 23개, Android 단위 55개·계측 26개 테스트와 build/audit 전체 통과
 - [완료] Vercel Preview 배포 성공 확인
 - [대기] Preview health와 인증이 필요한 API의 실패/성공 경계 확인
 - [대기] Firestore Rules·Indexes 프로덕션 배포 경로와 rollback 절차 확정
@@ -120,7 +120,7 @@ Gmail은 삭제 항목을 휴지통에 30일 보관한 뒤 자동 영구 삭제�
 - Apple Wallet 도움말: https://support.apple.com/en-us/102544
 - Google Wallet 도움말: https://support.google.com/wallet/answer/12060038?hl=en-GB
 
-공개 쿠폰은 등록자와 방장이 관리하지만, 원래 비공개였던 쿠폰은 삭제 후에도 등록자만 복구함에서 볼 수 있다. 영구 삭제는 이미지와 댓글이 사라진다는 별도 확인을 요구한다. 복구함 목록은 현재 100개 상한이므로 대량 사용 방에는 paging이 다음 보완 항목이다.
+공개 쿠폰은 등록자와 방장이 관리하지만, 원래 비공개였던 쿠폰은 삭제 후에도 등록자만 복구함에서 볼 수 있다. 영구 삭제는 이미지와 댓글이 사라진다는 별도 확인을 요구한다. 복구함은 20개 cursor paging으로 전환했고, 105개 삭제 데이터의 끝까지 누락·중복 없이 순회하는 저장소 테스트와 자동 선조회·수동 재시도 UI 회귀를 고정했다.
 
 ## 4. 검증 지표
 

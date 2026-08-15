@@ -5,6 +5,7 @@ import {
   purgeCouponDocument,
   restoreDeletedCoupon
 } from "@/lib/couponTrashStore";
+import { decodeCouponTrashCursor } from "@/lib/couponTrash";
 import { ApiError, json, jsonError, readJson } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -12,9 +13,13 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const token = await requireUser(request);
-    const roomId = new URL(request.url).searchParams.get("roomId")?.trim();
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId")?.trim();
     if (!roomId) throw new ApiError(400, "roomId가 필요합니다.");
-    return json({ coupons: await listDeletedCoupons(roomId, token.uid) });
+    const cursorValue = url.searchParams.get("cursor")?.trim();
+    const cursor = cursorValue ? decodeCouponTrashCursor(cursorValue) : null;
+    if (cursorValue && !cursor) throw new ApiError(400, "cursor가 올바르지 않습니다.");
+    return json(await listDeletedCoupons(roomId, token.uid, cursor));
   } catch (error) {
     return jsonError(error);
   }

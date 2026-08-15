@@ -1397,7 +1397,7 @@ private fun EditCouponForm(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExpiryDateField(
+internal fun ExpiryDateField(
     value: String,
     onValueChange: (String) -> Unit,
     enabled: Boolean = true
