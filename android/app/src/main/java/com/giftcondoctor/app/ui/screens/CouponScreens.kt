@@ -205,6 +205,10 @@ fun AddCouponScreen(
         imageSource = imageUri?.toString(),
         defaultExpiry = today.plusDays(7).toString()
     )
+    val registrationValidation = validateCouponRegistration(
+        title = draft.title,
+        expiresLocalDate = draft.expiresLocalDate
+    )
     var privateCoupon by rememberSaveable { mutableStateOf(false) }
     var ownerOnly by rememberSaveable { mutableStateOf(false) }
     var showSharingOptions by rememberSaveable { mutableStateOf(false) }
@@ -434,8 +438,17 @@ fun AddCouponScreen(
                     value = draft.title,
                     onValueChange = draft::updateTitle,
                     label = { Text("쿠폰 이름") },
-                    supportingText = { Text("${draft.title.length}/$COUPON_TITLE_MAX_LENGTH") },
-                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        Text(
+                            if (!analysisBusy && !registrationValidation.isTitleValid) {
+                                "필수 항목입니다 · ${draft.title.length}/$COUPON_TITLE_MAX_LENGTH"
+                            } else {
+                                "${draft.title.length}/$COUPON_TITLE_MAX_LENGTH"
+                            }
+                        )
+                    },
+                    isError = !analysisBusy && !registrationValidation.isTitleValid,
+                    modifier = Modifier.fillMaxWidth().testTag("coupon-registration-title"),
                     singleLine = true
                 )
                 OutlinedTextField(
@@ -448,7 +461,13 @@ fun AddCouponScreen(
                 )
                 ExpiryDateField(
                     value = draft.expiresLocalDate,
-                    onValueChange = draft::updateExpiry
+                    onValueChange = draft::updateExpiry,
+                    errorText = if (registrationValidation.isExpiryValid) {
+                        null
+                    } else {
+                        "YYYY-MM-DD 형식의 올바른 날짜를 입력해 주세요."
+                    },
+                    modifier = Modifier.testTag("coupon-registration-expiry")
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(7 to "+7일", 30 to "+30일", 90 to "+90일").forEach { (days, label) ->
@@ -497,9 +516,12 @@ fun AddCouponScreen(
                     CouponUploadProgress(uploadState) { viewModel.cancelUpload() }
                 }
                 Button(
-                    enabled = !busy && !analysisBusy && !imagePreparationBusy,
+                    enabled = !busy &&
+                        !analysisBusy &&
+                        !imagePreparationBusy &&
+                        registrationValidation.canSubmit,
                     onClick = { submitCoupon(false) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("coupon-registration-submit")
                 ) {
                     if (busy) ButtonProgressIndicator()
                     Text(
@@ -1903,7 +1925,9 @@ private fun EditCouponForm(
 internal fun ExpiryDateField(
     value: String,
     onValueChange: (String) -> Unit,
-    enabled: Boolean = true
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    errorText: String? = null
 ) {
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
@@ -1911,8 +1935,11 @@ internal fun ExpiryDateField(
         value = value,
         onValueChange = onValueChange,
         label = { Text("만료일") },
-        supportingText = { Text("YYYY-MM-DD 형식으로 입력하거나 달력에서 선택하세요.") },
-        modifier = Modifier.fillMaxWidth(),
+        supportingText = {
+            Text(errorText ?: "YYYY-MM-DD 형식으로 입력하거나 달력에서 선택하세요.")
+        },
+        isError = errorText != null,
+        modifier = modifier.fillMaxWidth(),
         singleLine = true,
         enabled = enabled,
         trailingIcon = {

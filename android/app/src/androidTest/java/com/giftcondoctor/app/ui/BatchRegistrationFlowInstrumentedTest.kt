@@ -3,12 +3,16 @@ package com.giftcondoctor.app.ui
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.platform.app.InstrumentationRegistry
 import com.giftcondoctor.app.core.CouponDuplicateCandidate
@@ -85,6 +89,35 @@ class BatchRegistrationFlowInstrumentedTest {
             composeRule.onNodeWithContentDescription("뒤로").performClick()
             composeRule.onNodeWithTag("confirm-discard-coupon-draft").performClick()
             composeRule.runOnIdle { assertEquals(1, exits) }
+        } finally {
+            imageFile.delete()
+        }
+    }
+
+    @Test
+    fun requiredTitleEnablesSubmitOnlyAfterValidInput() {
+        val imageFile = createCouponImageFile()
+        try {
+            composeRule.setContent {
+                GDTheme {
+                    AddCouponScreen(
+                        roomId = "test-room",
+                        initialImageUri = Uri.fromFile(imageFile),
+                        onImagesSelected = {},
+                        onSkipCurrent = {},
+                        onBack = {},
+                        onAdded = {}
+                    )
+                }
+            }
+
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithText("필수 항목입니다 · 0/100")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("coupon-registration-submit").assertIsNotEnabled()
+            composeRule.onNodeWithTag("coupon-registration-title").performTextInput("아메리카노")
+            composeRule.onNodeWithTag("coupon-registration-submit").assertIsEnabled()
         } finally {
             imageFile.delete()
         }
