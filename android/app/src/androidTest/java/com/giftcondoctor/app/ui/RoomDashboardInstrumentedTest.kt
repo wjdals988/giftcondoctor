@@ -6,8 +6,12 @@ import android.os.Debug
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +22,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
+import androidx.test.platform.app.InstrumentationRegistry
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.ui.screens.RoomDashboard
@@ -109,6 +115,50 @@ class RoomDashboardInstrumentedTest {
     }
 
     @Test
+    fun largeFontKeepsOverviewSearchAndFirstCouponReachableWithAccessibleTargets() {
+        val coupon = testCoupons(1, hasImages = false).single().copy(
+            title = "아메리카노",
+            brand = "스타벅스"
+        )
+
+        composeRule.setContent {
+            val currentDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(currentDensity.density, fontScale = 2f)
+            ) {
+                GDTheme {
+                    RoomDashboard(
+                        roomId = "large-font-room",
+                        coupons = listOf(coupon),
+                        isOwner = true,
+                        hasMore = false,
+                        isLoadingMore = false,
+                        pagingError = null,
+                        onLoadMore = {},
+                        onRetry = {},
+                        onOpenCoupon = {},
+                        onAddCoupon = {},
+                        modifier = Modifier
+                    )
+                }
+            }
+        }
+
+        assertMinimumTarget("coupon-overview")
+        composeRule.onNodeWithTag("coupon-search").assertIsDisplayed()
+        composeRule.onNodeWithTag("coupon-filter-all").assertIsDisplayed()
+        assertMinimumTarget("coupon-filter-all")
+        composeRule.onNodeWithTag("coupon-list").performScrollToNode(hasText("아메리카노"))
+        composeRule.onNodeWithText("아메리카노").assertIsDisplayed()
+        assertMinimumTarget("coupon-item-${coupon.id}")
+
+        composeRule.onNodeWithTag("coupon-list").performScrollToNode(hasText("쿠폰 현황 · 방장"))
+        composeRule.onNodeWithTag("coupon-overview").performClick()
+        composeRule.onNodeWithTag("coupon-list").performScrollToNode(hasText("사용 완료"))
+        composeRule.onNodeWithText("사용 완료").assertIsDisplayed()
+    }
+
+    @Test
     fun renders24ThumbnailsThenReusesMemoryCacheWhileScrollingBack() {
         val coupons = testCoupons(24, hasImages = true)
         val payload = realisticJpegPayload()
@@ -189,6 +239,15 @@ class RoomDashboardInstrumentedTest {
                 .fetchSemanticsNodes(atLeastOneRootRequired = false)
                 .isNotEmpty()
         }
+    }
+
+    private fun assertMinimumTarget(tag: String) {
+        val node = composeRule.onNodeWithTag(tag).assertHasClickAction()
+        val bounds = node.fetchSemanticsNode().touchBoundsInRoot
+        val minimumPixels = 48f * InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics.density
+        assertTrue("$tag 터치 너비가 48dp보다 작습니다: ${bounds.width}px", bounds.width >= minimumPixels)
+        assertTrue("$tag 터치 높이가 48dp보다 작습니다: ${bounds.height}px", bounds.height >= minimumPixels)
     }
 
     private fun testCoupons(count: Int, hasImages: Boolean): List<Coupon> = (1..count).map { index ->

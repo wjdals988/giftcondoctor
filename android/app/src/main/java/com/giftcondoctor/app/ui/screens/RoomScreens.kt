@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
@@ -82,6 +84,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -610,6 +613,7 @@ internal fun RoomDashboard(
 ) {
     val today = seoulToday()
     val listState = rememberLazyListState()
+    var overviewExpanded by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedFilter by rememberSaveable { mutableStateOf(CouponListFilter.ALL) }
     val actionable = coupons.filter { it.status == "active" || it.status == "reserved" }
@@ -648,26 +652,15 @@ internal fun RoomDashboard(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                ListItem(
-                    headlineContent = { Text(if (isOwner) "내가 방장인 방" else "멤버로 참여 중") },
-                    supportingContent = {
-                        Text(if (isOwner) "멤버 관리와 방 설정을 변경할 수 있습니다." else "방장은 멤버와 방 설정을 관리할 수 있습니다.")
-                    },
-                    leadingContent = {
-                        Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    trailingContent = {
-                        GDBadge(if (isOwner) "방장" else "멤버")
-                    }
-                )
-            }
-        }
-        item {
-            ReminderTimeBanner()
+            CouponOverviewCard(
+                isOwner = isOwner,
+                todayCount = todayCount,
+                soonCount = soonCount,
+                activeCount = activeCount,
+                usedCount = usedCount,
+                isExpanded = overviewExpanded,
+                onToggle = { overviewExpanded = !overviewExpanded }
+            )
         }
         if (hasMore) {
             item {
@@ -685,18 +678,6 @@ internal fun RoomDashboard(
                     body = "참여 중이면 쿠폰 만료 조건과 별개로 매일 오전 9시에 테스트 알림을 보냅니다.",
                     icon = Icons.Default.Notifications
                 )
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                GDStatCard("오늘 만료", "${todayCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.error)
-                GDStatCard("3일 이내", "${soonCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.tertiary)
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                GDStatCard("사용 가능", "${activeCount}개", Modifier.weight(1f))
-                GDStatCard("사용 완료", "${usedCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
@@ -773,7 +754,10 @@ internal fun RoomDashboard(
             contentType = { "coupon" }
         ) { coupon ->
             Card(
-                modifier = Modifier.fillMaxWidth().clickable { onOpenCoupon(coupon.id) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("coupon-item-${coupon.id}")
+                    .clickable { onOpenCoupon(coupon.id) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 ListItem(
@@ -802,6 +786,100 @@ internal fun RoomDashboard(
                 onLoadMore = onLoadMore,
                 onRetry = onRetry
             )
+        }
+    }
+}
+
+private const val LARGE_FONT_SCALE = 1.5f
+
+@Composable
+private fun CouponOverviewCard(
+    isOwner: Boolean,
+    todayCount: Int,
+    soonCount: Int,
+    activeCount: Int,
+    usedCount: Int,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Card(
+        onClick = onToggle,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("coupon-overview")
+            .semantics { stateDescription = if (isExpanded) "펼쳐짐" else "접힘" },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        ListItem(
+            headlineContent = { Text("쿠폰 현황 · ${if (isOwner) "방장" else "멤버"}") },
+            supportingContent = {
+                Text("오늘 ${todayCount}개 · 3일 ${soonCount}개 · 사용 가능 ${activeCount}개 · 완료 ${usedCount}개")
+            },
+            leadingContent = {
+                Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            trailingContent = {
+                Icon(
+                    if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "쿠폰 현황 접기" else "쿠폰 현황 펼치기"
+                )
+            }
+        )
+        if (isExpanded) CouponOverviewDetails(isOwner, todayCount, soonCount, activeCount, usedCount)
+    }
+}
+
+@Composable
+private fun CouponOverviewDetails(
+    isOwner: Boolean,
+    todayCount: Int,
+    soonCount: Int,
+    activeCount: Int,
+    usedCount: Int
+) {
+    HorizontalDivider()
+    Column(
+        modifier = Modifier.padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            if (isOwner) {
+                "멤버 관리와 방 설정을 변경할 수 있습니다."
+            } else {
+                "방장은 멤버와 방 설정을 관리할 수 있습니다."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ReminderTimeBanner()
+        DashboardStats(todayCount, soonCount, activeCount, usedCount)
+    }
+}
+
+@Composable
+private fun DashboardStats(
+    todayCount: Int,
+    soonCount: Int,
+    activeCount: Int,
+    usedCount: Int
+) {
+    if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            GDStatCard("오늘 만료", "${todayCount}개", Modifier.fillMaxWidth(), MaterialTheme.colorScheme.error)
+            GDStatCard("3일 이내", "${soonCount}개", Modifier.fillMaxWidth(), MaterialTheme.colorScheme.tertiary)
+            GDStatCard("사용 가능", "${activeCount}개", Modifier.fillMaxWidth())
+            GDStatCard("사용 완료", "${usedCount}개", Modifier.fillMaxWidth(), MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                GDStatCard("오늘 만료", "${todayCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                GDStatCard("3일 이내", "${soonCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.tertiary)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                GDStatCard("사용 가능", "${activeCount}개", Modifier.weight(1f))
+                GDStatCard("사용 완료", "${usedCount}개", Modifier.weight(1f), MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -858,13 +936,16 @@ private fun CouponListThumbnail(
     coupon: Coupon,
     thumbnailLoader: suspend (String, Coupon, Int, Int) -> Bitmap?
 ) {
+    if (coupon.imageBlobPath.isBlank()) {
+        CouponCategoryThumbnail(coupon)
+        return
+    }
     var image by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf<ImageBitmap?>(null) }
     var loading by remember(coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath) { mutableStateOf(false) }
     val targetSize = with(LocalDensity.current) { 56.dp.roundToPx() }
 
     LaunchedEffect(roomId, coupon.id, coupon.imageBlobPath, coupon.thumbnailBlobPath, targetSize) {
         image = null
-        if (coupon.imageBlobPath.isBlank()) return@LaunchedEffect
         loading = true
         runCatching {
             thumbnailLoader(roomId, coupon, targetSize, targetSize)?.asImageBitmap()
