@@ -327,6 +327,9 @@ class AddCouponViewModel(
     private val _barcode = MutableStateFlow<DetectedCouponBarcode?>(null)
     val barcode: StateFlow<DetectedCouponBarcode?> = _barcode
 
+    private val _analysisSource = MutableStateFlow<String?>(null)
+    val analysisSource: StateFlow<String?> = _analysisSource
+
     private val _uploadState = MutableStateFlow(CouponUploadState())
     val uploadState: StateFlow<CouponUploadState> = _uploadState
     private var addCouponJob: Job? = null
@@ -341,15 +344,17 @@ class AddCouponViewModel(
         preparedUpload?.close()
         preparedUpload = null
         val requestId = ++imageAnalysisRequestId
+        _analysisSource.value = imageUri.toString()
+        _analysisBusy.value = true
+        _imagePreparationBusy.value = true
+        analysisResultMessage = null
+        preparationResultMessage = null
+        _message.value = null
+        _uploadState.value = CouponUploadState()
+        _analysisMessage.value = null
+        _suggestion.value = null
+        _barcode.value = null
         imageAnalysisJob = viewModelScope.launch {
-            _analysisBusy.value = true
-            _imagePreparationBusy.value = true
-            analysisResultMessage = null
-            preparationResultMessage = null
-            _analysisMessage.value = null
-            _suggestion.value = null
-            _barcode.value = null
-
             try {
                 processImageSelectionInParallel(
                     analyze = { analyzeCouponImage(context, imageUri) },
