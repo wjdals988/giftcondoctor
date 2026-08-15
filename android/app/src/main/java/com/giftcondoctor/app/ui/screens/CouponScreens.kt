@@ -150,6 +150,7 @@ private val manualBarcodeFormats = listOf(
 @Composable
 fun AddCouponScreen(
     roomId: String,
+    initialImageUri: Uri? = null,
     onBack: () -> Unit,
     onAdded: (String) -> Unit,
     viewModel: AddCouponViewModel = viewModel(key = "add-coupon-$roomId")
@@ -163,7 +164,7 @@ fun AddCouponScreen(
     val barcode by viewModel.barcode.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var imageUri by remember(initialImageUri) { mutableStateOf(initialImageUri) }
     var title by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
     var barcodeValue by remember { mutableStateOf("") }
@@ -227,7 +228,11 @@ fun AddCouponScreen(
                             modifier = Modifier.size(36.dp)
                         )
                         Text(
-                            if (imageUri == null) "갤러리에서 쿠폰 선택" else "다른 이미지 선택",
+                            when {
+                                imageUri == null -> "갤러리에서 쿠폰 선택"
+                                imageUri == initialImageUri -> "공유한 이미지가 선택됐어요"
+                                else -> "다른 이미지 선택"
+                            },
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
