@@ -85,6 +85,9 @@ internal fun uploadCancellationMessage(hasPreparedUpload: Boolean): String =
         "이미지 업로드를 취소했습니다. 전송된 임시 파일이 있으면 자동 정리합니다."
     }
 
+internal fun canCancelCouponUpload(stage: CouponUploadStage): Boolean =
+    stage == CouponUploadStage.Preparing || stage == CouponUploadStage.Uploading
+
 sealed interface CouponOriginalImageState {
     data object Idle : CouponOriginalImageState
     data object Loading : CouponOriginalImageState
@@ -548,10 +551,11 @@ class AddCouponViewModel(
         }
     }
 
-    fun cancelUpload() {
-        if (_uploadState.value.stage !in setOf(CouponUploadStage.Preparing, CouponUploadStage.Uploading)) return
+    fun cancelUpload(): Boolean {
+        if (!canCancelCouponUpload(_uploadState.value.stage)) return false
         _uploadState.value = CouponUploadState(CouponUploadStage.Cancelling)
         addCouponJob?.cancel()
+        return true
     }
 
     override fun onCleared() {

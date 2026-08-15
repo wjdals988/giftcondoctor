@@ -127,6 +127,7 @@ import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponOriginalImageState
+import com.giftcondoctor.app.ui.viewmodel.canCancelCouponUpload
 import com.giftcondoctor.app.ui.viewmodel.shouldCancelOriginalImageLoad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -148,7 +149,7 @@ private val manualBarcodeFormats = listOf(
 )
 
 internal enum class BatchRegistrationBackAction {
-    BlockWhileBusy,
+    ConfirmBusyExit,
     ConfirmCancel,
     Exit
 }
@@ -157,7 +158,7 @@ internal fun batchRegistrationBackAction(
     busy: Boolean,
     batchRemaining: Int
 ): BatchRegistrationBackAction = when {
-    busy -> BatchRegistrationBackAction.BlockWhileBusy
+    busy -> BatchRegistrationBackAction.ConfirmBusyExit
     batchRemaining > 1 -> BatchRegistrationBackAction.ConfirmCancel
     else -> BatchRegistrationBackAction.Exit
 }
@@ -200,6 +201,8 @@ fun AddCouponScreen(
     var showSharingOptions by remember { mutableStateOf(false) }
     var showSkipImageDialog by remember { mutableStateOf(false) }
     var showCancelBatchDialog by remember { mutableStateOf(false) }
+    var showBusyExitDialog by remember { mutableStateOf(false) }
+    var exitAfterUploadCancellation by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
     val picker = rememberLauncherForActivityResult(
@@ -209,13 +212,20 @@ fun AddCouponScreen(
     }
     val handleBack = {
         when (batchRegistrationBackAction(busy, batchRemaining)) {
-            BatchRegistrationBackAction.BlockWhileBusy -> Unit
+            BatchRegistrationBackAction.ConfirmBusyExit -> showBusyExitDialog = true
             BatchRegistrationBackAction.ConfirmCancel -> showCancelBatchDialog = true
             BatchRegistrationBackAction.Exit -> onBack()
         }
     }
 
     BackHandler(onBack = handleBack)
+
+    LaunchedEffect(busy, exitAfterUploadCancellation) {
+        if (exitAfterUploadCancellation && !busy) {
+            exitAfterUploadCancellation = false
+            onBack()
+        }
+    }
 
     LaunchedEffect(imageUri) {
         imageUri?.let {
@@ -437,7 +447,7 @@ fun AddCouponScreen(
                 }
                 InlineMessage(message)
                 if (busy) {
-                    CouponUploadProgress(uploadState, viewModel::cancelUpload)
+                    CouponUploadProgress(uploadState) { viewModel.cancelUpload() }
                 }
                 Button(
                     enabled = !busy && !analysisBusy && !imagePreparationBusy,
@@ -519,6 +529,62 @@ fun AddCouponScreen(
             }
         )
     }
+
+    if (showBusyExitDialog) {
+        CouponUploadExitDialog(
+            uploadState = uploadState,
+            onDismiss = { showBusyExitDialog = false },
+            onCancelAndExit = {
+                showBusyExitDialog = false
+                if (viewModel.cancelUpload()) {
+                    exitAfterUploadCancellation = true
+                } else {
+                    showBusyExitDialog = true
+                }
+            }
+        )
+    }
+}
+
+@Composable
+internal fun CouponUploadExitDialog(
+    uploadState: CouponUploadState,
+    onDismiss: () -> Unit,
+    onCancelAndExit: () -> Unit
+) {
+    val canCancel = canCancelCouponUpload(uploadState.stage)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(if (canCancel) "업로드를 취소하고 나갈까요?" else "안전하게 마무리하는 중이에요")
+        },
+        text = {
+            Text(
+                when (uploadState.stage) {
+                    CouponUploadStage.Preparing -> "준비 중인 이미지를 정리한 뒤 등록 화면을 나갑니다."
+                    CouponUploadStage.Uploading -> "전송을 중단하고 서버의 임시 파일까지 정리한 뒤 등록 화면을 나갑니다."
+                    CouponUploadStage.Cancelling -> "이미지와 임시 파일을 정리하고 있어요. 완료되면 다시 뒤로가기를 눌러 주세요."
+                    CouponUploadStage.Saving -> "쿠폰 정보 저장은 중간에 취소할 수 없어요. 저장이 끝난 뒤 이동해 주세요."
+                    CouponUploadStage.Idle -> "현재 작업 상태를 확인하고 있어요. 잠시 후 다시 시도해 주세요."
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = if (canCancel) onCancelAndExit else onDismiss,
+                modifier = Modifier.testTag(if (canCancel) "confirm-cancel-upload-and-exit" else "acknowledge-upload-exit")
+            ) {
+                Text(if (canCancel) "취소하고 나가기" else "확인")
+            }
+        },
+        dismissButton = if (canCancel) {
+            {
+                TextButton(onClick = onDismiss) { Text("계속 등록") }
+            }
+        } else {
+            null
+        }
+    )
 }
 
 @Composable

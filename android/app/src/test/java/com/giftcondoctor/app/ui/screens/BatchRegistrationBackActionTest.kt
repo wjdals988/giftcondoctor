@@ -7,7 +7,7 @@ class BatchRegistrationBackActionTest {
     @Test
     fun `업로드 중에는 화면을 이탈하지 않는다`() {
         assertEquals(
-            BatchRegistrationBackAction.BlockWhileBusy,
+            BatchRegistrationBackAction.ConfirmBusyExit,
             batchRegistrationBackAction(busy = true, batchRemaining = 5)
         )
     }
