@@ -10,10 +10,10 @@
 - 새 release key alias: `giftcondoctor-release` (RSA 4096bit)
 - 새 인증서 SHA-1: `0a1dc141c98c9b76cc1a6ec9af1096619cc36ac9`
 - 새 인증서 SHA-256: `3b4a7f1f68e5c4977fd5fe625534529c86d8f025770def4119bce4451c8fb0ad`
-- 다음 배포 후보: `0.1.25 (26)`
-- 최신 GitHub signed R8 APK: `0.1.25 (26)`, 47,012,293 bytes, SHA-256 `d3fed65b1df27001ac6db3069d3f011502670198643f8ba1b59ebe3663a825a3`
+- 다음 배포 후보: `0.1.26 (27)`
+- 최신 GitHub signed R8 APK: `0.1.26 (27)`, 47,012,293 bytes, SHA-256 `4b2d2f67dd4cba0a662332358dae05b4b1566566cb6293e798758cc9099c08ee`
 - GitHub Actions Secrets 6개: signing dry-run `31879836609`에서 값 조합, package·버전·production API와 새 인증서 일치 확인
-- `v0.1.25` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
+- `v0.1.26` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
 
 인증서 지문은 공개 검증값이며 keystore와 비밀번호는 Git, 문서, 채팅에 기록하지 않습니다. 새 키 후보나 백업 사본을 복원할 때는 다음 명령의 SHA-256이 위의 새 인증서 지문과 정확히 같은지 확인합니다.
 
@@ -39,7 +39,7 @@ keytool -list -v -keystore /path/to/candidate.jks
 2. [완료] SHA-1·SHA-256을 Firebase Android 앱에 등록
 3. [완료] 새 Android OAuth client와 `google-services.json` 일치 확인
 4. [완료] 로컬 signed APK의 인증서·v2/v3 서명·ZIP alignment 확인
-5. [완료] GitHub Actions signing dry-run `31879836609`에서 Secrets 6개, `0.1.25 (26)`, 인증서 SHA-256, v2/v3 서명과 ZIP alignment 검증
+5. [완료] GitHub Actions signing dry-run `31881438894`에서 Secrets 6개, `0.1.26 (27)`, 인증서 SHA-256, v2/v3 서명과 ZIP alignment 검증
 6. [대기] 기존 앱이 없는 AVD 또는 물리 기기에서 Google 로그인·FCM·알림 4상태·딥링크·로그아웃 token 삭제 확인
 7. [대기] 전체 테스트와 PR 검토 완료 후 `main` 병합
 8. [대기] GitHub Release 생성 후 대시보드의 APK URL·버전·SHA-256·설명을 같은 버전으로 갱신

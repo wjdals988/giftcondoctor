@@ -21,6 +21,7 @@
 - 선처리 시작 정책·중복 방지·부분 완료 문구·가상 800ms 준비시간 은닉 단위 테스트와 진행/완료 Compose 회귀 추가
 - Android 단위 97/97, Android 16 AVD 계측 50/50, lint 오류 0건, R8 release/benchmark build 통과
 - Firestore Rules 24/24, Backend Vitest 58/58·도구 4/4, typecheck·Next production build와 npm High/Critical 0건 회귀 통과
+- GitHub signing dry-run `31881438894` 성공: signed APK 47,012,293 bytes, SHA-256 `4b2d2f67dd4cba0a662332358dae05b4b1566566cb6293e798758cc9099c08ee`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.25 (26)
 
