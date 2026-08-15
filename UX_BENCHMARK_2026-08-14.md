@@ -114,13 +114,19 @@
 
 ### P2 — 세련도와 확장
 
-- [예정] 48dp 최소 터치 영역, TalkBack 설명, 글자 확대 200% 검증
+- [완료] 핵심 쿠폰 목록의 48dp 실제 터치 영역, 접힘/펼침 TalkBack 상태, 글자 확대 200% 접근 경로 검증
+- [예정] 로그인·알림 설정·회원 관리까지 Accessibility Scanner와 TalkBack 수동 검증 확대
 - [예정] 방이 많아질 때 검색/즐겨찾기/최근 사용 정렬
 - [예정] 갤러리 다중 선택, 스크린샷 일괄 OCR과 Android 공유 시트에서 바로 가져오기
 - [예정] 즐겨찾기 쿠폰 홈 위젯과 Wear OS는 오프라인·바코드 경로 안정화 후 검토
 - [예정] 컬러·모서리·간격 토큰 정리와 라이트/다크 화면 회귀 테스트
 
-상단 역할·알림·통계 4개를 압축해 첫 쿠폰을 더 위로 올리는 후보는 시각적으로는 간결했지만, 동일 AVD 역순 대조에서 CPU frame P50 86.1%, P90 3.6%가 악화되어 반영하지 않았다. 다음 정보 밀도 개선은 물리 기기 trace와 실제 사용자 흐름 측정 없이 화면 높이만 줄이는 방식으로 진행하지 않는다.
+상단 역할·알림·통계 4개를 항상 보이는 압축 카드로 바꾼 후보는 시각적으로는 간결했지만, 동일 AVD 역순 대조에서 CPU frame P50 86.1%, P90 3.6%가 악화되어 반영하지 않았다. 대신 Google Wallet이 패스를 빠르게 찾고 기본 패스 면을 핵심 정보 위주로 유지하는 구조를 참고해, 기존 정보를 삭제하지 않고 한 줄 요약으로 기본 접었다. 시스템 글꼴 200%에서 변경 전 전체 계측은 27/29였고 검색·첫 쿠폰 접근 2건이 실패했지만, 변경 후 30/30을 통과했다. 통계가 한 번의 탭 뒤로 이동하는 비용은 남으므로 자주 쓰는 검색·필터·쿠폰을 우선하는 선택으로 기록한다.
+
+- Google Wallet 빠른 패스 접근: https://developers.google.com/wallet/retail/loyalty-cards
+- Google Wallet 패스 면 구성 원칙: https://developers.google.com/wallet/retail/gift-cards/use-cases/pass-customization
+- Android 14 최대 200% 글꼴 확대: https://developer.android.com/about/versions/14/features
+- Compose 최소 48dp 터치 대상: https://developer.android.com/develop/ui/compose/accessibility/api-defaults
 
 ## 3.1 삭제 복구 UX 비교 추가
 

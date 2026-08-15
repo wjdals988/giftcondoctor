@@ -25,6 +25,8 @@
 - OCR 다중 날짜·저화질 이미지 정확도 개선
 - [x] 100개 쿠폰 목록·고해상도 확대 Android instrumented UI 테스트
 - [x] 검색·필터·달력 Android instrumented UI 테스트 확대
+- [x] 핵심 쿠폰 목록의 200% 글꼴·48dp 터치 영역·접힘/펼침 접근성 회귀
+- 로그인·알림 설정·회원 관리의 200% 글꼴과 TalkBack 수동 전수 검증
 - [x] 이미지 교체·쿠폰 삭제·방 삭제 Blob cleanup queue, live-reference 방어·5회 재시도·lease·dead-letter·운영 상태 집계
 - 방 탈퇴 전 쿠폰 소유권 이전 플로우
 - [x] 전체화면 쿠폰의 최대 밝기·화면 켜짐과 닫을 때 기존 상태 복원
