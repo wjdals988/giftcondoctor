@@ -57,6 +57,23 @@ class CouponUploadProgressInstrumentedTest {
     }
 
     @Test
+    fun duplicateCheckShowsSpecificStatusAndCancelAction() {
+        var cancelled = false
+        composeRule.setContent {
+            GDTheme {
+                CouponUploadProgress(
+                    uploadState = CouponUploadState(CouponUploadStage.CheckingDuplicates),
+                    onCancel = { cancelled = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("같은 쿠폰이 이미 등록되어 있는지 확인하는 중이에요").assertExists()
+        composeRule.onNodeWithText("확인 취소").performClick()
+        composeRule.runOnIdle { assertTrue(cancelled) }
+    }
+
+    @Test
     fun optimizedUploadShowsBeforeAndAfterSize() {
         composeRule.setContent {
             GDTheme {

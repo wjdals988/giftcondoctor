@@ -6,14 +6,18 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.giftcondoctor.app.core.CouponDuplicateCandidate
+import com.giftcondoctor.app.core.CouponDuplicateReason
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponUploadExitDialog
+import com.giftcondoctor.app.ui.screens.PossibleDuplicateCouponDialog
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalDate
 
 class BatchRegistrationFlowInstrumentedTest {
     @get:Rule
@@ -79,6 +83,54 @@ class BatchRegistrationFlowInstrumentedTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("confirm-cancel-upload-and-exit").assertDoesNotExist()
         composeRule.onNodeWithTag("acknowledge-upload-exit").assertIsDisplayed()
+    }
+
+    @Test
+    fun possibleDuplicateCanBeReviewedOrRegisteredAnyway() {
+        var continued = 0
+        composeRule.setContent {
+            GDTheme {
+                PossibleDuplicateCouponDialog(
+                    candidates = listOf(
+                        CouponDuplicateCandidate(
+                            couponId = "coupon-1",
+                            title = "아메리카노",
+                            brand = "스타벅스",
+                            expiresLocalDate = LocalDate.parse("2026-12-31"),
+                            visibility = "private",
+                            reason = CouponDuplicateReason.ExactBarcode
+                        )
+                    ),
+                    onReview = {},
+                    onContinue = { continued += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("이미 등록된 쿠폰일 수 있어요").assertIsDisplayed()
+        composeRule.onNodeWithText("• 아메리카노 · 스타벅스 · 2026-12-31 · 바코드 일치 · 나만 보기")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("방에 공개된 쿠폰과 내가 등록한 비공개 쿠폰만 확인합니다.").assertIsDisplayed()
+        composeRule.onNodeWithTag("continue-duplicate-coupon").performClick()
+        composeRule.runOnIdle { assertEquals(1, continued) }
+    }
+
+    @Test
+    fun duplicateCheckCanBeCancelledBeforeExit() {
+        var cancellations = 0
+        composeRule.setContent {
+            GDTheme {
+                CouponUploadExitDialog(
+                    uploadState = CouponUploadState(CouponUploadStage.CheckingDuplicates),
+                    onDismiss = {},
+                    onCancelAndExit = { cancellations += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("확인을 취소하고 나갈까요?").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm-cancel-upload-and-exit").performClick()
+        composeRule.runOnIdle { assertEquals(1, cancellations) }
     }
 
     private fun renderBatchScreen(

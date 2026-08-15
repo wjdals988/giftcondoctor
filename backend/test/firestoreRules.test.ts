@@ -327,6 +327,53 @@ describe("coupon security rules", () => {
     await assertSucceeds(getDocs(ownPrivatePage));
     await assertFails(getDocs(query(coupons, where("visibility", "==", "private"), limit(2))));
   });
+
+  it("allows duplicate checks only across room-visible and the caller's private coupons", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/room-coupon"), validCoupon());
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/own-private"), {
+        ...validCoupon(),
+        imageBlobPath: "rooms/room-1/coupons/own-private/image.jpg",
+        visibility: "private"
+      });
+      await setDoc(doc(adminDb, "rooms/room-1/coupons/other-private"), {
+        ...validCoupon(),
+        ownerUid: "member-2",
+        imageBlobPath: "rooms/room-1/coupons/other-private/image.jpg",
+        visibility: "private"
+      });
+    });
+
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const coupons = collection(db, "rooms/room-1/coupons");
+    const roomMatches = await assertSucceeds(getDocs(query(
+      coupons,
+      where("visibility", "==", "room"),
+      where("expiresLocalDate", "==", "2026-12-31"),
+      orderBy(documentId()),
+      limit(20)
+    )));
+    const ownPrivateMatches = await assertSucceeds(getDocs(query(
+      coupons,
+      where("visibility", "==", "private"),
+      where("ownerUid", "==", "member-1"),
+      where("expiresLocalDate", "==", "2026-12-31"),
+      orderBy(documentId()),
+      limit(20)
+    )));
+
+    expect(roomMatches.docs.map((snapshot) => snapshot.id)).toEqual(["room-coupon"]);
+    expect(ownPrivateMatches.docs.map((snapshot) => snapshot.id)).toEqual(["own-private"]);
+    await assertFails(getDocs(query(
+      coupons,
+      where("visibility", "==", "private"),
+      where("ownerUid", "==", "member-2"),
+      where("expiresLocalDate", "==", "2026-12-31"),
+      orderBy(documentId()),
+      limit(20)
+    )));
+  });
 });
 
 describe("push token security rules", () => {

@@ -10,10 +10,10 @@
 - 새 release key alias: `giftcondoctor-release` (RSA 4096bit)
 - 새 인증서 SHA-1: `0a1dc141c98c9b76cc1a6ec9af1096619cc36ac9`
 - 새 인증서 SHA-256: `3b4a7f1f68e5c4977fd5fe625534529c86d8f025770def4119bce4451c8fb0ad`
-- 다음 배포 후보: `0.1.20 (21)`
+- 다음 배포 후보: `0.1.25 (26)`
 - 로컬 signed R8 APK: v2/v3 서명, ZIP alignment, package, 버전, production API와 새 인증서 일치 확인
 - GitHub Actions Secrets 6개: signing dry-run `31861204684`에서 값 조합과 새 인증서 일치 확인
-- `v0.1.20` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
+- `v0.1.25` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
 
 인증서 지문은 공개 검증값이며 keystore와 비밀번호는 Git, 문서, 채팅에 기록하지 않습니다. 새 키 후보나 백업 사본을 복원할 때는 다음 명령의 SHA-256이 위의 새 인증서 지문과 정확히 같은지 확인합니다.
 
