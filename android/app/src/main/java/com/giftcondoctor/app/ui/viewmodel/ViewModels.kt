@@ -315,6 +315,9 @@ class AddCouponViewModel(
     private val _analysisBusy = MutableStateFlow(false)
     val analysisBusy: StateFlow<Boolean> = _analysisBusy
 
+    private val _imagePreparationBusy = MutableStateFlow(false)
+    val imagePreparationBusy: StateFlow<Boolean> = _imagePreparationBusy
+
     private val _analysisMessage = MutableStateFlow<String?>(null)
     val analysisMessage: StateFlow<String?> = _analysisMessage
 
@@ -330,6 +333,8 @@ class AddCouponViewModel(
     private var imageAnalysisJob: Job? = null
     private var imageAnalysisRequestId = 0L
     private var preparedUpload: PreparedCouponUpload? = null
+    private var analysisResultMessage: String? = null
+    private var preparationResultMessage: String? = null
 
     fun recognizeCouponImage(context: Context, imageUri: Uri) {
         imageAnalysisJob?.cancel()
@@ -338,76 +343,117 @@ class AddCouponViewModel(
         val requestId = ++imageAnalysisRequestId
         imageAnalysisJob = viewModelScope.launch {
             _analysisBusy.value = true
-            _analysisMessage.value = "쿠폰 정보를 읽고 빠른 업로드를 준비하는 중입니다."
+            _imagePreparationBusy.value = true
+            analysisResultMessage = null
+            preparationResultMessage = null
+            _analysisMessage.value = null
             _suggestion.value = null
             _barcode.value = null
 
-            val result = runCatching {
-                coroutineScope {
-                    val uploadPreparation = async {
+            try {
+                processImageSelectionInParallel(
+                    analyze = { analyzeCouponImage(context, imageUri) },
+                    prepare = {
                         repository.prepareCouponImage(context.applicationContext, imageUri)
-                    }
-                    val imageAnalysis = async {
-                        val analysisBitmap = withContext(Dispatchers.IO) {
-                            CouponImageLoader.decodeScaledBitmap(
-                                streamProvider = { context.contentResolver.openInputStream(imageUri) },
-                                maxDimension = 1_600
-                            )
-                        } ?: error("이미지를 읽을 수 없습니다.")
-                        val image = InputImage.fromBitmap(analysisBitmap, 0)
-                        val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-                        try {
-                            coroutineScope {
-                                val text = async {
-                                    runCatching { recognizer.process(image).await().text }.getOrDefault("")
-                                }
-                                val detectedBarcode = async {
-                                    runCatching {
-                                        withContext(Dispatchers.Default) { detectCouponBarcode(analysisBitmap) }
-                                    }.getOrNull()
-                                }
-                                parseCouponText(text.await()) to detectedBarcode.await()
-                            }
-                        } finally {
-                            recognizer.close()
-                            analysisBitmap.recycle()
-                        }
-                    }
-                    try {
-                        val (suggestion, detectedBarcode) = imageAnalysis.await()
-                        Triple(suggestion, detectedBarcode, uploadPreparation.await())
-                    } catch (error: Throwable) {
-                        uploadPreparation.cancel()
-                        runCatching { uploadPreparation.await().close() }
-                        throw error
-                    }
+                    },
+                    onAnalysisComplete = { handleAnalysisResult(requestId, it) },
+                    onPreparationComplete = { handlePreparationResult(requestId, it) }
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (requestId == imageAnalysisRequestId) {
+                    _analysisMessage.value = error.localizedMessage ?: "이미지를 준비하지 못했습니다."
+                }
+            } finally {
+                if (requestId == imageAnalysisRequestId) {
+                    _analysisBusy.value = false
+                    _imagePreparationBusy.value = false
+                    imageAnalysisJob = null
                 }
             }
-            if (requestId != imageAnalysisRequestId) {
-                result.getOrNull()?.third?.close()
-                return@launch
-            }
-            result.onSuccess { (suggestion, detectedBarcode, upload) ->
-                preparedUpload = upload
-                _suggestion.value = suggestion
-                _barcode.value = detectedBarcode
-                _analysisMessage.value =
-                    if (detectedBarcode != null) {
-                        "쿠폰 정보와 ${detectedBarcode.format} 바코드를 찾았고 업로드 준비도 마쳤습니다."
-                    } else if (suggestion.title != null || suggestion.brand != null || suggestion.expiresLocalDate != null) {
-                        "읽은 정보로 입력값을 채우고 업로드 준비를 마쳤습니다. 정확한지 확인해 주세요."
-                    } else {
-                        "자동으로 읽을 정보는 부족하지만 업로드 준비를 마쳤습니다."
-                    }
-            }.onFailure {
-                if (it !is CancellationException) {
-                    _analysisMessage.value = it.localizedMessage ?: "이미지를 준비하지 못했습니다."
-                }
-            }
-
-            _analysisBusy.value = false
-            imageAnalysisJob = null
         }
+    }
+
+    private suspend fun analyzeCouponImage(
+        context: Context,
+        imageUri: Uri
+    ): Pair<CouponTextSuggestion, DetectedCouponBarcode?> {
+        val analysisBitmap = withContext(Dispatchers.IO) {
+            CouponImageLoader.decodeScaledBitmap(
+                streamProvider = { context.contentResolver.openInputStream(imageUri) },
+                maxDimension = 1_600
+            )
+        } ?: error("이미지를 읽을 수 없습니다.")
+        val image = InputImage.fromBitmap(analysisBitmap, 0)
+        val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        return try {
+            coroutineScope {
+                val text = async { runCatching { recognizer.process(image).await().text }.getOrDefault("") }
+                val barcode = async {
+                    runCatching {
+                        withContext(Dispatchers.Default) { detectCouponBarcode(analysisBitmap) }
+                    }.getOrNull()
+                }
+                parseCouponText(text.await()) to barcode.await()
+            }
+        } finally {
+            recognizer.close()
+            analysisBitmap.recycle()
+        }
+    }
+
+    private fun handleAnalysisResult(
+        requestId: Long,
+        result: Result<Pair<CouponTextSuggestion, DetectedCouponBarcode?>>
+    ) {
+        if (requestId != imageAnalysisRequestId) return
+        _analysisBusy.value = false
+        result.onSuccess { (suggestion, detectedBarcode) ->
+            _suggestion.value = suggestion
+            _barcode.value = detectedBarcode
+            analysisResultMessage = analysisReadyMessage()
+        }.onFailure { error ->
+            analysisResultMessage = error.localizedMessage
+                ?: "정보를 자동으로 읽지 못했어요. 필요한 내용을 직접 입력해 주세요."
+        }
+        refreshImageProcessingMessage()
+    }
+
+    private fun handlePreparationResult(requestId: Long, result: Result<PreparedCouponUpload>) {
+        val upload = result.getOrNull()
+        if (requestId != imageAnalysisRequestId) {
+            upload?.close()
+            return
+        }
+        _imagePreparationBusy.value = false
+        result.onSuccess {
+            preparedUpload = it
+            preparationResultMessage = "빠른 업로드 준비를 마쳤어요."
+        }.onFailure { error ->
+            preparationResultMessage = listOfNotNull(
+                error.localizedMessage ?: "빠른 업로드 준비에 실패했어요.",
+                "등록할 때 다시 시도합니다."
+            ).joinToString(" ")
+        }
+        refreshImageProcessingMessage()
+    }
+
+    private fun analysisReadyMessage(): String {
+        val detectedBarcode = _barcode.value
+        val suggestion = _suggestion.value
+        return when {
+            detectedBarcode != null -> "쿠폰 정보와 ${detectedBarcode.format} 바코드를 찾았어요."
+            suggestion?.title != null || suggestion?.brand != null || suggestion?.expiresLocalDate != null ->
+                "읽은 정보로 입력값을 먼저 채웠어요. 정확한지 확인해 주세요."
+            else -> "자동으로 읽을 정보는 부족해요. 필요한 내용을 직접 입력해 주세요."
+        }
+    }
+
+    private fun refreshImageProcessingMessage() {
+        _analysisMessage.value = listOfNotNull(analysisResultMessage, preparationResultMessage)
+            .joinToString(" ")
+            .ifBlank { null }
     }
 
     fun addCoupon(

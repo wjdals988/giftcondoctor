@@ -1,10 +1,15 @@
 package com.giftcondoctor.app.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.giftcondoctor.app.ui.screens.CouponImageProcessingStatus
 import com.giftcondoctor.app.ui.screens.CouponUploadProgress
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
@@ -83,5 +88,22 @@ class CouponUploadProgressInstrumentedTest {
 
         composeRule.onNodeWithText("업로드를 중단하고 임시 파일을 정리하는 중이에요").assertExists()
         composeRule.onAllNodesWithText("업로드 취소").assertCountEquals(0)
+    }
+
+    @Test
+    fun analysisResultCanBeReviewedWhileUploadPreparationContinues() {
+        var analysisBusy by mutableStateOf(true)
+        var preparationBusy by mutableStateOf(true)
+        composeRule.setContent {
+            GDTheme {
+                CouponImageProcessingStatus(analysisBusy, preparationBusy)
+            }
+        }
+
+        composeRule.onNodeWithText("쿠폰 정보를 찾고 빠른 업로드를 준비하는 중이에요").assertExists()
+        composeRule.runOnUiThread { analysisBusy = false }
+        composeRule.onNodeWithText("자동 입력을 먼저 확인하는 동안 빠른 업로드를 준비해요").assertExists()
+        composeRule.runOnUiThread { preparationBusy = false }
+        composeRule.onNodeWithTag("coupon-image-processing").assertDoesNotExist()
     }
 }

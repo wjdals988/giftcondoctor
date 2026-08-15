@@ -157,6 +157,7 @@ fun AddCouponScreen(
     val context = LocalContext.current
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val analysisBusy by viewModel.analysisBusy.collectAsStateWithLifecycle()
+    val imagePreparationBusy by viewModel.imagePreparationBusy.collectAsStateWithLifecycle()
     val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
     val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
     val barcode by viewModel.barcode.collectAsStateWithLifecycle()
@@ -241,12 +242,7 @@ fun AddCouponScreen(
                 )
             } else {
                 imageUri?.let { SelectedImagePreview(it) }
-                if (analysisBusy) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Text("쿠폰 정보를 찾는 중이에요", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+                CouponImageProcessingStatus(analysisBusy, imagePreparationBusy)
                 analysisMessage?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -366,7 +362,7 @@ fun AddCouponScreen(
                     CouponUploadProgress(uploadState, viewModel::cancelUpload)
                 }
                 Button(
-                    enabled = !busy && !analysisBusy,
+                    enabled = !busy && !analysisBusy && !imagePreparationBusy,
                     onClick = {
                         viewModel.addCoupon(
                             context = context,
@@ -399,6 +395,32 @@ fun AddCouponScreen(
             }
         }
     }
+}
+
+@Composable
+internal fun CouponImageProcessingStatus(
+    analysisBusy: Boolean,
+    imagePreparationBusy: Boolean
+) {
+    val status = couponImageProcessingStatusText(analysisBusy, imagePreparationBusy) ?: return
+    Row(
+        modifier = Modifier.testTag("coupon-image-processing"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        Text(status, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+internal fun couponImageProcessingStatusText(
+    analysisBusy: Boolean,
+    imagePreparationBusy: Boolean
+): String? = when {
+    analysisBusy && imagePreparationBusy -> "쿠폰 정보를 찾고 빠른 업로드를 준비하는 중이에요"
+    analysisBusy -> "업로드 준비를 마쳤고 쿠폰 정보를 계속 찾는 중이에요"
+    imagePreparationBusy -> "자동 입력을 먼저 확인하는 동안 빠른 업로드를 준비해요"
+    else -> null
 }
 
 @Composable
