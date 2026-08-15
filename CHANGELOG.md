@@ -21,6 +21,7 @@
 - 이름 정규화·바코드 우선순위·만료일 격리·브랜드 허용·결과 상한 단위 테스트 추가
 - 중복 경고·강제 등록·조회 취소와 개인정보 쿼리 경계 자동 회귀 추가
 - Android 단위 93/93, Android 16 AVD 계측 49/49, Firestore Rules 24/24와 Backend 58/58 통과
+- GitHub signing dry-run `31879836609` 성공: signed APK 47,012,293 bytes, SHA-256 `d3fed65b1df27001ac6db3069d3f011502670198643f8ba1b59ebe3663a825a3`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
 
 ## 배포 대기 — 0.1.24 (25)
 
