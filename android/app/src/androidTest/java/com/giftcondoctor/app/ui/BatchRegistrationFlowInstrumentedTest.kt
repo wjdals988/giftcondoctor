@@ -1,5 +1,8 @@
 package com.giftcondoctor.app.ui
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -7,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.mutableStateOf
+import androidx.test.platform.app.InstrumentationRegistry
 import com.giftcondoctor.app.core.CouponDuplicateCandidate
 import com.giftcondoctor.app.core.CouponDuplicateReason
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
@@ -21,6 +25,7 @@ import com.giftcondoctor.app.ui.viewmodel.NextCouponPrefetchState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 import java.time.LocalDate
 
 class BatchRegistrationFlowInstrumentedTest {
@@ -50,6 +55,39 @@ class BatchRegistrationFlowInstrumentedTest {
         composeRule.onNodeWithTag("confirm-cancel-batch").performClick()
 
         composeRule.runOnIdle { assertEquals(1, exits) }
+    }
+
+    @Test
+    fun singleRegistrationBackRequiresConfirmationBeforeDiscardingDraft() {
+        var exits = 0
+        val imageFile = createCouponImageFile()
+        try {
+            composeRule.setContent {
+                GDTheme {
+                    AddCouponScreen(
+                        roomId = "test-room",
+                        initialImageUri = Uri.fromFile(imageFile),
+                        onImagesSelected = {},
+                        onSkipCurrent = {},
+                        onBack = { exits += 1 },
+                        onAdded = {}
+                    )
+                }
+            }
+
+            composeRule.onNodeWithContentDescription("뒤로").performClick()
+            composeRule.onNodeWithText("등록을 그만둘까요?").assertIsDisplayed()
+            composeRule.onNodeWithText("선택한 이미지와 입력한 쿠폰 정보가 저장되지 않습니다.")
+                .assertIsDisplayed()
+            composeRule.onNodeWithTag("keep-editing-coupon-draft").performClick()
+            composeRule.runOnIdle { assertEquals(0, exits) }
+
+            composeRule.onNodeWithContentDescription("뒤로").performClick()
+            composeRule.onNodeWithTag("confirm-discard-coupon-draft").performClick()
+            composeRule.runOnIdle { assertEquals(1, exits) }
+        } finally {
+            imageFile.delete()
+        }
     }
 
     @Test
@@ -182,5 +220,18 @@ class BatchRegistrationFlowInstrumentedTest {
                 )
             }
         }
+    }
+
+    private fun createCouponImageFile(): File {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val imageFile = File.createTempFile("coupon-draft-", ".png", context.cacheDir)
+        Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.WHITE)
+            imageFile.outputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+            bitmap.recycle()
+        }
+        return imageFile
     }
 }
