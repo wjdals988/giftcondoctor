@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -42,6 +43,8 @@ import com.giftcondoctor.app.ui.screens.DeletedCouponFeedback
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionAuthState
+import com.giftcondoctor.app.core.SharedImageImportState
+import com.giftcondoctor.app.data.SharedImageImportStore
 
 object Routes {
     const val Login = "login"
@@ -62,9 +65,13 @@ object Routes {
 fun GiftcondoctorApp(
     sessionViewModel: SessionViewModel = viewModel(),
     deepLink: Uri? = null,
-    onDeepLinkHandled: () -> Unit = {}
+    onDeepLinkHandled: () -> Unit = {},
+    sharedImageImport: SharedImageImportState = SharedImageImportState.None,
+    onSharedImageHandled: () -> Unit = {},
+    onSharedImageDismissed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val authState by sessionViewModel.authState.collectAsStateWithLifecycle()
@@ -72,13 +79,44 @@ fun GiftcondoctorApp(
     val currentRoute = currentBackStackEntry?.destination?.route
     var newlyAddedCouponId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletedCouponFeedback by remember { mutableStateOf<DeletedCouponFeedback?>(null) }
+    var activeSharedImageUriValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var routedSharedImportKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val activeSharedImageUri = activeSharedImageUriValue?.let(Uri::parse)
+    val readySharedImageUri = (sharedImageImport as? SharedImageImportState.Ready)?.uri
+    val sharedImportRoutingKey = when (sharedImageImport) {
+        is SharedImageImportState.Ready -> "ready:${sharedImageImport.uri}"
+        is SharedImageImportState.Error -> "error:${sharedImageImport.message}"
+        SharedImageImportState.None, SharedImageImportState.Copying -> null
+    }
 
-    LaunchedEffect(authState, currentRoute, deepLink) {
+    fun startSharedImageRegistration(roomId: String): Boolean {
+        val sharedImage = readySharedImageUri ?: return false
+        activeSharedImageUri?.let { previous ->
+            SharedImageImportStore.delete(context.applicationContext, previous)
+        }
+        activeSharedImageUriValue = sharedImage.toString()
+        onSharedImageHandled()
+        navController.navigate("rooms/$roomId/coupons/add")
+        return true
+    }
+
+    LaunchedEffect(authState, currentRoute, deepLink, sharedImageImport) {
         if (authState == SessionAuthState.Loading) return@LaunchedEffect
+        if (sharedImageImport is SharedImageImportState.None) routedSharedImportKey = null
 
         if (authState == SessionAuthState.Authenticated && deepLink != null) {
             navController.navigate(NavDeepLinkRequest.Builder.fromUri(deepLink).build())
             onDeepLinkHandled()
+        } else if (authState == SessionAuthState.Authenticated && sharedImportRoutingKey != null) {
+            if (routedSharedImportKey != sharedImportRoutingKey) {
+                routedSharedImportKey = sharedImportRoutingKey
+                if (currentRoute != Routes.Rooms) {
+                    navController.navigate(Routes.Rooms) {
+                        popUpTo(Routes.Rooms) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
+            }
         } else if (authState == SessionAuthState.Authenticated && currentRoute == Routes.Login) {
             navController.navigate(Routes.Rooms) {
                 popUpTo(Routes.Login) { inclusive = true }
@@ -109,27 +147,45 @@ fun GiftcondoctorApp(
         ) {
             NavHost(navController = navController, startDestination = Routes.Login) {
                 composable(Routes.Login) {
-                    LoginScreen(sessionViewModel)
+                    LoginScreen(
+                        sessionViewModel = sessionViewModel,
+                        sharedImageImport = sharedImageImport,
+                        onDismissSharedImage = onSharedImageDismissed
+                    )
                 }
                 composable(Routes.Rooms) {
                     RoomListScreen(
                         sessionViewModel = sessionViewModel,
-                        onOpenRoom = { navController.navigate("rooms/$it") },
+                        onOpenRoom = { roomId ->
+                            if (!startSharedImageRegistration(roomId)) {
+                                navController.navigate("rooms/$roomId")
+                            }
+                        },
                         onCreateRoom = { navController.navigate(Routes.CreateRoom) },
                         onJoinRoom = { navController.navigate(Routes.JoinRoom) },
-                        onOpenNotifications = { navController.navigate(Routes.Notifications) }
+                        onOpenNotifications = { navController.navigate(Routes.Notifications) },
+                        sharedImageImport = sharedImageImport,
+                        onDismissSharedImage = onSharedImageDismissed
                     )
                 }
                 composable(Routes.CreateRoom) {
                     CreateRoomScreen(
                         onBack = { navController.popBackStack() },
-                        onCreated = { navController.navigate("rooms/$it") { popUpTo(Routes.Rooms) } }
+                        onCreated = { roomId ->
+                            if (!startSharedImageRegistration(roomId)) {
+                                navController.navigate("rooms/$roomId") { popUpTo(Routes.Rooms) }
+                            }
+                        }
                     )
                 }
                 composable(Routes.JoinRoom) {
                     JoinRoomScreen(
                         onBack = { navController.popBackStack() },
-                        onJoined = { navController.navigate("rooms/$it") { popUpTo(Routes.Rooms) } }
+                        onJoined = { roomId ->
+                            if (!startSharedImageRegistration(roomId)) {
+                                navController.navigate("rooms/$roomId") { popUpTo(Routes.Rooms) }
+                            }
+                        }
                     )
                 }
                 composable(Routes.Notifications) {
@@ -165,8 +221,15 @@ fun GiftcondoctorApp(
                     val roomId = it.arguments?.getString("roomId").orEmpty()
                     AddCouponScreen(
                         roomId = roomId,
-                        onBack = { navController.popBackStack() },
+                        initialImageUri = activeSharedImageUri,
+                        onBack = {
+                            SharedImageImportStore.delete(context.applicationContext, activeSharedImageUri)
+                            activeSharedImageUriValue = null
+                            navController.popBackStack()
+                        },
                         onAdded = { couponId ->
+                            SharedImageImportStore.delete(context.applicationContext, activeSharedImageUri)
+                            activeSharedImageUriValue = null
                             newlyAddedCouponId = couponId
                             navController.navigate("rooms/$roomId/coupons/$couponId") {
                                 popUpTo("rooms/$roomId")

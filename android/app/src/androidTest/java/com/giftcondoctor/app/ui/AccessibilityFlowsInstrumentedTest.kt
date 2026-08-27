@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.giftcondoctor.app.core.NotificationMode
+import com.giftcondoctor.app.core.SharedImageImportState
+import android.net.Uri
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
 import com.giftcondoctor.app.ui.components.NotificationPermissionState
@@ -29,6 +31,7 @@ import com.giftcondoctor.app.ui.screens.NotificationSettingsUiState
 import com.giftcondoctor.app.ui.screens.RoomSettingsActions
 import com.giftcondoctor.app.ui.screens.RoomSettingsContent
 import com.giftcondoctor.app.ui.screens.RoomSettingsUiState
+import com.giftcondoctor.app.ui.screens.SharedImageImportBanner
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import org.junit.Assert.assertFalse
@@ -150,6 +153,24 @@ class AccessibilityFlowsInstrumentedTest {
         assertMinimumTarget("confirm-remove-member")
         composeRule.onNodeWithTag("confirm-remove-member").performClick()
         composeRule.runOnIdle { assertTrue(removed) }
+    }
+
+    @Test
+    fun sharedImageRoomPickerExplainsNextStepAndKeepsCancelReachableAt200PercentFont() {
+        var dismissed = false
+        setLargeFontContent {
+            SharedImageImportBanner(
+                state = SharedImageImportState.Ready(Uri.parse("file:///tmp/shared-coupon.image")),
+                onDismiss = { dismissed = true }
+            )
+        }
+
+        composeRule.onNodeWithText("등록할 쿠폰방을 선택하세요").assertIsDisplayed()
+        composeRule.onNodeWithText("공유한 이미지는 방을 선택한 뒤 자동으로 등록 화면에 들어갑니다.")
+            .assertIsDisplayed()
+        assertMinimumTarget("dismiss-shared-image")
+        composeRule.onNodeWithTag("dismiss-shared-image").performClick()
+        composeRule.runOnIdle { assertTrue(dismissed) }
     }
 
     private fun setLargeFontContent(content: @Composable () -> Unit) {

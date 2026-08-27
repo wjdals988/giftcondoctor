@@ -47,9 +47,14 @@ import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
+import com.giftcondoctor.app.core.SharedImageImportState
 
 @Composable
-fun LoginScreen(sessionViewModel: SessionViewModel) {
+fun LoginScreen(
+    sessionViewModel: SessionViewModel,
+    sharedImageImport: SharedImageImportState = SharedImageImportState.None,
+    onDismissSharedImage: () -> Unit = {}
+) {
     val context = LocalContext.current
     val busy by sessionViewModel.busy.collectAsStateWithLifecycle()
     val message by sessionViewModel.message.collectAsStateWithLifecycle()
@@ -98,6 +103,11 @@ fun LoginScreen(sessionViewModel: SessionViewModel) {
             modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
         )
         ReminderTimeBanner(modifier = Modifier.padding(bottom = 18.dp))
+        SharedImageImportBanner(
+            state = sharedImageImport,
+            onDismiss = onDismissSharedImage,
+            canSelectRoom = false
+        )
 
         Button(
             onClick = {

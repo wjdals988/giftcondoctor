@@ -94,6 +94,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.CouponListFilter
 import com.giftcondoctor.app.core.NotificationMode
+import com.giftcondoctor.app.core.SharedImageImportState
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.daysBeforeExpiry
 import com.giftcondoctor.app.core.filterAndSortCoupons
@@ -138,6 +139,8 @@ fun RoomListScreen(
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit,
     onOpenNotifications: () -> Unit,
+    sharedImageImport: SharedImageImportState = SharedImageImportState.None,
+    onDismissSharedImage: () -> Unit = {},
     viewModel: RoomListViewModel = viewModel()
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
@@ -147,6 +150,7 @@ fun RoomListScreen(
         is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
         else -> false
     }
+    val roomSelectionEnabled = sharedImageImport !is SharedImageImportState.Copying
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     GDScaffold(
@@ -162,6 +166,7 @@ fun RoomListScreen(
     ) { modifier ->
         Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             InlineMessage(message)
+            SharedImageImportBanner(sharedImageImport, onDismissSharedImage)
             when (val state = rooms) {
                 UiState.Loading -> LoadingState()
                 is UiState.Error -> ErrorState(state.message)
@@ -189,11 +194,11 @@ fun RoomListScreen(
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onCreateRoom, modifier = Modifier.weight(1f)) {
+                            Button(onClick = onCreateRoom, enabled = roomSelectionEnabled, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Default.Add, contentDescription = null)
                                 Text("방 만들기", modifier = Modifier.padding(start = 6.dp))
                             }
-                            OutlinedButton(onClick = onJoinRoom, modifier = Modifier.weight(1f)) {
+                            OutlinedButton(onClick = onJoinRoom, enabled = roomSelectionEnabled, modifier = Modifier.weight(1f)) {
                                 Text("방 입장")
                             }
                         }
@@ -204,7 +209,7 @@ fun RoomListScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        RoomList(state.data, onOpenRoom, Modifier.weight(1f))
+                        RoomList(state.data, onOpenRoom, Modifier.weight(1f), roomSelectionEnabled)
                     }
                 }
             }
@@ -236,11 +241,78 @@ fun RoomListScreen(
 }
 
 @Composable
-private fun RoomList(rooms: List<RoomMembership>, onOpenRoom: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun SharedImageImportBanner(
+    state: SharedImageImportState,
+    onDismiss: () -> Unit,
+    canSelectRoom: Boolean = true
+) {
+    when (state) {
+        SharedImageImportState.None -> Unit
+        SharedImageImportState.Copying -> Card(
+            modifier = Modifier.fillMaxWidth().testTag("shared-image-copying"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("공유한 이미지를 안전하게 준비하고 있어요", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "준비가 끝나면 등록할 쿠폰방을 선택할 수 있어요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag("cancel-shared-image-copy")) {
+                    Text("가져오기 취소")
+                }
+            }
+        }
+        is SharedImageImportState.Ready -> Card(
+            modifier = Modifier.fillMaxWidth().testTag("shared-image-room-picker"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (canSelectRoom) "등록할 쿠폰방을 선택하세요" else "공유한 이미지를 안전하게 보관했어요",
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    if (canSelectRoom) {
+                        "공유한 이미지는 방을 선택한 뒤 자동으로 등록 화면에 들어갑니다."
+                    } else {
+                        "로그인하면 등록할 쿠폰방을 선택할 수 있어요."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismiss-shared-image")) {
+                    Text("공유 등록 취소")
+                }
+            }
+        }
+        is SharedImageImportState.Error -> Card(
+            modifier = Modifier.fillMaxWidth().testTag("shared-image-error"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("이미지를 가져오지 못했어요", fontWeight = FontWeight.SemiBold)
+                Text(state.message, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismiss-shared-image-error")) {
+                    Text("확인")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoomList(
+    rooms: List<RoomMembership>,
+    onOpenRoom: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
     LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(rooms, key = { it.roomId }) { room ->
             Card(
-                modifier = Modifier.fillMaxWidth().clickable { onOpenRoom(room.roomId) },
+                modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onOpenRoom(room.roomId) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 ListItem(

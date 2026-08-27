@@ -23,8 +23,8 @@ android {
         applicationId = "com.giftcondoctor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.1.20"
+        versionCode = 22
+        versionName = "0.1.21"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val apiBaseUrl = localProperties.getProperty("apiBaseUrl", "http://10.0.2.2:3000")

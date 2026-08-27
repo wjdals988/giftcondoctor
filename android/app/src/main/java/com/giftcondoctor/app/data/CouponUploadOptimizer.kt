@@ -106,7 +106,6 @@ object CouponUploadOptimizer {
     private const val JPEG_QUALITY_STEP = 4
     private const val MAX_RESIZE_ATTEMPTS = 3
     private const val RESIZE_HEADROOM = 0.92
-    private const val MAX_INPUT_PIXELS = 40_000_000L
     private val abandonedFilesPurged = AtomicBoolean(false)
 
     private data class UploadSource(
@@ -173,7 +172,7 @@ object CouponUploadOptimizer {
     }
 
     private fun requireSupportedPixelCount(bounds: Pair<Int, Int>, original: PreparedCouponUpload) {
-        if (bounds.first.toLong() * bounds.second.toLong() <= MAX_INPUT_PIXELS) return
+        if (bounds.first.toLong() * bounds.second.toLong() <= AppConstants.MAX_IMAGE_PIXELS) return
         original.close()
         throw IOException("이미지 해상도가 너무 큽니다. 4천만 화소 이하 이미지를 선택해 주세요.")
     }
