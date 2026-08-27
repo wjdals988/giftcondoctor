@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.QrCode2
@@ -129,7 +130,10 @@ import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
 import com.giftcondoctor.app.ui.viewmodel.CouponDetailViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponOriginalImageState
+import com.giftcondoctor.app.ui.viewmodel.NextCouponPrefetchStage
+import com.giftcondoctor.app.ui.viewmodel.NextCouponPrefetchState
 import com.giftcondoctor.app.ui.viewmodel.canCancelCouponUpload
+import com.giftcondoctor.app.ui.viewmodel.nextCouponPrefetchStatusText
 import com.giftcondoctor.app.ui.viewmodel.shouldCancelOriginalImageLoad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -170,6 +174,7 @@ internal fun batchRegistrationBackAction(
 fun AddCouponScreen(
     roomId: String,
     initialImageUri: Uri? = null,
+    nextImageUri: Uri? = null,
     batchPosition: Int = 0,
     batchTotal: Int = 0,
     batchRemaining: Int = 0,
@@ -190,6 +195,7 @@ fun AddCouponScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
     val duplicateCandidates by viewModel.duplicateCandidates.collectAsStateWithLifecycle()
+    val nextCouponPrefetchState by viewModel.nextCouponPrefetchState.collectAsStateWithLifecycle()
     val imageUri = initialImageUri
     var title by remember(imageUri) { mutableStateOf("") }
     var brand by remember(imageUri) { mutableStateOf("") }
@@ -253,6 +259,25 @@ fun AddCouponScreen(
         }
     }
 
+    LaunchedEffect(
+        imageUri,
+        nextImageUri,
+        analysisSource,
+        analysisBusy,
+        imagePreparationBusy,
+        busy
+    ) {
+        if (busy) {
+            viewModel.cancelInFlightNextImagePrefetch()
+        } else {
+            viewModel.prefetchCouponImage(
+                context = context,
+                currentImageUri = imageUri,
+                nextImageUri = nextImageUri
+            )
+        }
+    }
+
     LaunchedEffect(suggestion, analysisSource, imageUri) {
         if (analysisSource != imageUri?.toString()) return@LaunchedEffect
         val data = suggestion ?: return@LaunchedEffect
@@ -292,23 +317,26 @@ fun AddCouponScreen(
                 fontWeight = FontWeight.SemiBold
             )
             if (batchRemaining > 1) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "현재 이미지 포함 ${batchRemaining}장 남음",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    TextButton(
-                        onClick = { showSkipImageDialog = true },
-                        enabled = !busy,
-                        modifier = Modifier.testTag("skip-batch-image")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("이 이미지 제외")
+                        Text(
+                            "현재 이미지 포함 ${batchRemaining}장 남음",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = { showSkipImageDialog = true },
+                            enabled = !busy,
+                            modifier = Modifier.testTag("skip-batch-image")
+                        ) {
+                            Text("이 이미지 제외")
+                        }
                     }
+                    NextCouponPrefetchStatus(nextCouponPrefetchState)
                 }
             }
             Card(
@@ -559,6 +587,32 @@ fun AddCouponScreen(
                 viewModel.dismissDuplicateWarning()
                 submitCoupon(true)
             }
+        )
+    }
+}
+
+@Composable
+internal fun NextCouponPrefetchStatus(state: NextCouponPrefetchState) {
+    val status = nextCouponPrefetchStatusText(state) ?: return
+    Row(
+        modifier = Modifier.testTag("next-coupon-prefetch-status"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (state.stage == NextCouponPrefetchStage.Processing) {
+            ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        } else {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Text(
+            text = status,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }

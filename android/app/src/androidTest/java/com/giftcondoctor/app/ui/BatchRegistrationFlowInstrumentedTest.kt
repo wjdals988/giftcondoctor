@@ -6,14 +6,18 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.mutableStateOf
 import com.giftcondoctor.app.core.CouponDuplicateCandidate
 import com.giftcondoctor.app.core.CouponDuplicateReason
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponUploadExitDialog
 import com.giftcondoctor.app.ui.screens.PossibleDuplicateCouponDialog
+import com.giftcondoctor.app.ui.screens.NextCouponPrefetchStatus
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
+import com.giftcondoctor.app.ui.viewmodel.NextCouponPrefetchStage
+import com.giftcondoctor.app.ui.viewmodel.NextCouponPrefetchState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -131,6 +135,33 @@ class BatchRegistrationFlowInstrumentedTest {
         composeRule.onNodeWithText("확인을 취소하고 나갈까요?").assertIsDisplayed()
         composeRule.onNodeWithTag("confirm-cancel-upload-and-exit").performClick()
         composeRule.runOnIdle { assertEquals(1, cancellations) }
+    }
+
+    @Test
+    fun nextImagePrefetchShowsCompactProgressAndReadyFeedback() {
+        val state = mutableStateOf(
+            NextCouponPrefetchState(
+                source = "content://coupon/2",
+                stage = NextCouponPrefetchStage.Processing
+            )
+        )
+        composeRule.setContent {
+            GDTheme {
+                NextCouponPrefetchStatus(state.value)
+            }
+        }
+        composeRule.onNodeWithText("다음 쿠폰을 미리 읽는 중").assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            state.value = NextCouponPrefetchState(
+                source = "content://coupon/2",
+                stage = NextCouponPrefetchStage.Ready,
+                analysisReady = true,
+                uploadReady = true
+            )
+        }
+        composeRule.onNodeWithText("다음 쿠폰 자동 입력·빠른 업로드 준비 완료")
+            .assertIsDisplayed()
     }
 
     private fun renderBatchScreen(

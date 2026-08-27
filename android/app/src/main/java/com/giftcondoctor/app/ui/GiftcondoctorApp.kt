@@ -268,6 +268,7 @@ fun GiftcondoctorApp(
                     AddCouponScreen(
                         roomId = roomId,
                         initialImageUri = activeSharedImageUri,
+                        nextImageUri = activeSharedImageUris.getOrNull(1),
                         batchPosition = if (sharedBatchTotal > 1) {
                             sharedBatchTotal - activeSharedImageUris.size + 1
                         } else {
