@@ -559,7 +559,7 @@ fun JoinRoomScreen(
 @Composable
 private fun PublicRoomList(rooms: List<PublicRoom>, onSelect: (PublicRoom) -> Unit) {
     if (rooms.isEmpty()) {
-        Text("아직 공개 방이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("아직 공개 방이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
@@ -1439,7 +1439,7 @@ internal fun CouponTrashContent(
             ) {
                 EmptyState(
                     title = "복구함이 비어 있어요",
-                    message = "삭제한 쿠폰은 여기에 30일 동안 보관됩니다.",
+                    message = "삭제한 쿠폰은 여기에 30일 동안 보관해요.",
                     icon = Icons.Default.RestoreFromTrash
                 )
             } else {
