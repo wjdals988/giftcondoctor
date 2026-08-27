@@ -112,6 +112,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.clampZoomOffset
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.core.shouldLoadOriginalImage
+import com.giftcondoctor.app.core.shouldDecodeDisplayResolution
 import com.giftcondoctor.app.core.shouldPrepareHighResolutionZoom
 import com.giftcondoctor.app.core.zoomOffsetForDoubleTap
 import com.giftcondoctor.app.data.model.Coupon
@@ -1823,18 +1824,25 @@ private fun rememberCouponImageResolution(
     var zoomBitmap by remember(imageFile, displayWidth, displayHeight) { mutableStateOf<ImageBitmap?>(null) }
     var zoomFinished by remember(imageFile, displayWidth, displayHeight) { mutableStateOf(false) }
 
-    LaunchedEffect(imageFile, displayWidth, displayHeight) {
-        displayBitmap = null
-        displayFinished = false
-        if (imageFile != null) {
+    LaunchedEffect(imageFile, displayWidth, displayHeight, zoomRequested) {
+        if (imageFile == null) {
+            displayBitmap = null
+            displayFinished = false
+        } else if (shouldDecodeDisplayResolution(zoomRequested, displayBitmap != null)) {
+            displayFinished = false
             displayBitmap = decodeCouponImage(imageFile, displayWidth, displayHeight)
+            displayFinished = true
+        } else if (zoomRequested && displayBitmap == null) {
+            // 확대 의도가 원본 준비보다 빠르면 중간 크기 디코드를 생략한다.
             displayFinished = true
         }
     }
-    LaunchedEffect(imageFile, zoomRequested, displayFinished, displayWidth, displayHeight) {
-        zoomBitmap = null
-        zoomFinished = false
-        if (imageFile != null && zoomRequested && displayFinished) {
+    LaunchedEffect(imageFile, zoomRequested, displayWidth, displayHeight) {
+        if (imageFile == null || !zoomRequested) {
+            zoomBitmap = null
+            zoomFinished = false
+        } else {
+            zoomFinished = false
             zoomBitmap = decodeCouponImage(imageFile, displayWidth * 2, displayHeight * 2)
             zoomFinished = true
             if (zoomBitmap != null) displayBitmap = null

@@ -4,10 +4,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.max
 
-private const val HIGH_RESOLUTION_ZOOM_THRESHOLD = 1.5f
+private const val HIGH_RESOLUTION_ZOOM_THRESHOLD = 1.15f
 
 internal fun shouldPrepareHighResolutionZoom(scale: Float): Boolean =
     scale >= HIGH_RESOLUTION_ZOOM_THRESHOLD
+
+internal fun shouldDecodeDisplayResolution(
+    zoomRequested: Boolean,
+    displayReady: Boolean
+): Boolean = !zoomRequested && !displayReady
 
 internal fun clampZoomOffset(offset: Offset, scale: Float, viewportSize: IntSize): Offset {
     if (scale <= 1f || viewportSize == IntSize.Zero) return Offset.Zero

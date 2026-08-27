@@ -41,12 +41,24 @@ class ImageZoomMathTest {
     @Test
     fun smallPinchKeepsDisplayResolutionWithoutPreparingLargeBitmap() {
         assertFalse(shouldPrepareHighResolutionZoom(1f))
-        assertFalse(shouldPrepareHighResolutionZoom(1.49f))
+        assertFalse(shouldPrepareHighResolutionZoom(1.14f))
     }
 
     @Test
     fun deliberateZoomPreparesHighResolutionBitmap() {
-        assertTrue(shouldPrepareHighResolutionZoom(1.5f))
+        assertTrue(shouldPrepareHighResolutionZoom(1.15f))
         assertTrue(shouldPrepareHighResolutionZoom(4f))
+    }
+
+    @Test
+    fun earlyZoomSkipsRedundantDisplayResolutionDecode() {
+        assertFalse(shouldDecodeDisplayResolution(zoomRequested = true, displayReady = false))
+        assertFalse(shouldDecodeDisplayResolution(zoomRequested = true, displayReady = true))
+    }
+
+    @Test
+    fun displayResolutionDecodesOnlyUntilItIsReady() {
+        assertTrue(shouldDecodeDisplayResolution(zoomRequested = false, displayReady = false))
+        assertFalse(shouldDecodeDisplayResolution(zoomRequested = false, displayReady = true))
     }
 }

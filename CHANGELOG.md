@@ -2,7 +2,22 @@
 
 이 프로젝트는 공개된 버전을 덮어쓰지 않고 새 `versionName`과 `versionCode`로 발행합니다.
 
-## Unreleased — 0.1.29 (30)
+## Unreleased — 0.1.30 (31)
+
+### 이미지 성능·UX
+
+- 원본 준비 중 사용자가 먼저 확대하면 화면맞춤 디코드를 기다리지 않고 확대용 해상도를 바로 준비
+- 핀치 확대용 선명한 bitmap 준비 기준을 1.50배에서 1.15배로 앞당겨 확대 중 저해상도 노출 시간을 단축
+- 화면맞춤 bitmap이 이미 준비된 경우에는 확대 bitmap이 완성될 때까지 그대로 표시하고, 확대본 준비 후 중간 bitmap을 해제해 peak 메모리를 제한
+
+### 안정성·검증
+
+- 확대 의도가 먼저 확인된 경로에서 중간 해상도 디코드를 생략하는 순수 정책 회귀 테스트 추가
+- Android 단위 108/108, Android 16 AVD 계측 55/55, lint 오류 0건·기존 경고 14건, R8 release/benchmark build 통과
+- 합성 4.55MB 원본의 조기 확대 디코드 구간 463.383ms→281.429ms(39.3% 단축), 논리 bitmap peak 16,934,400B→13,824,000B(18.4% 감소)
+- GitHub signing dry-run `31887162874` 성공: signed APK 47,012,293 bytes, SHA-256 `eb2210dc24b4b204d1966d870f863285628b7996d7c9f26c96eb41d64b06cac3`, production API·새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
+
+## 배포 대기 — 0.1.29 (30)
 
 ### UI/UX
 
