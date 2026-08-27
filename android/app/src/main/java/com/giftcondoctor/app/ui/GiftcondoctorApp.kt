@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,6 +128,14 @@ fun GiftcondoctorApp(
         }
         activeSharedImageUriValues = ArrayList(uris.map(Uri::toString))
         sharedBatchTotal = uris.size
+    }
+
+    fun advanceActiveImageQueue(): Boolean {
+        activeSharedImageUri?.let(::releaseImageAccess)
+        val remainingUris = activeSharedImageUris.drop(1)
+        activeSharedImageUriValues = ArrayList(remainingUris.map(Uri::toString))
+        if (remainingUris.isEmpty()) sharedBatchTotal = 0
+        return remainingUris.isNotEmpty()
     }
 
     fun startSharedImageRegistration(roomId: String): Boolean {
@@ -258,37 +265,31 @@ fun GiftcondoctorApp(
                     arguments = listOf(navArgument("roomId") { type = NavType.StringType })
                 ) {
                     val roomId = it.arguments?.getString("roomId").orEmpty()
-                    key(activeSharedImageUri?.toString(), sharedBatchTotal) {
-                        AddCouponScreen(
-                            roomId = roomId,
-                            initialImageUri = activeSharedImageUri,
-                            batchPosition = if (sharedBatchTotal > 1) {
-                                sharedBatchTotal - activeSharedImageUris.size + 1
-                            } else {
-                                0
-                            },
-                            batchTotal = sharedBatchTotal,
-                            onImagesSelected = ::replaceActiveImageQueue,
-                            onBack = {
-                                clearActiveImageQueue()
-                                navController.popBackStack()
-                            },
-                            onAdded = { couponId ->
-                                activeSharedImageUri?.let(::releaseImageAccess)
-                                val remainingUris = activeSharedImageUris.drop(1)
-                                if (remainingUris.isNotEmpty()) {
-                                    activeSharedImageUriValues = ArrayList(remainingUris.map(Uri::toString))
-                                } else {
-                                    activeSharedImageUriValues = arrayListOf()
-                                    sharedBatchTotal = 0
-                                    newlyAddedCouponId = couponId
-                                    navController.navigate("rooms/$roomId/coupons/$couponId") {
-                                        popUpTo("rooms/$roomId")
-                                    }
+                    AddCouponScreen(
+                        roomId = roomId,
+                        initialImageUri = activeSharedImageUri,
+                        batchPosition = if (sharedBatchTotal > 1) {
+                            sharedBatchTotal - activeSharedImageUris.size + 1
+                        } else {
+                            0
+                        },
+                        batchTotal = sharedBatchTotal,
+                        batchRemaining = activeSharedImageUris.size,
+                        onImagesSelected = ::replaceActiveImageQueue,
+                        onSkipCurrent = { advanceActiveImageQueue() },
+                        onBack = {
+                            clearActiveImageQueue()
+                            navController.popBackStack()
+                        },
+                        onAdded = { couponId ->
+                            if (!advanceActiveImageQueue()) {
+                                newlyAddedCouponId = couponId
+                                navController.navigate("rooms/$roomId/coupons/$couponId") {
+                                    popUpTo("rooms/$roomId")
                                 }
                             }
-                        )
-                    }
+                        }
+                    )
                 }
                 composable(
                     route = Routes.CouponDetail,

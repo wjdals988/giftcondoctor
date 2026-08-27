@@ -2,6 +2,7 @@ package com.giftcondoctor.app.ui.screens
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -146,6 +147,21 @@ private val manualBarcodeFormats = listOf(
     "DATA_MATRIX" to "Data Matrix"
 )
 
+internal enum class BatchRegistrationBackAction {
+    BlockWhileBusy,
+    ConfirmCancel,
+    Exit
+}
+
+internal fun batchRegistrationBackAction(
+    busy: Boolean,
+    batchRemaining: Int
+): BatchRegistrationBackAction = when {
+    busy -> BatchRegistrationBackAction.BlockWhileBusy
+    batchRemaining > 1 -> BatchRegistrationBackAction.ConfirmCancel
+    else -> BatchRegistrationBackAction.Exit
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddCouponScreen(
@@ -153,10 +169,12 @@ fun AddCouponScreen(
     initialImageUri: Uri? = null,
     batchPosition: Int = 0,
     batchTotal: Int = 0,
+    batchRemaining: Int = 0,
     onImagesSelected: (List<Uri>) -> Unit,
+    onSkipCurrent: () -> Unit,
     onBack: () -> Unit,
     onAdded: (String) -> Unit,
-    viewModel: AddCouponViewModel = viewModel(key = "add-coupon-$roomId-${initialImageUri.orEmptyKey()}")
+    viewModel: AddCouponViewModel = viewModel(key = "add-coupon-$roomId")
 ) {
     val context = LocalContext.current
     val busy by viewModel.busy.collectAsStateWithLifecycle()
@@ -165,47 +183,73 @@ fun AddCouponScreen(
     val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
     val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
     val barcode by viewModel.barcode.collectAsStateWithLifecycle()
+    val analysisSource by viewModel.analysisSource.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
     val imageUri = initialImageUri
-    var title by remember { mutableStateOf("") }
-    var brand by remember { mutableStateOf("") }
-    var barcodeValue by remember { mutableStateOf("") }
-    var barcodeFormat by remember { mutableStateOf<String?>(null) }
-    var manualBarcodeEntry by remember { mutableStateOf(false) }
-    var expires by remember {
+    var title by remember(imageUri) { mutableStateOf("") }
+    var brand by remember(imageUri) { mutableStateOf("") }
+    var barcodeValue by remember(imageUri) { mutableStateOf("") }
+    var barcodeFormat by remember(imageUri) { mutableStateOf<String?>(null) }
+    var manualBarcodeEntry by remember(imageUri) { mutableStateOf(false) }
+    var expires by remember(imageUri) {
         mutableStateOf(LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)).plusDays(7).toString())
     }
     var privateCoupon by remember { mutableStateOf(false) }
     var ownerOnly by remember { mutableStateOf(false) }
     var showSharingOptions by remember { mutableStateOf(false) }
+    var showSkipImageDialog by remember { mutableStateOf(false) }
+    var showCancelBatchDialog by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
     val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(AppConstants.MAX_SHARED_IMAGE_COUNT)
     ) { uris ->
         if (uris.isNotEmpty()) onImagesSelected(uris)
     }
-
-    LaunchedEffect(imageUri) {
-        imageUri?.let { viewModel.recognizeCouponImage(context, it) }
+    val handleBack = {
+        when (batchRegistrationBackAction(busy, batchRemaining)) {
+            BatchRegistrationBackAction.BlockWhileBusy -> Unit
+            BatchRegistrationBackAction.ConfirmCancel -> showCancelBatchDialog = true
+            BatchRegistrationBackAction.Exit -> onBack()
+        }
     }
 
-    LaunchedEffect(suggestion) {
+    BackHandler(onBack = handleBack)
+
+    LaunchedEffect(imageUri) {
+        imageUri?.let {
+            scrollState.scrollTo(0)
+            viewModel.recognizeCouponImage(context, it)
+        }
+    }
+
+    LaunchedEffect(suggestion, analysisSource, imageUri) {
+        if (analysisSource != imageUri?.toString()) return@LaunchedEffect
         val data = suggestion ?: return@LaunchedEffect
         data.title?.let { title = it }
         data.brand?.let { brand = it }
         data.expiresLocalDate?.let { expires = it.toString() }
     }
 
-    LaunchedEffect(barcode, imageUri) {
+    LaunchedEffect(barcode, analysisSource, imageUri) {
+        if (analysisSource != imageUri?.toString()) {
+            barcodeValue = ""
+            barcodeFormat = null
+            manualBarcodeEntry = false
+            return@LaunchedEffect
+        }
         barcodeValue = barcode?.value.orEmpty()
         barcodeFormat = barcode?.format
         manualBarcodeEntry = false
     }
 
-    GDScaffold(title = "쿠폰 등록", onBack = onBack) { modifier ->
+    GDScaffold(
+        title = "쿠폰 등록",
+        onBack = handleBack
+    ) { modifier ->
         Column(
-            modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = modifier.fillMaxSize().verticalScroll(scrollState).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
@@ -218,6 +262,26 @@ fun AddCouponScreen(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
+            if (batchRemaining > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "현재 이미지 포함 ${batchRemaining}장 남음",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = { showSkipImageDialog = true },
+                        enabled = !busy,
+                        modifier = Modifier.testTag("skip-batch-image")
+                    ) {
+                        Text("이 이미지 제외")
+                    }
+                }
+            }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -411,9 +475,51 @@ fun AddCouponScreen(
             }
         }
     }
-}
 
-private fun Uri?.orEmptyKey(): String = this?.toString() ?: "empty"
+    if (showSkipImageDialog) {
+        AlertDialog(
+            onDismissRequest = { showSkipImageDialog = false },
+            title = { Text("현재 이미지를 제외할까요?") },
+            text = { Text("이 이미지는 저장하지 않고 다음 쿠폰으로 이동합니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSkipImageDialog = false
+                        onSkipCurrent()
+                    },
+                    modifier = Modifier.testTag("confirm-skip-batch-image")
+                ) {
+                    Text("제외하고 다음")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSkipImageDialog = false }) { Text("계속 확인") }
+            }
+        )
+    }
+
+    if (showCancelBatchDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelBatchDialog = false },
+            title = { Text("일괄 등록을 그만둘까요?") },
+            text = { Text("현재 이미지 포함 남은 ${batchRemaining}장은 등록하지 않고 안전하게 정리합니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCancelBatchDialog = false
+                        onBack()
+                    },
+                    modifier = Modifier.testTag("confirm-cancel-batch")
+                ) {
+                    Text("등록 그만두기")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelBatchDialog = false }) { Text("계속 등록") }
+            }
+        )
+    }
+}
 
 @Composable
 internal fun CouponImageProcessingStatus(
