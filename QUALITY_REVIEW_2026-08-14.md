@@ -3,6 +3,16 @@
 검토일: 2026-08-15
 대상: Android, Next.js Backend, Firestore Rules, GitHub Actions, 릴리스 흐름
 
+## v0.1.24 업로드 이탈 UX 변경 범위: A+ (94/100)
+
+업로드 중 뒤로가기가 아무 피드백 없이 무시되던 v0.1.23 잔여 위험을 단계별 확인창으로 해소했습니다. 준비·전송만 취소 가능하고, 취소 요청이 실제 수락된 뒤 `busy=false`가 된 경우에만 화면을 나갑니다. Firestore 저장과 이미 진행 중인 정리는 중간 취소하지 않아 저장 완료 콜백·다음 이미지 큐·뒤로가기의 경쟁을 차단합니다.
+
+- 상태 정책: `Preparing/Uploading` 2개 단계만 취소 가능, `Idle/Cancelling/Saving` 3개 단계는 안내 후 유지
+- 자동 검증: 단위 86/86, Android 16 AVD 계측 46/46
+- 남은 위험: 네트워크 응답이 없는 실제 서버 취소 지연과 OEM 시스템 뒤로가기 제스처는 물리 기기에서 별도 확인 필요
+
+`code-quality-reviewer` 자동 스크립트는 Kotlin을 지원하지 않고 macOS `awk` 숫자 파싱도 실패해 N/A이며, 실제 lint·테스트·R8 빌드와 수동 경쟁 조건 검토를 판정 근거로 사용합니다.
+
 ## v0.1.23 일괄 등록 UX 변경 범위: A+ (93/100)
 
 `code-quality-reviewer` 기준으로 일괄 등록 변경분을 재평가했습니다. 제공된 자동 스크립트는 TypeScript 전용 규칙과 macOS `awk` 숫자 파싱 문제 때문에 Kotlin 결과를 만들 수 없어 N/A 처리하고, 실제 Android Lint·단위/계측 테스트·R8 빌드·수동 상태 수명 검토를 사용했습니다.
