@@ -110,7 +110,7 @@ Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "
 | 어포던스 | 등장 횟수 | 영향 |
 | --- | --- | --- |
 | ~~`PullToRefresh`~~ | ~~0~~ | **(2026-08-28 정정)** 결함이 아니다. 모든 목록이 Firestore `addSnapshotListener` 실시간이거나 명시적 새로고침 버튼을 갖고 있다. 상세는 아래 참조 |
-| `SwipeToDismiss` | 0 | 사용완료·삭제가 상세 진입 후 버튼뿐 |
+| ~~`SwipeToDismiss`~~ | ~~0~~ | **(2026-08-28 정정)** 추가하지 않기로 판단했다. 근거는 이 절 아래 참조 |
 | 스켈레톤(`shimmer`/`placeholder`) | 0 | 로딩이 `CircularProgressIndicator` 10곳뿐 |
 | `HapticFeedback` | 0 | 바코드 감지·사용완료 성공에 촉각 확인 없음 |
 
@@ -132,6 +132,30 @@ Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "
 `CouponPager.refresh()`는 `pages.values.flatten().forEach { it.registration?.remove() }` 로 모든 snapshot listener 를 해제하고 `attachPage`로 다시 붙인다(`CouponPager.kt:58-70`). 실시간 목록에서 이미 최신인 데이터를 위해 리스너를 전부 재생성하는 것이므로, 당길 때마다 Firestore 읽기가 추가로 발생한다. 즉 당김 새로고침은 이 구조에서 **비용만 늘리고 얻는 것이 없는 no-op**에 가깝다.
 
 당김 제스처가 정말 필요하다고 판단되면, 리스너를 재생성하지 않고 "이미 최신입니다" 피드백만 주는 형태로 별도 설계해야 한다. 지금 상태에서 `PullToRefreshBox`를 그대로 얹는 것은 회귀다. 스켈레톤 부재는 이미 확보한 성능 개선(P50 개선 기록)을 체감으로 전달하지 못하게 만든다 — 스피너는 진행률 정보가 없어 실제보다 느리게 느껴진다.
+
+
+### SwipeToDismiss 를 추가하지 않기로 한 이유
+
+실제 사용 흐름은 **쿠폰 열기 → 계산대에서 바코드 보여주기 → 사용 완료** 다. 사용자는 이미 상세 화면에 있고 `사용 완료` 버튼도 거기에 있다. 목록 스와이프는 주 경로를 한 단계도 줄이지 못한다.
+
+구현 비용도 계층을 넘는다. `markUsed` 는 `CouponDetailViewModel` 에만 있고(`ViewModels.kt:896`), 5분 실행 취소 상태는 상세 화면 로컬 `rememberSaveable`(`CouponScreens.kt:926`)이다. 목록에 스와이프를 붙이려면 `RoomDetailViewModel` 에 동작 추가, 방 화면에 스낵바 호스트 추가, 실행 취소 효과 중복 구현이 필요하다.
+
+삭제는 더 분명하다. 30일 soft-delete 로 복구는 가능하지만, 드물게 쓰는 동작을 목록 최상위에서 한 번의 제스처로 노출할 이유가 없다.
+
+목록 단위 정리가 목표라면 올바른 형태는 per-row 스와이프가 아니라 **다중 선택**이다(현재 `selectionMode` 관련 코드 0건). 이는 UI 다듬기가 아니라 별도 기능이므로 이 문서의 범위를 넘는다.
+
+### 배지·상태 문구 중복 (2026-08-28 발견, 자체 유발)
+
+PR #28 에서 목록에 `GDExpiryBadge` 를 넣으면서 `supportingContent` 의 `statusLabel` 을 그대로 두었고, PR #35 에서는 상세 화면에 `GDBadge(statusLabel)` 을 만료 배지 옆에 나란히 놓았다. 두 함수의 반환값이 종료 상태에서 겹치는 것을 확인하지 않은 결과다.
+
+| 상태 | 배지 (`couponDdayLabel`) | 본문 (`statusLabel`) | 결과 |
+| --- | --- | --- | --- |
+| used | 사용 완료 | 사용 완료 | 같은 값 2회 |
+| expired | 만료 | 만료됨 | 사실상 같은 값 2회 |
+| active | D-7 | 사용 가능 | 중복 아님 |
+| reserved | D-7 | 예약됨 | 중복 아님 |
+
+`expiryBadgeAlreadyStatesStatus(urgency)` 로 종료 상태에서만 상태 문구를 빼도록 고쳤다. 진행 중에는 배지가 기간만 말하므로 상태 문구가 여전히 정보를 더한다.
 
 ## 7. 접근성 잔여 결함
 
@@ -186,7 +210,7 @@ Kotlin 내 한글 리터럴: 712
 
 ### P2 — 세련도
 
-13. `SwipeToDismiss`로 사용완료·삭제 단축
+13. ~~`SwipeToDismiss`로 사용완료·삭제 단축~~ → 추가하지 않음. 주 사용 흐름이 이미 상세 화면에서 끝나 목록 스와이프가 경로를 줄이지 못한다. 대신 발견한 상태 중복 결함을 수정 (6절)
 14. 바코드 감지 성공·사용완료에 `HapticFeedback`
 15. Material You 동적 색상 옵션
 16. 712개 문구 `strings.xml` 추출과 표현 통일
