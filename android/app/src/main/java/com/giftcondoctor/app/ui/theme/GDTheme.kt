@@ -61,6 +61,7 @@ private val GDShapes = Shapes(
 fun GDTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = GDColorScheme,
+        typography = GDTypography,
         shapes = GDShapes,
         content = content
     )
