@@ -81,4 +81,55 @@ class ReminderRulesTest {
         assertEquals(false, label.contains("Asia"))
         assertEquals(false, label.contains("/"))
     }
+
+    @Test
+    fun supportingTextOmitsStatusWhenBadgeAlreadyStatesIt() {
+        val today = LocalDate.parse("2026-08-28")
+        // 사용 완료: 배지가 "사용 완료" 를 말하므로 본문에서 상태를 뺀다.
+        val used = couponListSupportingText(
+            brand = "스타벅스",
+            status = "used",
+            urgency = ExpiryUrgency.Ended,
+            expiresLocalDate = LocalDate.parse("2026-09-01")
+        )
+        assertEquals("스타벅스 · 2026년 9월 1일까지", used)
+        assertEquals(false, used.contains("사용 완료"))
+
+        // 만료: 같은 이유로 상태를 뺀다.
+        val expired = couponListSupportingText(
+            brand = "CGV",
+            status = "expired",
+            urgency = ExpiryUrgency.Ended,
+            expiresLocalDate = LocalDate.parse("2026-08-01")
+        )
+        assertEquals(false, expired.contains("만료됨"))
+    }
+
+    @Test
+    fun supportingTextKeepsStatusWhileCouponIsStillUsable() {
+        // 진행 중에는 배지가 "D-7" 처럼 기간만 말하므로 상태 문구가 정보를 더한다.
+        val active = couponListSupportingText(
+            brand = "메가박스",
+            status = "active",
+            urgency = ExpiryUrgency.Relaxed,
+            expiresLocalDate = LocalDate.parse("2026-09-04")
+        )
+        assertEquals("메가박스 · 2026년 9월 4일까지 · 사용 가능", active)
+
+        val reserved = couponListSupportingText(
+            brand = "",
+            status = "reserved",
+            urgency = ExpiryUrgency.Critical,
+            expiresLocalDate = LocalDate.parse("2026-08-29")
+        )
+        assertEquals("브랜드 없음 · 2026년 8월 29일까지 · 예약됨", reserved)
+    }
+
+    @Test
+    fun expiryBadgeAlreadyStatesStatusOnlyForEnded() {
+        assertEquals(true, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Ended))
+        assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Critical))
+        assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Soon))
+        assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Relaxed))
+    }
 }

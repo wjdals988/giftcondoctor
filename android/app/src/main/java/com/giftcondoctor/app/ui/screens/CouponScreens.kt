@@ -154,6 +154,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import com.giftcondoctor.app.ui.components.GDBadge
 import androidx.compose.material.icons.filled.ExpandLess
+import com.giftcondoctor.app.core.expiryBadgeAlreadyStatesStatus
 
 private val manualBarcodeFormats = listOf(
     "CODE_128" to "CODE 128",
@@ -1222,15 +1223,20 @@ private fun CouponDetailContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             val today = remember { seoulToday() }
+            val urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 GDExpiryBadge(
-                    urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
+                    urgency = urgency,
                     text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
                 )
-                GDBadge(statusLabel(coupon.status))
+                // 종료 상태에서는 만료 배지가 이미 "사용 완료" / "만료" 를 말하므로
+                // 상태 배지를 겹쳐 놓지 않는다.
+                if (!expiryBadgeAlreadyStatesStatus(urgency)) {
+                    GDBadge(statusLabel(coupon.status))
+                }
             }
             Text(
                 expiryDateLabel(coupon.expiresLocalDate),

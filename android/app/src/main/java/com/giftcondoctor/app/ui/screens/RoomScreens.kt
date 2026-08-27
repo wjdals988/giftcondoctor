@@ -138,6 +138,7 @@ import java.time.Instant
 import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.giftcondoctor.app.core.couponListSupportingText
 
 @Composable
 fun RoomListScreen(
@@ -864,16 +865,24 @@ internal fun RoomDashboard(
                     .clickable { onOpenCoupon(coupon.id) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
+                val urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate)
                 ListItem(
                     headlineContent = { Text(coupon.title, fontWeight = FontWeight.SemiBold) },
                     supportingContent = {
-                        Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${expiryDateLabel(coupon.expiresLocalDate)} · ${statusLabel(coupon.status)}")
+                        Text(
+                            couponListSupportingText(
+                                brand = coupon.brand,
+                                status = coupon.status,
+                                urgency = urgency,
+                                expiresLocalDate = coupon.expiresLocalDate
+                            )
+                        )
                     },
                     leadingContent = { CouponListThumbnail(roomId, coupon, thumbnailLoader) },
                     trailingContent = {
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             GDExpiryBadge(
-                                urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
+                                urgency = urgency,
                                 text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
                             )
                             if (coupon.visibility == "private") {
