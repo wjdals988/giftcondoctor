@@ -123,6 +123,7 @@ import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.CouponImageLoader
+import com.giftcondoctor.app.ui.components.ConfirmHapticEffect
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDExpiryBadge
@@ -203,6 +204,9 @@ fun AddCouponScreen(
     val analysisMessage by viewModel.analysisMessage.collectAsStateWithLifecycle()
     val suggestion by viewModel.suggestion.collectAsStateWithLifecycle()
     val barcode by viewModel.barcode.collectAsStateWithLifecycle()
+    // 자동 감지가 값을 찾아낸 순간에만 촉각으로 알린다. 사용자는 이미지 분석이
+    // 끝나기를 기다리는 동안 화면을 보고 있지 않을 수 있다.
+    ConfirmHapticEffect(trigger = barcode != null)
     val analysisSource by viewModel.analysisSource.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
@@ -1021,6 +1025,9 @@ internal fun CouponUsedFeedbackEffect(
     snackbarHostState: SnackbarHostState,
     onUndo: () -> Unit
 ) {
+    // 사용 완료는 매장에서 실행하는 되돌리기 어려운 동작이다. 스낵바만으로는
+    // 화면을 보지 않는 순간 확정 여부를 알 수 없어 촉각 확인을 함께 낸다.
+    ConfirmHapticEffect(version = feedbackVersion, key = couponId)
     LaunchedEffect(feedbackVersion, couponId) {
         if (feedbackVersion <= 0) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
