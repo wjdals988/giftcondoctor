@@ -151,6 +151,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.giftcondoctor.app.ui.components.GDBadge
+import androidx.compose.material.icons.filled.ExpandLess
 
 private val manualBarcodeFormats = listOf(
     "CODE_128" to "CODE 128",
@@ -1086,17 +1088,22 @@ private fun CouponDetailContent(
         val barcodeValue = coupon.barcodeValue
         val barcodeFormat = coupon.barcodeFormat
         if (barcodeValue != null && barcodeFormat != null) {
-            Card(onClick = { showBarcodeDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                ListItem(
-                    leadingContent = {
-                        Icon(Icons.Default.QrCode2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    headlineContent = { Text("계산대용 바코드 크게 보기") },
-                    supportingContent = {
-                        Text("$barcodeFormat · ${barcodeValuePreview(barcodeValue)} · 최대 밝기로 표시")
-                    }
-                )
+            // 매장 계산대에서 실제로 눌러야 하는 동작이므로 채워진 primary 버튼으로 둔다.
+            // 이전에는 Card + ListItem 이어서 아래쪽 예약·사용 완료(채워진 버튼)보다
+            // 시각적으로 약했다. 상세 화면에서 채워진 버튼은 이것 하나뿐이어야 한다.
+            Button(
+                onClick = { showBarcodeDialog = true },
+                modifier = Modifier.fillMaxWidth().testTag("coupon-open-barcode"),
+                enabled = !actionBusy
+            ) {
+                Icon(Icons.Default.QrCode2, contentDescription = null)
+                Text("계산대용 바코드 크게 보기", modifier = Modifier.padding(start = 8.dp))
             }
+            Text(
+                "$barcodeFormat · ${barcodeValuePreview(barcodeValue)} · 최대 밝기로 표시",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         if (coupon.ownerUid == currentUid) {
             val replacement = replacementImageUri
@@ -1202,22 +1209,65 @@ private fun CouponDetailContent(
             )
         } else {
             Text(coupon.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.gdHeading())
-            Text(coupon.brand.ifBlank { "브랜드 없음" })
-            val today = remember { seoulToday() }
-            GDExpiryBadge(
-                urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
-                text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+            Text(
+                coupon.brand.ifBlank { "브랜드 없음" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(expiryDateLabel(coupon.expiresLocalDate))
-            Text("상태: ${statusLabel(coupon.status)}")
-            Text("공개범위: ${if (coupon.visibility == "private") "비공개" else "방 공개"}")
-            Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "전체 멤버"}")
+            val today = remember { seoulToday() }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GDExpiryBadge(
+                    urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
+                    text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+                )
+                GDBadge(statusLabel(coupon.status))
+            }
+            Text(
+                expiryDateLabel(coupon.expiresLocalDate),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // 공개범위·알림대상은 등록 시 결정하는 설정값이고 매장에서 쿠폰을 쓸 때는
+            // 볼 필요가 없다. 항상 펼쳐 두면 세로 공간을 차지해 아래 동작 버튼을
+            // 화면 밖으로 밀어낸다. 기본 접힘으로 두고 필요할 때만 펼친다.
+            var sharingInfoExpanded by remember(coupon.id) { mutableStateOf(false) }
+            TextButton(
+                onClick = { sharingInfoExpanded = !sharingInfoExpanded },
+                modifier = Modifier.testTag("coupon-sharing-info-toggle")
+            ) {
+                Text(if (sharingInfoExpanded) "공유·알림 정보 접기" else "공유·알림 정보 보기")
+                Icon(
+                    if (sharingInfoExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null
+                )
+            }
+            if (sharingInfoExpanded) {
+                Column(
+                    modifier = Modifier.testTag("coupon-sharing-info"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        "공개범위 · ${if (coupon.visibility == "private") "비공개" else "방 공개"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "알림대상 · ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "전체 멤버"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
         InlineMessage(message)
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (coupon.status == "active") {
-                Button(onClick = onReserve, enabled = !actionBusy, modifier = Modifier.weight(1f)) { Text("예약") }
+                // 바코드 버튼이 유일한 채워진 버튼이 되도록 예약은 outlined 로 낮춘다.
+                OutlinedButton(onClick = onReserve, enabled = !actionBusy, modifier = Modifier.weight(1f)) { Text("예약") }
             }
             if (coupon.status == "reserved" &&
                 (coupon.reservedByUid == currentUid || coupon.ownerUid == currentUid)
@@ -1229,10 +1279,10 @@ private fun CouponDetailContent(
             if (coupon.status == "active" ||
                 (coupon.status == "reserved" && coupon.reservedByUid == currentUid)
             ) {
-                Button(
+                OutlinedButton(
                     onClick = { showMarkUsedDialog = true },
                     enabled = !actionBusy,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).testTag("coupon-mark-used")
                 ) {
                     Text("사용 완료")
                 }
