@@ -197,23 +197,19 @@ fun AddCouponScreen(
     val duplicateCandidates by viewModel.duplicateCandidates.collectAsStateWithLifecycle()
     val nextCouponPrefetchState by viewModel.nextCouponPrefetchState.collectAsStateWithLifecycle()
     val imageUri = initialImageUri
-    var title by remember(imageUri) { mutableStateOf("") }
-    var brand by remember(imageUri) { mutableStateOf("") }
-    var barcodeValue by remember(imageUri) { mutableStateOf("") }
-    var barcodeFormat by remember(imageUri) { mutableStateOf<String?>(null) }
-    var manualBarcodeEntry by remember(imageUri) { mutableStateOf(false) }
-    var expires by remember(imageUri) {
-        mutableStateOf(LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)).plusDays(7).toString())
-    }
-    var privateCoupon by remember { mutableStateOf(false) }
-    var ownerOnly by remember { mutableStateOf(false) }
-    var showSharingOptions by remember { mutableStateOf(false) }
+    val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
+    val draft = rememberCouponRegistrationDraft(
+        imageSource = imageUri?.toString(),
+        defaultExpiry = today.plusDays(7).toString()
+    )
+    var privateCoupon by rememberSaveable { mutableStateOf(false) }
+    var ownerOnly by rememberSaveable { mutableStateOf(false) }
+    var showSharingOptions by rememberSaveable { mutableStateOf(false) }
     var showSkipImageDialog by remember { mutableStateOf(false) }
     var showCancelBatchDialog by remember { mutableStateOf(false) }
     var showBusyExitDialog by remember { mutableStateOf(false) }
     var exitAfterUploadCancellation by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
-    val today = remember { LocalDate.now(ZoneId.of(AppConstants.SEOUL_TIME_ZONE)) }
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(AppConstants.MAX_SHARED_IMAGE_COUNT)
     ) { uris ->
@@ -224,13 +220,13 @@ fun AddCouponScreen(
             context = context,
             roomId = roomId,
             imageUri = imageUri,
-            title = title,
-            brand = brand,
-            expiresLocalDate = expires,
+            title = draft.title,
+            brand = draft.brand,
+            expiresLocalDate = draft.expiresLocalDate,
             visibility = if (privateCoupon) "private" else "room",
             notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
-            barcodeValue = barcodeValue.takeIf { it.isNotBlank() },
-            barcodeFormat = barcodeFormat,
+            barcodeValue = draft.barcodeValue.takeIf { it.isNotBlank() },
+            barcodeFormat = draft.barcodeFormat,
             allowPossibleDuplicate = allowPossibleDuplicate,
             onAdded = onAdded
         )
@@ -281,21 +277,12 @@ fun AddCouponScreen(
     LaunchedEffect(suggestion, analysisSource, imageUri) {
         if (analysisSource != imageUri?.toString()) return@LaunchedEffect
         val data = suggestion ?: return@LaunchedEffect
-        data.title?.let { title = it }
-        data.brand?.let { brand = it }
-        data.expiresLocalDate?.let { expires = it.toString() }
+        draft.applySuggestion(data)
     }
 
     LaunchedEffect(barcode, analysisSource, imageUri) {
-        if (analysisSource != imageUri?.toString()) {
-            barcodeValue = ""
-            barcodeFormat = null
-            manualBarcodeEntry = false
-            return@LaunchedEffect
-        }
-        barcodeValue = barcode?.value.orEmpty()
-        barcodeFormat = barcode?.format
-        manualBarcodeEntry = false
+        if (analysisSource != imageUri?.toString()) return@LaunchedEffect
+        draft.applyDetectedBarcode(barcode)
     }
 
     GDScaffold(
@@ -381,56 +368,50 @@ fun AddCouponScreen(
                 analysisMessage?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                val detectedBarcodeFormat = barcodeFormat
+                val detectedBarcodeFormat = draft.barcodeFormat
                 if (detectedBarcodeFormat != null) {
                     GDInfoBanner(
-                        title = if (manualBarcodeEntry) {
+                        title = if (draft.manualBarcodeEntry) {
                             "바코드 직접 입력 · $detectedBarcodeFormat"
                         } else {
                             "바코드 감지 · $detectedBarcodeFormat"
                         },
-                        body = if (barcodeValue.isBlank()) {
+                        body = if (draft.barcodeValue.isBlank()) {
                             "이미지에 표시된 바코드 값을 입력해 주세요."
                         } else {
-                            "${barcodeValuePreview(barcodeValue)} · 저장 후 계산대용 큰 화면으로 열 수 있어요."
+                            "${barcodeValuePreview(draft.barcodeValue)} · 저장 후 계산대용 큰 화면으로 열 수 있어요."
                         }
                     )
-                    if (manualBarcodeEntry) {
+                    if (draft.manualBarcodeEntry) {
                         Text("바코드 형식", style = MaterialTheme.typography.labelLarge)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             manualBarcodeFormats.forEach { (format, label) ->
                                 FilterChip(
                                     selected = detectedBarcodeFormat == format,
-                                    onClick = { barcodeFormat = format },
+                                    onClick = { draft.updateBarcodeFormat(format) },
                                     label = { Text(label) }
                                 )
                             }
                         }
                     }
                     OutlinedTextField(
-                        value = barcodeValue,
-                        onValueChange = { value -> if (value.length <= 2048) barcodeValue = value },
-                        label = { Text(if (manualBarcodeEntry) "바코드 값" else "바코드 값 확인") },
+                        value = draft.barcodeValue,
+                        onValueChange = { value ->
+                            if (value.length <= 2048) draft.updateBarcodeValue(value)
+                        },
+                        label = { Text(if (draft.manualBarcodeEntry) "바코드 값" else "바코드 값 확인") },
                         supportingText = { Text("이미지에 적힌 값과 같은지 확인해 주세요.") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     TextButton(
-                        onClick = {
-                            barcodeValue = ""
-                            barcodeFormat = null
-                            manualBarcodeEntry = false
-                        }
+                        onClick = draft::clearBarcode
                     ) {
                         Text("바코드 저장 안 함")
                     }
                 } else if (!analysisBusy) {
                     OutlinedButton(
-                        onClick = {
-                            barcodeValue = ""
-                            barcodeFormat = "CODE_128"
-                            manualBarcodeEntry = true
-                        },
+                        onClick = draft::startManualBarcodeEntry,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.QrCode2, contentDescription = null)
@@ -439,23 +420,31 @@ fun AddCouponScreen(
                 }
                 Text("쿠폰 정보 확인", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
+                    value = draft.title,
+                    onValueChange = draft::updateTitle,
                     label = { Text("쿠폰 이름") },
+                    supportingText = { Text("${draft.title.length}/$COUPON_TITLE_MAX_LENGTH") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
                 OutlinedTextField(
-                    value = brand,
-                    onValueChange = { brand = it },
+                    value = draft.brand,
+                    onValueChange = draft::updateBrand,
                     label = { Text("브랜드 (선택)") },
+                    supportingText = { Text("${draft.brand.length}/$COUPON_BRAND_MAX_LENGTH") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                ExpiryDateField(value = expires, onValueChange = { expires = it })
+                ExpiryDateField(
+                    value = draft.expiresLocalDate,
+                    onValueChange = draft::updateExpiry
+                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(7 to "+7일", 30 to "+30일", 90 to "+90일").forEach { (days, label) ->
-                        AssistChip(onClick = { expires = today.plusDays(days.toLong()).toString() }, label = { Text(label) })
+                        AssistChip(
+                            onClick = { draft.updateExpiry(today.plusDays(days.toLong()).toString()) },
+                            label = { Text(label) }
+                        )
                     }
                 }
                 Card(onClick = { showSharingOptions = !showSharingOptions }, modifier = Modifier.fillMaxWidth()) {
