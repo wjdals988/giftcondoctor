@@ -7,6 +7,17 @@ import {
   type QueryDocumentSnapshot
 } from "firebase-admin/firestore";
 import type { BatchResponse } from "firebase-admin/messaging";
+import {
+  BLOB_CLEANUP_LEASE_MS,
+  MAX_BLOB_CLEANUP_ATTEMPTS,
+  blobCleanupDeletablePaths,
+  blobCleanupRetryDelayMs,
+  isDueBlobCleanup,
+  parseBlobCleanupData,
+  type BlobCleanupJob
+} from "@/lib/blobCleanupQueue";
+import { deleteCouponImages } from "@/lib/couponImageStorage";
+import { claimExpiredCouponForPurge, purgeCouponDocument } from "@/lib/couponTrashStore";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
 import { deleteDocumentRefs } from "@/lib/firestoreDelete";
 import { ApiError, json, jsonError, requireCronSecret } from "@/lib/http";
@@ -38,6 +49,10 @@ export const maxDuration = 300;
 
 const OUTBOX_BATCH_SIZE = 200;
 const OUTBOX_CONCURRENCY = 10;
+const BLOB_CLEANUP_BATCH_SIZE = 100;
+const BLOB_CLEANUP_CONCURRENCY = 5;
+const TRASH_PURGE_BATCH_SIZE = 100;
+const TRASH_PURGE_CONCURRENCY = 5;
 const CLEANUP_BATCH_SIZE = 200;
 
 type Summary = {
@@ -56,6 +71,13 @@ type Summary = {
   backlog: number;
   cleanedOutbox: number;
   cleanedLogs: number;
+  blobCleanupDeleted: number;
+  blobCleanupRetried: number;
+  blobCleanupDeadLetters: number;
+  blobCleanupBacklog: number;
+  cleanedBlobCleanup: number;
+  trashPurged: number;
+  trashPurgeBacklog: number;
   errors: string[];
 };
 
@@ -150,6 +172,11 @@ async function finishDailyLease(
         backlog: summary.backlog,
         cleanedOutbox: summary.cleanedOutbox,
         cleanedLogs: summary.cleanedLogs,
+        blobCleanupDeleted: summary.blobCleanupDeleted,
+        blobCleanupRetried: summary.blobCleanupRetried,
+        blobCleanupDeadLetters: summary.blobCleanupDeadLetters,
+        blobCleanupBacklog: summary.blobCleanupBacklog,
+        cleanedBlobCleanup: summary.cleanedBlobCleanup,
         errorCount: summary.errors.length
       },
       updatedAt: FieldValue.serverTimestamp()
@@ -469,10 +496,165 @@ async function processDueDeliveries(runId: string, now: Date, summary: Summary) 
   summary.backlog = remainingDue.size + remainingExpired.size;
 }
 
+async function claimBlobCleanup(snapshot: QueryDocumentSnapshot, runId: string, now: Date) {
+  const db = getAdminDb();
+  const nowMs = now.getTime();
+  return db.runTransaction(async (transaction) => {
+    const current = await transaction.get(snapshot.ref);
+    const nextAttemptAt = current.get("nextAttemptAt");
+    const leaseUntil = current.get("leaseUntil");
+    if (!isDueBlobCleanup({
+      status: current.get("status"),
+      nextAttemptAtMs: nextAttemptAt instanceof Timestamp ? nextAttemptAt.toMillis() : undefined,
+      leaseUntilMs: leaseUntil instanceof Timestamp ? leaseUntil.toMillis() : undefined,
+      nowMs
+    })) return null;
+
+    const cleanup = parseBlobCleanupData(current.data());
+    if (!cleanup) {
+      transaction.set(snapshot.ref, {
+        status: "deadLetter",
+        lastError: "Blob 정리 문서 형식 또는 경로가 올바르지 않습니다.",
+        completedAt: FieldValue.serverTimestamp(),
+        nextAttemptAt: FieldValue.delete(),
+        leaseUntil: FieldValue.delete(),
+        leaseOwner: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return null;
+    }
+
+    const attempts = cleanup.attempts + 1;
+    transaction.set(snapshot.ref, {
+      status: "deleting",
+      attempts,
+      leaseOwner: runId,
+      leaseUntil: Timestamp.fromMillis(nowMs + BLOB_CLEANUP_LEASE_MS),
+      nextAttemptAt: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    return { ...cleanup, attempts };
+  });
+}
+
+async function completeBlobCleanup(
+  ref: DocumentReference,
+  runId: string,
+  fields: Record<string, unknown>
+) {
+  await getAdminDb().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (snapshot.get("status") !== "deleting" || snapshot.get("leaseOwner") !== runId) return;
+    transaction.set(ref, {
+      ...fields,
+      leaseOwner: FieldValue.delete(),
+      leaseUntil: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+}
+
+async function processBlobCleanup(
+  snapshot: QueryDocumentSnapshot,
+  runId: string,
+  now: Date,
+  summary: Summary
+) {
+  const cleanup: BlobCleanupJob | null = await claimBlobCleanup(snapshot, runId, now);
+  if (!cleanup) {
+    const latest = await snapshot.ref.get();
+    if (latest.get("status") === "deadLetter") summary.blobCleanupDeadLetters += 1;
+    return;
+  }
+
+  try {
+    const coupon = await getAdminDb().doc(`rooms/${cleanup.roomId}/coupons/${cleanup.couponId}`).get();
+    const deletablePaths = blobCleanupDeletablePaths(
+      cleanup.paths,
+      coupon.exists ? coupon.get("imageBlobPath") : undefined,
+      coupon.exists ? coupon.get("thumbnailBlobPath") : undefined
+    );
+    await deleteCouponImages(deletablePaths);
+    await completeBlobCleanup(snapshot.ref, runId, {
+      status: "deleted",
+      preservedLivePaths: cleanup.paths.length - deletablePaths.length,
+      nextAttemptAt: FieldValue.delete(),
+      completedAt: FieldValue.serverTimestamp()
+    });
+    summary.blobCleanupDeleted += 1;
+  } catch (error) {
+    const terminal = cleanup.attempts >= MAX_BLOB_CLEANUP_ATTEMPTS;
+    await completeBlobCleanup(snapshot.ref, runId, {
+      status: terminal ? "deadLetter" : "retry",
+      nextAttemptAt: terminal
+        ? FieldValue.delete()
+        : Timestamp.fromMillis(now.getTime() + blobCleanupRetryDelayMs(cleanup.attempts)),
+      lastError: errorMessage(error).slice(0, 500),
+      ...(terminal ? { completedAt: FieldValue.serverTimestamp() } : {})
+    });
+    if (terminal) summary.blobCleanupDeadLetters += 1;
+    else summary.blobCleanupRetried += 1;
+    summary.errors.push(`blob-cleanup:${snapshot.id}:${errorMessage(error)}`);
+  }
+}
+
+async function processDueBlobCleanups(runId: string, now: Date, summary: Summary) {
+  const db = getAdminDb();
+  const due = await db.collection("blobCleanupQueue")
+    .where("nextAttemptAt", "<=", Timestamp.fromDate(now))
+    .orderBy("nextAttemptAt")
+    .limit(BLOB_CLEANUP_BATCH_SIZE)
+    .get();
+  const expired = await db.collection("blobCleanupQueue")
+    .where("leaseUntil", "<=", Timestamp.fromDate(now))
+    .orderBy("leaseUntil")
+    .limit(BLOB_CLEANUP_BATCH_SIZE)
+    .get();
+  const jobs = new Map<string, QueryDocumentSnapshot>();
+  [...due.docs, ...expired.docs].forEach((doc) => jobs.set(doc.id, doc));
+  const values = [...jobs.values()];
+  for (let index = 0; index < values.length; index += BLOB_CLEANUP_CONCURRENCY) {
+    await Promise.all(
+      values.slice(index, index + BLOB_CLEANUP_CONCURRENCY)
+        .map((job) => processBlobCleanup(job, runId, now, summary))
+    );
+  }
+
+  const [remainingDue, remainingExpired] = await Promise.all([
+    db.collection("blobCleanupQueue").where("nextAttemptAt", "<=", Timestamp.fromDate(now)).limit(1).get(),
+    db.collection("blobCleanupQueue").where("leaseUntil", "<=", Timestamp.fromDate(now)).limit(1).get()
+  ]);
+  summary.blobCleanupBacklog = remainingDue.size + remainingExpired.size;
+}
+
+async function purgeExpiredCouponTrash(now: Date, summary: Summary) {
+  const db = getAdminDb();
+  const expired = await db.collectionGroup("coupons")
+    .where("purgeAt", "<=", Timestamp.fromDate(now))
+    .limit(TRASH_PURGE_BATCH_SIZE)
+    .get();
+  for (let index = 0; index < expired.docs.length; index += TRASH_PURGE_CONCURRENCY) {
+    await Promise.all(expired.docs.slice(index, index + TRASH_PURGE_CONCURRENCY).map(async (candidate) => {
+      try {
+        const claimed = await claimExpiredCouponForPurge(candidate.ref, now);
+        if (!claimed) return;
+        await purgeCouponDocument(claimed);
+        summary.trashPurged += 1;
+      } catch (error) {
+        summary.errors.push(`coupon-trash:${candidate.ref.path}:${errorMessage(error)}`);
+      }
+    }));
+  }
+  summary.trashPurgeBacklog = (await db.collectionGroup("coupons")
+    .where("purgeAt", "<=", Timestamp.fromDate(now))
+    .limit(1)
+    .get()).size;
+}
+
 async function cleanupNotificationHistory(now: Date, summary: Summary) {
   const db = getAdminDb();
   const cutoff = Timestamp.fromDate(notificationRetentionCutoff(now));
-  const [outbox, logs] = await Promise.all([
+  const [outbox, logs, blobCleanup] = await Promise.all([
     db.collection("notificationOutbox")
       .where("completedAt", "<", cutoff)
       .limit(CLEANUP_BATCH_SIZE)
@@ -480,14 +662,20 @@ async function cleanupNotificationHistory(now: Date, summary: Summary) {
     db.collection("notificationLogs")
       .where("sentAt", "<", cutoff)
       .limit(CLEANUP_BATCH_SIZE)
+      .get(),
+    db.collection("blobCleanupQueue")
+      .where("completedAt", "<", cutoff)
+      .limit(CLEANUP_BATCH_SIZE)
       .get()
   ]);
   await deleteDocumentRefs(db, [
     ...outbox.docs.map((doc) => doc.ref),
-    ...logs.docs.map((doc) => doc.ref)
+    ...logs.docs.map((doc) => doc.ref),
+    ...blobCleanup.docs.map((doc) => doc.ref)
   ]);
   summary.cleanedOutbox = outbox.size;
   summary.cleanedLogs = logs.size;
+  summary.cleanedBlobCleanup = blobCleanup.size;
 }
 
 async function legacySentUids(roomId: string, couponId: string, daysBefore: number, targetDate: string) {
@@ -627,6 +815,13 @@ async function runExpiryReminders(now = new Date()) {
     backlog: 0,
     cleanedOutbox: 0,
     cleanedLogs: 0,
+    blobCleanupDeleted: 0,
+    blobCleanupRetried: 0,
+    blobCleanupDeadLetters: 0,
+    blobCleanupBacklog: 0,
+    cleanedBlobCleanup: 0,
+    trashPurged: 0,
+    trashPurgeBacklog: 0,
     errors: []
   };
   if (lease.lease !== "acquired") return summary;
@@ -635,12 +830,16 @@ async function runExpiryReminders(now = new Date()) {
     await enqueueExpiryReminders(now, summary);
     await enqueueDailyPushTest(runDate, now, summary);
     await processDueDeliveries(lease.runId, now, summary);
+    await purgeExpiredCouponTrash(now, summary);
+    await processDueBlobCleanups(lease.runId, now, summary);
     await cleanupNotificationHistory(now, summary);
     await finishDailyLease(
       lease.ref,
       lease.runId,
       summary,
-      summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0
+      summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0 ||
+        summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0 ||
+        summary.trashPurgeBacklog > 0
         ? "partial"
         : "completed"
     );
@@ -656,7 +855,11 @@ async function handle(request: Request) {
   try {
     requireCronSecret(request);
     const summary = await runExpiryReminders();
-    if (summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0) {
+    if (
+      summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0 ||
+      summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0 ||
+      summary.trashPurgeBacklog > 0
+    ) {
       console.error("expiry-reminders completed partially", summary);
       return json(summary, { status: 500 });
     }

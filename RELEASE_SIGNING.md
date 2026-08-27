@@ -5,31 +5,46 @@
 ## 현재 상태
 
 - 마지막 공식 APK: `0.1.12 (13)`
-- 공식 APK 인증서 SHA-256: `4a8a6cc7b3af9d46846922a1a7bcc0843a49485530528a7cf30a1d3371401fc4`
-- 기존 release keystore: 복구되지 않음
-- 로컬에서 확인된 `debug.keystore`: 공식 인증서와 불일치
-- 다음 개발 버전: `0.1.19 (20)`
-- `v0.1.19` tag와 GitHub Release: 생성 금지 상태
+- 기존 공식 APK 인증서 SHA-256: `4a8a6cc7b3af9d46846922a1a7bcc0843a49485530528a7cf30a1d3371401fc4`
+- 기존 공식 release keystore: 분실되어 복구되지 않음
+- 새 release key alias: `giftcondoctor-release` (RSA 4096bit)
+- 새 인증서 SHA-1: `0a1dc141c98c9b76cc1a6ec9af1096619cc36ac9`
+- 새 인증서 SHA-256: `3b4a7f1f68e5c4977fd5fe625534529c86d8f025770def4119bce4451c8fb0ad`
+- 다음 배포 후보: `0.1.20 (21)`
+- 로컬 signed R8 APK: v2/v3 서명, ZIP alignment, package, 버전, production API와 새 인증서 일치 확인
+- GitHub Actions Secrets 6개: signing dry-run `31861204684`에서 값 조합과 새 인증서 일치 확인
+- `v0.1.20` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
 
-APK에서 공개 인증서 지문은 확인할 수 있지만 개인키를 복구할 수는 없습니다. 후보 keystore를 찾으면 다음 명령의 SHA-256이 공식 지문과 정확히 같은지 확인합니다.
+인증서 지문은 공개 검증값이며 keystore와 비밀번호는 Git, 문서, 채팅에 기록하지 않습니다. 새 키 후보나 백업 사본을 복원할 때는 다음 명령의 SHA-256이 위의 새 인증서 지문과 정확히 같은지 확인합니다.
 
 ```bash
 keytool -list -v -keystore /path/to/candidate.jks
 ```
 
-## 기존 키를 복구하지 못할 때
+## v0.1.12 사용자 전환 절차
 
-새 키로 같은 `applicationId`를 서명하면 기존 설치본 위에 업데이트할 수 없습니다. 사용자는 기존 앱을 삭제한 뒤 새 APK를 설치해야 하며, 로컬 앱 데이터는 삭제될 수 있습니다. Firebase에 저장된 방과 쿠폰은 같은 계정으로 로그인하면 다시 조회할 수 있습니다.
+새 키로 같은 `applicationId`를 서명한 `0.1.20`은 기존 `0.1.12` 위에 덮어쓸 수 없습니다. 설치 관리자의 서명 불일치 오류는 정상적인 보안 차단이며 우회하지 않습니다.
 
-새 서명키 전환은 아래 순서로 진행합니다.
+1. 가능하면 기존 앱에서 먼저 로그아웃합니다.
+2. 기존 `0.1.12` 앱을 삭제합니다.
+3. 공식 Release의 새 signed APK를 설치합니다.
+4. 기존에 사용하던 Google 또는 이메일 계정으로 다시 로그인합니다.
+5. 알림 권한을 다시 허용하고 설정의 푸시 연결 테스트를 실행합니다.
 
-1. 대시보드와 Release Notes에 재설치 필요성을 공지합니다.
-2. 새 release keystore를 대화형 `keytool -genkeypair`로 생성합니다.
-3. SHA-1과 SHA-256을 Firebase Android 앱에 등록합니다.
-4. 새 `google-services.json`과 Google 로그인 OAuth 설정을 검증합니다.
-5. debug가 아닌 signed release APK로 로그인·방 조회·쿠폰 이미지·FCM을 확인합니다.
-6. 기존 앱 삭제 후 설치 시나리오를 별도 검증합니다.
-7. 검증이 끝난 뒤에만 GitHub Release와 대시보드 APK 링크를 갱신합니다.
+앱 삭제 시 단말의 로컬 앱 데이터와 권한은 삭제됩니다. Firebase에 저장된 방·쿠폰은 같은 계정으로 재로그인하면 다시 조회할 수 있습니다. 단, `0.1.12`의 로그아웃은 서버 FCM token 제거를 보장하지 않으므로 이전 token은 서버의 invalid-token 정리 대상이며, 교차 계정 알림이 없는지 출시 전 별도로 검증합니다.
+
+## 새 키 전환 진행 상태
+
+1. [완료] 새 release keystore 생성과 별도 백업
+2. [완료] SHA-1·SHA-256을 Firebase Android 앱에 등록
+3. [완료] 새 Android OAuth client와 `google-services.json` 일치 확인
+4. [완료] 로컬 signed APK의 인증서·v2/v3 서명·ZIP alignment 확인
+5. [완료] GitHub Actions signing dry-run `31861204684`에서 Secrets 6개와 인증서 SHA-256 검증
+6. [대기] 기존 앱이 없는 AVD 또는 물리 기기에서 Google 로그인·FCM·알림 4상태·딥링크·로그아웃 token 삭제 확인
+7. [대기] 전체 테스트와 PR 검토 완료 후 `main` 병합
+8. [대기] GitHub Release 생성 후 대시보드의 APK URL·버전·SHA-256·설명을 같은 버전으로 갱신
+
+`Android Release APK` workflow의 기본 모드는 `signing-dry-run`입니다. 이 모드는 테스트·빌드·서명·인증서 검증과 7일 보관 artifact 업로드까지만 수행하고 tag, GitHub Release, 대시보드를 변경하지 않습니다. `release` 모드는 `main`에서만 허용되며 production environment 승인 뒤 실제 배포를 수행합니다.
 
 ## 키와 비밀번호 보관 원칙
 

@@ -3,8 +3,11 @@ package com.giftcondoctor.app.data
 import android.content.Context
 import android.net.Uri
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.core.DetectedCouponBarcode
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.DeletedCoupon
+import com.giftcondoctor.app.data.model.DeletedCouponPage
 import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
 import com.giftcondoctor.app.data.model.toCoupon
 import com.giftcondoctor.app.data.model.toCouponComment
@@ -13,10 +16,13 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.util.UUID
 
 class CouponRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -66,23 +72,43 @@ class CouponRepository(
         expiresLocalDate: LocalDate,
         visibility: String,
         notifyTarget: String,
+        barcode: DetectedCouponBarcode? = null,
+        preparedUpload: PreparedCouponUpload? = null,
+        onUploadPrepared: (CouponUploadPreparation) -> Unit = {},
         onUploadProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
         onImageUploaded: () -> Unit = {}
     ): String {
         val uid = auth.currentUser?.uid ?: error("로그인이 필요합니다.")
         val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
-        require(contentType.startsWith("image/")) { "이미지 파일만 선택할 수 있습니다." }
+        if (!contentType.startsWith("image/")) {
+            error("이미지 파일만 선택할 수 있습니다.")
+        }
 
         val couponId = firestore.collection("rooms/$roomId/coupons").document().id
-        val upload = backend.uploadCouponImage(
-            context = context,
-            roomId = roomId,
-            couponId = couponId,
-            imageUri = imageUri,
-            contentType = contentType,
-            fileName = imageUri.lastPathSegment ?: "coupon-image",
-            onProgress = onUploadProgress
-        )
+        val uploadId = UUID.randomUUID().toString()
+        var requestStarted = false
+        val upload = try {
+            backend.uploadCouponImage(
+                context = context,
+                roomId = roomId,
+                couponId = couponId,
+                imageUri = imageUri,
+                contentType = contentType,
+                fileName = imageUri.lastPathSegment ?: "coupon-image",
+                uploadId = uploadId,
+                preparedUpload = preparedUpload,
+                onPrepared = onUploadPrepared,
+                onRequestStarted = { requestStarted = true },
+                onProgress = onUploadProgress
+            )
+        } catch (error: Exception) {
+            if (requestStarted) {
+                withContext(NonCancellable) {
+                    runCatching { backend.discardCouponUploadSession(roomId, couponId, uploadId) }
+                }
+            }
+            throw error
+        }
         val now = FieldValue.serverTimestamp()
         runCatching {
             onImageUploaded()
@@ -106,14 +132,34 @@ class CouponRepository(
                 "updatedAt" to now
             )
             upload.thumbnailBlobPath?.let { couponData["thumbnailBlobPath"] = it }
+            barcode?.let {
+                couponData["barcodeValue"] = it.value
+                couponData["barcodeFormat"] = it.format
+            }
             firestore.document("rooms/$roomId/coupons/$couponId").set(couponData).await()
+            withContext(NonCancellable) {
+                runCatching { backend.completeCouponUploadSession(roomId, couponId, uploadId) }
+            }
         }.getOrElse { error ->
-            runCatching {
-                backend.discardCouponImage(roomId, couponId, upload.blobPath, upload.thumbnailBlobPath)
+            withContext(NonCancellable) {
+                runCatching {
+                    backend.discardCouponUploadSession(roomId, couponId, uploadId)
+                }
             }
             throw error
         }
         return couponId
+    }
+
+    suspend fun prepareCouponImage(context: Context, imageUri: Uri): PreparedCouponUpload {
+        val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
+        require(contentType.startsWith("image/")) { "이미지 파일만 선택할 수 있습니다." }
+        return backend.prepareCouponImage(
+            context = context,
+            imageUri = imageUri,
+            contentType = contentType,
+            fileName = imageUri.lastPathSegment ?: "coupon-image"
+        )
     }
 
     suspend fun reserve(roomId: String, couponId: String) {
@@ -167,6 +213,23 @@ class CouponRepository(
         }.await()
     }
 
+    suspend fun undoMarkUsed(roomId: String, couponId: String) {
+        val uid = auth.currentUser?.uid ?: error("로그인이 필요합니다.")
+        val ref = firestore.document("rooms/$roomId/coupons/$couponId")
+        firestore.runTransaction { transaction ->
+            val snapshot = transaction.get(ref)
+            if (snapshot.getString("status") != "used") error("사용 완료된 쿠폰이 아닙니다.")
+            if (snapshot.getString("usedByUid") != uid) error("사용 완료로 변경한 멤버만 실행 취소할 수 있습니다.")
+            transaction.update(ref, mapOf(
+                "status" to "active",
+                "reservedByUid" to null,
+                "usedByUid" to null,
+                "usedAt" to null,
+                "updatedAt" to FieldValue.serverTimestamp()
+            ))
+        }.await()
+    }
+
     suspend fun editCoupon(
         roomId: String,
         couponId: String,
@@ -190,9 +253,46 @@ class CouponRepository(
         ).await()
     }
 
-    suspend fun deleteCoupon(roomId: String, couponId: String) {
-        backend.deleteCoupon(roomId, couponId)
+    suspend fun replaceCouponImage(
+        context: Context,
+        roomId: String,
+        couponId: String,
+        imageUri: Uri,
+        preparedUpload: PreparedCouponUpload? = null,
+        onUploadPrepared: (CouponUploadPreparation) -> Unit = {},
+        onUploadProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> }
+    ): Boolean {
+        val contentType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
+        if (!contentType.startsWith("image/")) {
+            error("이미지 파일만 선택할 수 있습니다.")
+        }
+        val upload = backend.replaceCouponImage(
+            context = context,
+            roomId = roomId,
+            couponId = couponId,
+            imageUri = imageUri,
+            contentType = contentType,
+            fileName = imageUri.lastPathSegment ?: "coupon-image",
+            preparedUpload = preparedUpload,
+            onPrepared = onUploadPrepared,
+            onProgress = onUploadProgress
+        )
+        CouponImageLoader.clear()
+        return upload.cleanupPending
     }
+
+    suspend fun deleteCoupon(roomId: String, couponId: String): DeletedCoupon =
+        backend.deleteCoupon(roomId, couponId)
+
+    suspend fun deletedCoupons(roomId: String, cursor: String? = null): DeletedCouponPage =
+        backend.deletedCoupons(roomId, cursor)
+
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {
+        backend.restoreDeletedCoupon(roomId, couponId)
+    }
+
+    suspend fun permanentlyDeleteCoupon(roomId: String, couponId: String): Boolean =
+        backend.permanentlyDeleteCoupon(roomId, couponId)
 
     suspend fun addComment(roomId: String, couponId: String, body: String) {
         val user = auth.currentUser ?: error("로그인이 필요합니다.")
@@ -223,4 +323,20 @@ class CouponRepository(
         thumbnail: Boolean = false,
         backfillThumbnail: Boolean = false
     ): ByteArray = backend.fetchCouponImage(roomId, couponId, thumbnail, backfillThumbnail)
+
+    suspend fun fetchImageToFile(
+        context: Context,
+        roomId: String,
+        couponId: String
+    ): CouponImageFile {
+        val destination = CouponImageFileStore.create(context.applicationContext)
+        return try {
+            val downloadedBytes = backend.fetchCouponImageToFile(roomId, couponId, destination)
+            check(destination.length() == downloadedBytes) { "이미지 다운로드 크기가 일치하지 않습니다." }
+            CouponImageFileStore.complete(destination)
+        } catch (error: Throwable) {
+            CouponImageFileStore.delete(destination)
+            throw error
+        }
+    }
 }

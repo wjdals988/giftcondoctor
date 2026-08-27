@@ -1,8 +1,5 @@
-import { del } from "@vercel/blob";
-import { assertPublicCouponDeleteAllowed, requireCouponAccess, requireUser } from "@/lib/auth";
-import { requireCouponBlobPath } from "@/lib/blobPath";
-import { getAdminDb } from "@/lib/firebaseAdmin";
-import { deleteDocumentRefs } from "@/lib/firestoreDelete";
+import { requireUser } from "@/lib/auth";
+import { softDeleteCoupon } from "@/lib/couponTrashStore";
 import { ApiError, json, jsonError } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -18,24 +15,8 @@ export async function DELETE(request: Request) {
       throw new ApiError(400, "roomId와 couponId가 필요합니다.");
     }
 
-    const coupon = await requireCouponAccess(roomId, couponId, token.uid);
-    await assertPublicCouponDeleteAllowed(roomId, token.uid, coupon);
-
-    const blobPaths = [requireCouponBlobPath(coupon.get("imageBlobPath"), roomId, couponId)];
-    const thumbnailBlobPath = coupon.get("thumbnailBlobPath");
-    if (thumbnailBlobPath) {
-      blobPaths.push(requireCouponBlobPath(thumbnailBlobPath, roomId, couponId));
-    }
-    const db = getAdminDb();
-    const comments = await db.collection(`rooms/${roomId}/coupons/${couponId}/comments`).get();
-    await deleteDocumentRefs(db, [
-      ...comments.docs.map((doc) => doc.ref),
-      db.doc(`rooms/${roomId}/coupons/${couponId}`)
-    ]);
-
-    await del(blobPaths);
-
-    return json({ ok: true });
+    const deletedCoupon = await softDeleteCoupon(roomId, couponId, token.uid);
+    return json({ ok: true, deletedCoupon });
   } catch (error) {
     return jsonError(error);
   }

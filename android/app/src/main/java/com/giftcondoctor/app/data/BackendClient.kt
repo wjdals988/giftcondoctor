@@ -6,11 +6,16 @@ import android.provider.OpenableColumns
 import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.PublicRoom
+import com.giftcondoctor.app.data.model.DeletedCoupon
+import com.giftcondoctor.app.data.model.DeletedCouponPage
 import com.giftcondoctor.app.data.model.UploadedImage
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -20,7 +25,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class BackendClient(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -112,12 +121,57 @@ class BackendClient(
         return JSONObject(response).optInt("sent", 0)
     }
 
-    suspend fun deleteCoupon(roomId: String, couponId: String) {
-        authedRequest(
+    suspend fun deleteCoupon(roomId: String, couponId: String): DeletedCoupon {
+        val response = authedRequest(
             Request.Builder()
-                .url("$baseUrl/api/coupons?roomId=$roomId&couponId=$couponId")
+                .url("$baseUrl/api/coupons?roomId=${Uri.encode(roomId)}&couponId=${Uri.encode(couponId)}")
                 .delete()
         )
+        return parseDeletedCoupon(JSONObject(response).getJSONObject("deletedCoupon"))
+            ?: throw IOException("삭제 결과를 확인하지 못했습니다.")
+    }
+
+    suspend fun deletedCoupons(roomId: String, cursor: String? = null): DeletedCouponPage {
+        val cursorQuery = cursor?.let { "&cursor=${Uri.encode(it)}" }.orEmpty()
+        val response = authedRequest(
+            Request.Builder()
+                .url("$baseUrl/api/coupons/trash?roomId=${Uri.encode(roomId)}$cursorQuery")
+                .get()
+        )
+        val payload = JSONObject(response)
+        val items = payload.optJSONArray("coupons") ?: JSONArray()
+        val coupons = buildList {
+            for (index in 0 until items.length()) {
+                parseDeletedCoupon(items.optJSONObject(index))?.let(::add)
+            }
+        }
+        return DeletedCouponPage(
+            coupons = coupons,
+            nextCursor = if (payload.isNull("nextCursor")) {
+                null
+            } else {
+                payload.optString("nextCursor").takeIf { it.isNotBlank() }
+            }
+        )
+    }
+
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String) {
+        postJson(
+            "/api/coupons/trash",
+            JSONObject().put("roomId", roomId).put("couponId", couponId)
+        )
+    }
+
+    suspend fun permanentlyDeleteCoupon(roomId: String, couponId: String): Boolean {
+        val response = authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/trash" +
+                        "?roomId=${Uri.encode(roomId)}&couponId=${Uri.encode(couponId)}"
+                )
+                .delete()
+        )
+        return JSONObject(response).optBoolean("cleanupPending", false)
     }
 
     suspend fun uploadCouponImage(
@@ -127,41 +181,125 @@ class BackendClient(
         imageUri: Uri,
         contentType: String,
         fileName: String,
+        uploadId: String,
+        preparedUpload: PreparedCouponUpload? = null,
+        onPrepared: (CouponUploadPreparation) -> Unit = {},
+        onRequestStarted: () -> Unit = {},
         onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> }
+    ): UploadedImage = uploadCouponImageTo(
+        path = "/api/coupons/upload-image",
+        context = context,
+        roomId = roomId,
+        couponId = couponId,
+        imageUri = imageUri,
+        contentType = contentType,
+        fileName = fileName,
+        uploadId = uploadId,
+        preparedUpload = preparedUpload,
+        onPrepared = onPrepared,
+        onRequestStarted = onRequestStarted,
+        onProgress = onProgress
+    )
+
+    suspend fun replaceCouponImage(
+        context: Context,
+        roomId: String,
+        couponId: String,
+        imageUri: Uri,
+        contentType: String,
+        fileName: String,
+        preparedUpload: PreparedCouponUpload? = null,
+        onPrepared: (CouponUploadPreparation) -> Unit = {},
+        onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> }
+    ): UploadedImage = uploadCouponImageTo(
+        path = "/api/coupons/replace-image",
+        context = context,
+        roomId = roomId,
+        couponId = couponId,
+        imageUri = imageUri,
+        contentType = contentType,
+        fileName = fileName,
+        preparedUpload = preparedUpload,
+        onPrepared = onPrepared,
+        onProgress = onProgress
+    )
+
+    private suspend fun uploadCouponImageTo(
+        path: String,
+        context: Context,
+        roomId: String,
+        couponId: String,
+        imageUri: Uri,
+        contentType: String,
+        fileName: String,
+        uploadId: String? = null,
+        preparedUpload: PreparedCouponUpload? = null,
+        onPrepared: (CouponUploadPreparation) -> Unit = {},
+        onRequestStarted: () -> Unit = {},
+        onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit
     ): UploadedImage {
+        return withPreparedCouponUpload(
+            borrowedUpload = preparedUpload,
+            prepare = {
+                prepareCouponImage(
+                    context = context,
+                    imageUri = imageUri,
+                    contentType = contentType,
+                    fileName = fileName
+                )
+            }
+        ) { upload ->
+            onPrepared(upload.preparation)
+            val imageBody = StreamingImageRequestBody(
+                openStream = upload::openStream,
+                mediaType = upload.contentType.toMediaType(),
+                knownLength = upload.contentLength,
+                maxBytes = AppConstants.MAX_IMAGE_BYTES.toLong(),
+                onProgress = onProgress
+            )
+
+            val bodyBuilder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("roomId", roomId)
+                .addFormDataPart("couponId", couponId)
+            uploadId?.let { bodyBuilder.addFormDataPart("uploadId", it) }
+            val body = bodyBuilder.addFormDataPart("image", upload.fileName, imageBody).build()
+
+            onRequestStarted()
+            val response = authedRequest(
+                Request.Builder()
+                    .url("$baseUrl$path")
+                    .post(body)
+            )
+            val json = JSONObject(response)
+            UploadedImage(
+                blobPath = json.getString("blobPath"),
+                thumbnailBlobPath = json.optString("thumbnailBlobPath").takeIf { it.isNotBlank() },
+                imageWidth = json.optIntOrNull("imageWidth"),
+                imageHeight = json.optIntOrNull("imageHeight"),
+                contentType = json.optString("contentType", upload.contentType),
+                size = json.optLong("size", upload.contentLength ?: -1L),
+                cleanupPending = json.optBoolean("cleanupPending", false)
+            )
+        }
+    }
+
+    suspend fun prepareCouponImage(
+        context: Context,
+        imageUri: Uri,
+        contentType: String,
+        fileName: String
+    ): PreparedCouponUpload {
         val size = withContext(Dispatchers.IO) { contentLength(context, imageUri) }
         if (size != null && size > AppConstants.MAX_IMAGE_BYTES) {
             throw IOException("이미지는 최대 10MB까지 업로드할 수 있습니다.")
         }
-        val imageBody = ContentUriRequestBody(
-            context = context,
+        return CouponUploadOptimizer.prepare(
+            context = context.applicationContext,
             uri = imageUri,
-            mediaType = contentType.toMediaType(),
-            knownLength = size,
-            maxBytes = AppConstants.MAX_IMAGE_BYTES.toLong(),
-            onProgress = onProgress
-        )
-
-        val body = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart("roomId", roomId)
-            .addFormDataPart("couponId", couponId)
-            .addFormDataPart("image", fileName, imageBody)
-            .build()
-
-        val response = authedRequest(
-            Request.Builder()
-                .url("$baseUrl/api/coupons/upload-image")
-                .post(body)
-        )
-        val json = JSONObject(response)
-        return UploadedImage(
-            blobPath = json.getString("blobPath"),
-            thumbnailBlobPath = json.optString("thumbnailBlobPath").takeIf { it.isNotBlank() },
-            imageWidth = json.optIntOrNull("imageWidth"),
-            imageHeight = json.optIntOrNull("imageHeight"),
-            contentType = json.optString("contentType", contentType),
-            size = json.optLong("size", size ?: -1L)
+            contentType = contentType,
+            fileName = fileName,
+            sourceBytes = size
         )
     }
 
@@ -170,26 +308,41 @@ class BackendClient(
         couponId: String,
         thumbnail: Boolean = false,
         backfillThumbnail: Boolean = false
-    ): ByteArray =
-        withContext(Dispatchers.IO) {
-            val path = if (backfillThumbnail) "/api/coupons/thumbnail" else "/api/coupons/image"
-            val variant = if (thumbnail && !backfillThumbnail) "&variant=thumbnail" else ""
-            val url = "$baseUrl$path" +
-                "?roomId=${Uri.encode(roomId)}" +
-                "&couponId=${Uri.encode(couponId)}" +
-                variant
-            val builder = authedBuilder()
-                .url(url)
-            val request = if (backfillThumbnail) {
-                builder.post(ByteArray(0).toRequestBody(null)).build()
-            } else {
-                builder.get().build()
-            }
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IOException(errorMessage(response.code, response.body?.string()))
-                response.body?.bytes() ?: throw IOException("이미지 응답이 비어 있습니다.")
-            }
+    ): ByteArray {
+        val path = if (backfillThumbnail) "/api/coupons/thumbnail" else "/api/coupons/image"
+        val variant = if (thumbnail && !backfillThumbnail) "&variant=thumbnail" else ""
+        val url = "$baseUrl$path" +
+            "?roomId=${Uri.encode(roomId)}" +
+            "&couponId=${Uri.encode(couponId)}" +
+            variant
+        val builder = authedBuilder()
+            .url(url)
+        val request = if (backfillThumbnail) {
+            builder.post(ByteArray(0).toRequestBody(null)).build()
+        } else {
+            builder.get().build()
         }
+        val response = client.newCall(request).awaitBufferedResponse()
+        if (!response.isSuccessful) throw IOException(errorMessage(response.code, response.bodyText()))
+        return response.body.takeIf { it.isNotEmpty() } ?: throw IOException("이미지 응답이 비어 있습니다.")
+    }
+
+    suspend fun fetchCouponImageToFile(
+        roomId: String,
+        couponId: String,
+        destination: File
+    ): Long {
+        val url = "$baseUrl/api/coupons/image" +
+            "?roomId=${Uri.encode(roomId)}" +
+            "&couponId=${Uri.encode(couponId)}"
+        val request = authedBuilder().url(url).get().build()
+        val response = client.newCall(request).awaitFileResponse(
+            destination = destination,
+            maxBytes = AppConstants.MAX_IMAGE_BYTES.toLong()
+        )
+        if (!response.isSuccessful) throw IOException(errorMessage(response.code, response.errorBody))
+        return response.byteCount
+    }
 
     suspend fun discardCouponImage(
         roomId: String,
@@ -208,6 +361,32 @@ class BackendClient(
                         thumbnailQuery
                 )
                 .delete()
+        )
+    }
+
+    suspend fun discardCouponUploadSession(roomId: String, couponId: String, uploadId: String) {
+        authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/upload-image" +
+                        "?roomId=${Uri.encode(roomId)}" +
+                        "&couponId=${Uri.encode(couponId)}" +
+                        "&uploadId=${Uri.encode(uploadId)}"
+                )
+                .delete()
+        )
+    }
+
+    suspend fun completeCouponUploadSession(roomId: String, couponId: String, uploadId: String) {
+        authedRequest(
+            Request.Builder()
+                .url(
+                    "$baseUrl/api/coupons/upload-image" +
+                        "?roomId=${Uri.encode(roomId)}" +
+                        "&couponId=${Uri.encode(couponId)}" +
+                        "&uploadId=${Uri.encode(uploadId)}"
+                )
+                .patch(ByteArray(0).toRequestBody(null))
         )
     }
 
@@ -236,15 +415,13 @@ class BackendClient(
         )
     }
 
-    private suspend fun authedRequest(builder: Request.Builder): String =
-        withContext(Dispatchers.IO) {
-            val request = authedBuilder(builder).build()
-            client.newCall(request).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IOException(errorMessage(response.code, text))
-                text
-            }
-        }
+    private suspend fun authedRequest(builder: Request.Builder): String {
+        val request = authedBuilder(builder).build()
+        val response = client.newCall(request).awaitBufferedResponse()
+        val text = response.bodyText()
+        if (!response.isSuccessful) throw IOException(errorMessage(response.code, text))
+        return text
+    }
 
     private suspend fun authedBuilder(builder: Request.Builder = Request.Builder()): Request.Builder {
         val token = auth.currentUser?.getIdToken(false)?.await()?.token
@@ -258,27 +435,158 @@ class BackendClient(
         }?.takeIf { it.isNotBlank() }
         return if (serverMessage != null) "$serverMessage ($code)" else "서버 요청에 실패했습니다. ($code)"
     }
+
+    private fun parseDeletedCoupon(value: JSONObject?): DeletedCoupon? {
+        value ?: return null
+        val couponId = value.optString("couponId").takeIf { it.isNotBlank() } ?: return null
+        val deletedAt = runCatching { java.time.Instant.parse(value.optString("deletedAt")) }.getOrNull()
+            ?: return null
+        val purgeAt = runCatching { java.time.Instant.parse(value.optString("purgeAt")) }.getOrNull()
+            ?: return null
+        return DeletedCoupon(
+            couponId = couponId,
+            title = value.optString("title").ifBlank { "이름 없는 쿠폰" },
+            brand = value.optString("brand"),
+            expiresLocalDate = value.optString("expiresLocalDate")
+                .takeIf { it.isNotBlank() }
+                ?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() },
+            deletedAt = deletedAt,
+            purgeAt = purgeAt
+        )
+    }
 }
 
-private class ContentUriRequestBody(
-    context: Context,
-    private val uri: Uri,
+internal data class BufferedHttpResponse(val code: Int, val body: ByteArray) {
+    val isSuccessful: Boolean get() = code in 200..299
+    fun bodyText(): String = body.toString(Charsets.UTF_8)
+}
+
+internal suspend fun Call.awaitBufferedResponse(): BufferedHttpResponse = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation { cancel() }
+    enqueue(object : Callback {
+        override fun onFailure(call: Call, error: IOException) {
+            if (continuation.isActive) continuation.resumeWithException(error)
+        }
+
+        override fun onResponse(call: Call, response: okhttp3.Response) {
+            val buffered = runCatching {
+                response.use {
+                    BufferedHttpResponse(it.code, it.body?.bytes() ?: ByteArray(0))
+                }
+            }.getOrElse { error ->
+                if (continuation.isActive) continuation.resumeWithException(error)
+                return
+            }
+            if (continuation.isActive) continuation.resume(buffered)
+        }
+    })
+}
+
+internal data class FileHttpResponse(
+    val code: Int,
+    val errorBody: String?,
+    val byteCount: Long
+) {
+    val isSuccessful: Boolean get() = code in 200..299
+}
+
+internal suspend fun Call.awaitFileResponse(
+    destination: File,
+    maxBytes: Long
+): FileHttpResponse = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation {
+        cancel()
+        destination.delete()
+    }
+    enqueue(object : Callback {
+        override fun onFailure(call: Call, error: IOException) {
+            destination.delete()
+            if (continuation.isActive) continuation.resumeWithException(error)
+        }
+
+        override fun onResponse(call: Call, response: okhttp3.Response) {
+            val streamed = runCatching {
+                response.use { streamResponseToFile(it, destination, maxBytes) }
+            }.getOrElse { error ->
+                destination.delete()
+                if (continuation.isActive) continuation.resumeWithException(error)
+                return
+            }
+            if (continuation.isActive) continuation.resume(streamed) else destination.delete()
+        }
+    })
+}
+
+private fun streamResponseToFile(
+    response: okhttp3.Response,
+    destination: File,
+    maxBytes: Long
+): FileHttpResponse {
+    if (!response.isSuccessful) {
+        destination.delete()
+        return FileHttpResponse(
+            code = response.code,
+            errorBody = response.body?.byteStream()?.use(::readLimitedErrorBody),
+            byteCount = 0L
+        )
+    }
+
+    val body = response.body ?: throw IOException("이미지 응답이 비어 있습니다.")
+    val contentLength = body.contentLength()
+    if (contentLength == 0L) throw IOException("이미지 응답이 비어 있습니다.")
+    if (contentLength > maxBytes) throw IOException("이미지는 최대 10MB까지 내려받을 수 있습니다.")
+    val byteCount = body.byteStream().use { input -> writeToFile(input, destination, maxBytes) }
+    if (byteCount == 0L) throw IOException("이미지 응답이 비어 있습니다.")
+    return FileHttpResponse(response.code, null, byteCount)
+}
+
+private fun writeToFile(input: java.io.InputStream, destination: File, maxBytes: Long): Long =
+    destination.outputStream().buffered(DOWNLOAD_BUFFER_SIZE).use { output ->
+        val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+        var totalBytes = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            totalBytes += count
+            if (totalBytes > maxBytes) throw IOException("이미지는 최대 10MB까지 내려받을 수 있습니다.")
+            output.write(buffer, 0, count)
+        }
+        totalBytes
+    }
+
+private fun readLimitedErrorBody(input: java.io.InputStream): String {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(ERROR_BODY_BUFFER_SIZE)
+    var remaining = MAX_ERROR_BODY_BYTES
+    while (remaining > 0) {
+        val count = input.read(buffer, 0, minOf(buffer.size, remaining))
+        if (count < 0) break
+        output.write(buffer, 0, count)
+        remaining -= count
+    }
+    return output.toString(Charsets.UTF_8.name())
+}
+
+private const val DOWNLOAD_BUFFER_SIZE = 64 * 1024
+private const val ERROR_BODY_BUFFER_SIZE = 4 * 1024
+private const val MAX_ERROR_BODY_BYTES = 32 * 1024
+
+private class StreamingImageRequestBody(
+    private val openStream: () -> java.io.InputStream?,
     private val mediaType: okhttp3.MediaType,
     private val knownLength: Long?,
     private val maxBytes: Long,
     private val onProgress: (sentBytes: Long, totalBytes: Long?) -> Unit
 ) : RequestBody() {
-    private val resolver = context.contentResolver
-
     override fun contentType(): okhttp3.MediaType = mediaType
 
     override fun contentLength(): Long = knownLength ?: -1L
 
     override fun writeTo(sink: BufferedSink) {
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        val buffer = ByteArray(UPLOAD_BUFFER_SIZE)
         var sent = 0L
         var lastReported = 0L
-        resolver.openInputStream(uri)?.use { input ->
+        openStream()?.use { input ->
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
@@ -295,6 +603,7 @@ private class ContentUriRequestBody(
     }
 
     private companion object {
+        const val UPLOAD_BUFFER_SIZE = 64 * 1024
         const val PROGRESS_INTERVAL_BYTES = 64L * 1024L
     }
 }

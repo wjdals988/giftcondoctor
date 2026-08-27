@@ -7,17 +7,27 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.core.CouponTextSuggestion
+import com.giftcondoctor.app.core.DetectedCouponBarcode
 import com.giftcondoctor.app.core.UiState
+import com.giftcondoctor.app.core.couponBarcodeValidationError
+import com.giftcondoctor.app.core.detectCouponBarcode
 import com.giftcondoctor.app.core.parseCouponText
+import com.giftcondoctor.app.core.renderCouponBarcode
 import com.giftcondoctor.app.data.AuthRepository
+import com.giftcondoctor.app.data.CouponImageLoader
+import com.giftcondoctor.app.data.CouponImageFile
+import com.giftcondoctor.app.data.CouponImageFileStore
 import com.giftcondoctor.app.data.CouponPager
 import com.giftcondoctor.app.data.CouponPagingState
 import com.giftcondoctor.app.data.CouponRepository
+import com.giftcondoctor.app.data.CouponUploadPreparation
+import com.giftcondoctor.app.data.PreparedCouponUpload
 import com.giftcondoctor.app.data.NotificationRepository
 import com.giftcondoctor.app.data.PushTokenRepository
 import com.giftcondoctor.app.data.RoomRepository
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.PublicRoom
 import com.giftcondoctor.app.data.model.Room
 import com.giftcondoctor.app.data.model.RoomMember
@@ -25,21 +35,71 @@ import com.giftcondoctor.app.data.model.RoomMembership
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
-enum class CouponUploadStage { Idle, Uploading, Saving }
+enum class CouponUploadStage { Idle, Preparing, Uploading, Cancelling, Saving }
+
+internal suspend fun performSafeSignOut(
+    deletePushToken: suspend () -> Unit,
+    signOutAuth: () -> Unit
+): Result<Unit> = try {
+    deletePushToken()
+    signOutAuth()
+    Result.success(Unit)
+} catch (error: CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    Result.failure(error)
+}
 
 data class CouponUploadState(
     val stage: CouponUploadStage = CouponUploadStage.Idle,
-    val percent: Int? = null
+    val percent: Int? = null,
+    val originalBytes: Long? = null,
+    val uploadBytes: Long? = null
 )
+
+private fun CouponUploadPreparation.toUploadState() = CouponUploadState(
+    stage = CouponUploadStage.Uploading,
+    percent = 0,
+    originalBytes = originalBytes,
+    uploadBytes = uploadBytes
+)
+
+internal fun uploadCancellationMessage(hasPreparedUpload: Boolean): String =
+    if (hasPreparedUpload) {
+        "이미지 업로드를 취소했습니다. 준비한 이미지는 유지해 바로 다시 시도할 수 있어요."
+    } else {
+        "이미지 업로드를 취소했습니다. 전송된 임시 파일이 있으면 자동 정리합니다."
+    }
+
+sealed interface CouponOriginalImageState {
+    data object Idle : CouponOriginalImageState
+    data object Loading : CouponOriginalImageState
+    data class Ready(val image: CouponImageFile) : CouponOriginalImageState
+    data class Error(val message: String) : CouponOriginalImageState
+}
+
+internal fun shouldStartOriginalImageLoad(
+    state: CouponOriginalImageState,
+    force: Boolean
+): Boolean = force || state !is CouponOriginalImageState.Loading &&
+    state !is CouponOriginalImageState.Ready
+
+internal fun shouldCancelOriginalImageLoad(state: CouponOriginalImageState): Boolean =
+    state is CouponOriginalImageState.Loading
 
 class SessionViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
@@ -94,10 +154,12 @@ class SessionViewModel(
     fun signOut() {
         viewModelScope.launch {
             _busy.value = true
-            val cleanup = runCatching { pushTokenRepository.deleteCurrentToken() }
-            authRepository.signOut()
-            cleanup.onFailure {
-                _message.value = "로그아웃했지만 알림 토큰 정리가 지연될 수 있습니다."
+            _message.value = null
+            performSafeSignOut(
+                deletePushToken = { pushTokenRepository.deleteCurrentToken() },
+                signOutAuth = { authRepository.signOut() }
+            ).onFailure {
+                _message.value = "알림 토큰을 안전하게 정리하지 못해 로그아웃하지 않았습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요."
             }
             _busy.value = false
         }
@@ -230,6 +292,11 @@ class RoomDetailViewModel(
         couponPager?.refresh()
     }
 
+    suspend fun restoreDeletedCoupon(roomId: String, couponId: String): Result<Unit> {
+        return runCatching { couponRepository.restoreDeletedCoupon(roomId, couponId) }
+            .onSuccess { couponPager?.refresh() }
+    }
+
     override fun onCleared() {
         couponPager?.close()
         super.onCleared()
@@ -248,40 +315,145 @@ class AddCouponViewModel(
     private val _analysisBusy = MutableStateFlow(false)
     val analysisBusy: StateFlow<Boolean> = _analysisBusy
 
+    private val _imagePreparationBusy = MutableStateFlow(false)
+    val imagePreparationBusy: StateFlow<Boolean> = _imagePreparationBusy
+
     private val _analysisMessage = MutableStateFlow<String?>(null)
     val analysisMessage: StateFlow<String?> = _analysisMessage
 
     private val _suggestion = MutableStateFlow<CouponTextSuggestion?>(null)
     val suggestion: StateFlow<CouponTextSuggestion?> = _suggestion
 
+    private val _barcode = MutableStateFlow<DetectedCouponBarcode?>(null)
+    val barcode: StateFlow<DetectedCouponBarcode?> = _barcode
+
     private val _uploadState = MutableStateFlow(CouponUploadState())
     val uploadState: StateFlow<CouponUploadState> = _uploadState
+    private var addCouponJob: Job? = null
+    private var imageAnalysisJob: Job? = null
+    private var imageAnalysisRequestId = 0L
+    private var preparedUpload: PreparedCouponUpload? = null
+    private var analysisResultMessage: String? = null
+    private var preparationResultMessage: String? = null
 
     fun recognizeCouponImage(context: Context, imageUri: Uri) {
-        viewModelScope.launch {
+        imageAnalysisJob?.cancel()
+        preparedUpload?.close()
+        preparedUpload = null
+        val requestId = ++imageAnalysisRequestId
+        imageAnalysisJob = viewModelScope.launch {
             _analysisBusy.value = true
-            _analysisMessage.value = "이미지에서 쿠폰 정보를 읽는 중입니다."
+            _imagePreparationBusy.value = true
+            analysisResultMessage = null
+            preparationResultMessage = null
+            _analysisMessage.value = null
             _suggestion.value = null
+            _barcode.value = null
 
-            runCatching {
-                val image = InputImage.fromFilePath(context, imageUri)
-                val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-                val recognizedText = recognizer.process(image).await().text
-                parseCouponText(recognizedText)
-            }.onSuccess { result ->
-                _suggestion.value = result
-                _analysisMessage.value =
-                    if (result.title != null || result.brand != null || result.expiresLocalDate != null) {
-                        "이미지에서 읽은 정보로 입력값을 채웠습니다. 정확한지 확인해 주세요."
-                    } else {
-                        "이미지는 선택됐지만 자동으로 읽을 수 있는 정보가 부족합니다."
-                    }
-            }.onFailure {
-                _analysisMessage.value = it.localizedMessage ?: "이미지 정보를 자동으로 읽지 못했습니다."
+            try {
+                processImageSelectionInParallel(
+                    analyze = { analyzeCouponImage(context, imageUri) },
+                    prepare = {
+                        repository.prepareCouponImage(context.applicationContext, imageUri)
+                    },
+                    onAnalysisComplete = { handleAnalysisResult(requestId, it) },
+                    onPreparationComplete = { handlePreparationResult(requestId, it) }
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (requestId == imageAnalysisRequestId) {
+                    _analysisMessage.value = error.localizedMessage ?: "이미지를 준비하지 못했습니다."
+                }
+            } finally {
+                if (requestId == imageAnalysisRequestId) {
+                    _analysisBusy.value = false
+                    _imagePreparationBusy.value = false
+                    imageAnalysisJob = null
+                }
             }
-
-            _analysisBusy.value = false
         }
+    }
+
+    private suspend fun analyzeCouponImage(
+        context: Context,
+        imageUri: Uri
+    ): Pair<CouponTextSuggestion, DetectedCouponBarcode?> {
+        val analysisBitmap = withContext(Dispatchers.IO) {
+            CouponImageLoader.decodeScaledBitmap(
+                streamProvider = { context.contentResolver.openInputStream(imageUri) },
+                maxDimension = 1_600
+            )
+        } ?: error("이미지를 읽을 수 없습니다.")
+        val image = InputImage.fromBitmap(analysisBitmap, 0)
+        val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        return try {
+            coroutineScope {
+                val text = async { runCatching { recognizer.process(image).await().text }.getOrDefault("") }
+                val barcode = async {
+                    runCatching {
+                        withContext(Dispatchers.Default) { detectCouponBarcode(analysisBitmap) }
+                    }.getOrNull()
+                }
+                parseCouponText(text.await()) to barcode.await()
+            }
+        } finally {
+            recognizer.close()
+            analysisBitmap.recycle()
+        }
+    }
+
+    private fun handleAnalysisResult(
+        requestId: Long,
+        result: Result<Pair<CouponTextSuggestion, DetectedCouponBarcode?>>
+    ) {
+        if (requestId != imageAnalysisRequestId) return
+        _analysisBusy.value = false
+        result.onSuccess { (suggestion, detectedBarcode) ->
+            _suggestion.value = suggestion
+            _barcode.value = detectedBarcode
+            analysisResultMessage = analysisReadyMessage()
+        }.onFailure { error ->
+            analysisResultMessage = error.localizedMessage
+                ?: "정보를 자동으로 읽지 못했어요. 필요한 내용을 직접 입력해 주세요."
+        }
+        refreshImageProcessingMessage()
+    }
+
+    private fun handlePreparationResult(requestId: Long, result: Result<PreparedCouponUpload>) {
+        val upload = result.getOrNull()
+        if (requestId != imageAnalysisRequestId) {
+            upload?.close()
+            return
+        }
+        _imagePreparationBusy.value = false
+        result.onSuccess {
+            preparedUpload = it
+            preparationResultMessage = "빠른 업로드 준비를 마쳤어요."
+        }.onFailure { error ->
+            preparationResultMessage = listOfNotNull(
+                error.localizedMessage ?: "빠른 업로드 준비에 실패했어요.",
+                "등록할 때 다시 시도합니다."
+            ).joinToString(" ")
+        }
+        refreshImageProcessingMessage()
+    }
+
+    private fun analysisReadyMessage(): String {
+        val detectedBarcode = _barcode.value
+        val suggestion = _suggestion.value
+        return when {
+            detectedBarcode != null -> "쿠폰 정보와 ${detectedBarcode.format} 바코드를 찾았어요."
+            suggestion?.title != null || suggestion?.brand != null || suggestion?.expiresLocalDate != null ->
+                "읽은 정보로 입력값을 먼저 채웠어요. 정확한지 확인해 주세요."
+            else -> "자동으로 읽을 정보는 부족해요. 필요한 내용을 직접 입력해 주세요."
+        }
+    }
+
+    private fun refreshImageProcessingMessage() {
+        _analysisMessage.value = listOfNotNull(analysisResultMessage, preparationResultMessage)
+            .joinToString(" ")
+            .ifBlank { null }
     }
 
     fun addCoupon(
@@ -293,16 +465,33 @@ class AddCouponViewModel(
         expiresLocalDate: String,
         visibility: String,
         notifyTarget: String,
+        barcodeValue: String?,
+        barcodeFormat: String?,
         onAdded: (String) -> Unit
     ) {
-        viewModelScope.launch {
+        if (_busy.value) return
+        addCouponJob = viewModelScope.launch {
             _busy.value = true
             _message.value = null
-            _uploadState.value = CouponUploadState(CouponUploadStage.Uploading)
+            _uploadState.value = CouponUploadState(CouponUploadStage.Preparing)
             runCatching {
                 require(imageUri != null) { "쿠폰 이미지를 선택해 주세요." }
                 require(title.isNotBlank()) { "쿠폰 이름을 입력해 주세요." }
                 val date = LocalDate.parse(expiresLocalDate)
+                val barcode = if (!barcodeValue.isNullOrBlank() && !barcodeFormat.isNullOrBlank()) {
+                    val normalizedValue = barcodeValue.trim()
+                    val normalizedFormat = barcodeFormat.trim()
+                    couponBarcodeValidationError(normalizedValue, normalizedFormat)?.let { error(it) }
+                    val renderable = withContext(Dispatchers.Default) {
+                        renderCouponBarcode(normalizedValue, normalizedFormat)
+                    }
+                    require(renderable != null) { "바코드 값과 형식을 다시 확인해 주세요." }
+                    renderable.recycle()
+                    DetectedCouponBarcode(normalizedValue, normalizedFormat)
+                } else {
+                    null
+                }
+                val upload = preparedUpload
                 val couponId = repository.addCoupon(
                     context = context,
                     roomId = roomId,
@@ -312,23 +501,59 @@ class AddCouponViewModel(
                     expiresLocalDate = date,
                     visibility = visibility,
                     notifyTarget = notifyTarget,
+                    barcode = barcode,
+                    preparedUpload = upload,
+                    onUploadPrepared = { preparation ->
+                        _uploadState.value = preparation.toUploadState()
+                    },
                     onUploadProgress = { sentBytes, totalBytes ->
                         val percent = totalBytes
                             ?.takeIf { it > 0L }
                             ?.let { ((sentBytes * 100L) / it).toInt().coerceIn(0, 100) }
-                        _uploadState.value = CouponUploadState(CouponUploadStage.Uploading, percent)
+                        _uploadState.value = _uploadState.value.copy(
+                            stage = CouponUploadStage.Uploading,
+                            percent = percent
+                        )
                     },
                     onImageUploaded = {
-                        _uploadState.value = CouponUploadState(CouponUploadStage.Saving, 100)
+                        _uploadState.value = _uploadState.value.copy(
+                            stage = CouponUploadStage.Saving,
+                            percent = 100
+                        )
                     }
                 )
+                if (preparedUpload === upload) {
+                    preparedUpload = null
+                    upload?.close()
+                }
                 onAdded(couponId)
             }.onFailure {
-                _message.value = it.localizedMessage ?: "쿠폰을 추가하지 못했습니다."
+                _message.value = if (it is CancellationException) {
+                    uploadCancellationMessage(preparedUpload != null)
+                } else {
+                    listOfNotNull(
+                        it.localizedMessage ?: "쿠폰을 추가하지 못했습니다.",
+                        preparedUpload?.let { "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요." }
+                    ).joinToString(" ")
+                }
             }
             _busy.value = false
             _uploadState.value = CouponUploadState()
+            addCouponJob = null
         }
+    }
+
+    fun cancelUpload() {
+        if (_uploadState.value.stage !in setOf(CouponUploadStage.Preparing, CouponUploadStage.Uploading)) return
+        _uploadState.value = CouponUploadState(CouponUploadStage.Cancelling)
+        addCouponJob?.cancel()
+    }
+
+    override fun onCleared() {
+        imageAnalysisJob?.cancel()
+        preparedUpload?.close()
+        preparedUpload = null
+        super.onCleared()
     }
 }
 
@@ -339,6 +564,11 @@ class CouponDetailViewModel(
     private var couponJob: Job? = null
     private var commentsJob: Job? = null
     private var roomJob: Job? = null
+    private var imageJob: Job? = null
+    private var currentImageFile: CouponImageFile? = null
+    private var replacementPreparationJob: Job? = null
+    private var replacementPreparationRequestId = 0L
+    private var preparedReplacementUpload: PreparedCouponUpload? = null
 
     private val _coupon = MutableStateFlow<UiState<Coupon>>(UiState.Loading)
     val coupon: StateFlow<UiState<Coupon>> = _coupon
@@ -346,8 +576,8 @@ class CouponDetailViewModel(
     private val _comments = MutableStateFlow<UiState<List<CouponComment>>>(UiState.Loading)
     val comments: StateFlow<UiState<List<CouponComment>>> = _comments
 
-    private val _imageBytes = MutableStateFlow<UiState<ByteArray>>(UiState.Loading)
-    val imageBytes: StateFlow<UiState<ByteArray>> = _imageBytes
+    private val _originalImage = MutableStateFlow<CouponOriginalImageState>(CouponOriginalImageState.Idle)
+    val originalImage: StateFlow<CouponOriginalImageState> = _originalImage
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
@@ -357,6 +587,9 @@ class CouponDetailViewModel(
 
     private val _busyAction = MutableStateFlow<String?>(null)
     val busyAction: StateFlow<String?> = _busyAction
+
+    private val _imageReplaceState = MutableStateFlow(CouponUploadState())
+    val imageReplaceState: StateFlow<CouponUploadState> = _imageReplaceState
 
     private val _roomOwnerUid = MutableStateFlow<String?>(null)
     val roomOwnerUid: StateFlow<String?> = _roomOwnerUid
@@ -383,16 +616,39 @@ class CouponDetailViewModel(
                 .catch { _roomOwnerUid.value = null }
                 .collect { _roomOwnerUid.value = it?.ownerUid }
         }
-        refreshImage(roomId, couponId)
     }
 
-    fun refreshImage(roomId: String, couponId: String) {
-        viewModelScope.launch {
-            _imageBytes.value = UiState.Loading
-            runCatching { repository.fetchImage(roomId, couponId) }
-                .onSuccess { _imageBytes.value = UiState.Success(it) }
-                .onFailure { _imageBytes.value = UiState.Error(it.localizedMessage ?: "이미지를 불러오지 못했습니다.") }
+    fun loadOriginalImage(
+        context: Context,
+        roomId: String,
+        couponId: String,
+        force: Boolean = false
+    ) {
+        if (!shouldStartOriginalImageLoad(_originalImage.value, force)) return
+        imageJob?.cancel()
+        imageJob = viewModelScope.launch {
+            _originalImage.value = CouponOriginalImageState.Loading
+            runCatching { repository.fetchImageToFile(context, roomId, couponId) }
+                .onSuccess { downloadedImage ->
+                    val previousImage = currentImageFile
+                    currentImageFile = downloadedImage
+                    _originalImage.value = CouponOriginalImageState.Ready(downloadedImage)
+                    CouponImageFileStore.delete(previousImage)
+                }
+                .onFailure {
+                    if (it is CancellationException) return@onFailure
+                    _originalImage.value = CouponOriginalImageState.Error(
+                        it.localizedMessage ?: "이미지를 불러오지 못했습니다."
+                    )
+                }
         }
+    }
+
+    fun cancelOriginalImageLoad() {
+        if (!shouldCancelOriginalImageLoad(_originalImage.value)) return
+        imageJob?.cancel()
+        imageJob = null
+        _originalImage.value = CouponOriginalImageState.Idle
     }
 
     fun reserve(roomId: String, couponId: String) =
@@ -401,11 +657,24 @@ class CouponDetailViewModel(
     fun cancelReservation(roomId: String, couponId: String) =
         runAction("cancelReservation", "예약을 취소했습니다.") { repository.cancelReservation(roomId, couponId) }
 
-    fun markUsed(roomId: String, couponId: String) =
-        runAction("markUsed", "사용 완료로 변경했습니다.") { repository.markUsed(roomId, couponId) }
+    fun markUsed(roomId: String, couponId: String, onSuccess: () -> Unit = {}) =
+        runAction("markUsed", onSuccess = onSuccess) { repository.markUsed(roomId, couponId) }
 
-    fun delete(roomId: String, couponId: String, onDeleted: () -> Unit) = runAction("delete", onSuccess = onDeleted) {
-        repository.deleteCoupon(roomId, couponId)
+    fun undoMarkUsed(roomId: String, couponId: String) =
+        runAction("undoMarkUsed", "사용 가능한 쿠폰으로 되돌렸습니다.") {
+            repository.undoMarkUsed(roomId, couponId)
+        }
+
+    fun delete(roomId: String, couponId: String, onDeleted: (DeletedCoupon) -> Unit) {
+        if (_busyAction.value != null) return
+        _busyAction.value = "delete"
+        viewModelScope.launch {
+            _message.value = null
+            runCatching { repository.deleteCoupon(roomId, couponId) }
+                .onSuccess(onDeleted)
+                .onFailure { _message.value = it.localizedMessage ?: "쿠폰을 삭제하지 못했습니다." }
+            _busyAction.value = null
+        }
     }
 
     fun addComment(roomId: String, couponId: String, body: String, onAdded: () -> Unit) {
@@ -449,6 +718,113 @@ class CouponDetailViewModel(
         )
     }
 
+    fun prepareReplacementImage(context: Context, imageUri: Uri) {
+        if (_busyAction.value != null) return
+        _message.value = null
+        replacementPreparationJob?.cancel()
+        preparedReplacementUpload?.close()
+        preparedReplacementUpload = null
+        val requestId = ++replacementPreparationRequestId
+        _imageReplaceState.value = CouponUploadState(CouponUploadStage.Preparing)
+        replacementPreparationJob = viewModelScope.launch {
+            val result = runCatching {
+                repository.prepareCouponImage(context.applicationContext, imageUri)
+            }
+            if (requestId != replacementPreparationRequestId) {
+                result.getOrNull()?.close()
+                return@launch
+            }
+            result.onSuccess { upload ->
+                preparedReplacementUpload = upload
+                _imageReplaceState.value = upload.preparation.toUploadState().copy(
+                    stage = CouponUploadStage.Idle,
+                    percent = null
+                )
+            }.onFailure { error ->
+                _imageReplaceState.value = CouponUploadState()
+                if (error !is CancellationException) {
+                    _message.value = error.localizedMessage ?: "새 이미지를 준비하지 못했습니다."
+                }
+            }
+            replacementPreparationJob = null
+        }
+    }
+
+    fun discardReplacementImage() {
+        if (_busyAction.value != null) return
+        replacementPreparationRequestId += 1
+        replacementPreparationJob?.cancel()
+        replacementPreparationJob = null
+        preparedReplacementUpload?.close()
+        preparedReplacementUpload = null
+        _imageReplaceState.value = CouponUploadState()
+    }
+
+    fun replaceImage(
+        context: Context,
+        roomId: String,
+        couponId: String,
+        imageUri: Uri,
+        onReplaced: () -> Unit
+    ) {
+        if (_busyAction.value != null) return
+        _busyAction.value = "replaceImage"
+        replacementPreparationRequestId += 1
+        replacementPreparationJob?.cancel()
+        replacementPreparationJob = null
+        val upload = preparedReplacementUpload
+        _imageReplaceState.value = upload?.preparation?.toUploadState()
+            ?: CouponUploadState(CouponUploadStage.Preparing)
+        viewModelScope.launch {
+            _message.value = null
+            runCatching {
+                repository.replaceCouponImage(
+                    context = context,
+                    roomId = roomId,
+                    couponId = couponId,
+                    imageUri = imageUri,
+                    preparedUpload = upload,
+                    onUploadPrepared = { preparation ->
+                        _imageReplaceState.value = preparation.toUploadState()
+                    },
+                    onUploadProgress = { sentBytes, totalBytes ->
+                        val percent = totalBytes
+                            ?.takeIf { it > 0L }
+                            ?.let { ((sentBytes * 100L) / it).toInt().coerceIn(0, 100) }
+                        _imageReplaceState.value = _imageReplaceState.value.copy(
+                            stage = if (percent == 100) CouponUploadStage.Saving else CouponUploadStage.Uploading,
+                            percent = percent
+                        )
+                    }
+                )
+            }.onSuccess { cleanupPending ->
+                if (preparedReplacementUpload === upload) {
+                    preparedReplacementUpload = null
+                    upload?.close()
+                }
+                _message.value = if (cleanupPending) {
+                    "이미지를 교체했습니다. 이전 파일 정리가 지연되고 있습니다."
+                } else {
+                    "쿠폰 이미지를 교체했습니다."
+                }
+                loadOriginalImage(context, roomId, couponId, force = true)
+                onReplaced()
+            }.onFailure {
+                _message.value = listOfNotNull(
+                    it.localizedMessage ?: "쿠폰 이미지를 교체하지 못했습니다.",
+                    preparedReplacementUpload?.let {
+                        "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요."
+                    }
+                ).joinToString(" ")
+            }
+            _busyAction.value = null
+            _imageReplaceState.value = preparedReplacementUpload?.preparation?.toUploadState()?.copy(
+                stage = CouponUploadStage.Idle,
+                percent = null
+            ) ?: CouponUploadState()
+        }
+    }
+
     private fun runAction(
         action: String,
         successMessage: String? = null,
@@ -467,6 +843,122 @@ class CouponDetailViewModel(
                 .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
             _busyAction.value = null
         }
+    }
+
+    override fun onCleared() {
+        imageJob?.cancel()
+        replacementPreparationJob?.cancel()
+        preparedReplacementUpload?.close()
+        preparedReplacementUpload = null
+        CouponImageFileStore.delete(currentImageFile)
+        currentImageFile = null
+        super.onCleared()
+    }
+}
+
+class CouponTrashViewModel(
+    private val repository: CouponRepository = CouponRepository()
+) : ViewModel() {
+    private val _coupons = MutableStateFlow<UiState<List<DeletedCoupon>>>(UiState.Loading)
+    val coupons: StateFlow<UiState<List<DeletedCoupon>>> = _coupons
+
+    private val _busyCouponId = MutableStateFlow<String?>(null)
+    val busyCouponId: StateFlow<String?> = _busyCouponId
+
+    private val _busyAction = MutableStateFlow<String?>(null)
+    val busyAction: StateFlow<String?> = _busyAction
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
+
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore
+
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
+
+    private val _pagingError = MutableStateFlow<String?>(null)
+    val pagingError: StateFlow<String?> = _pagingError
+
+    private var nextCursor: String? = null
+
+    fun load(roomId: String) {
+        viewModelScope.launch { refresh(roomId) }
+    }
+
+    fun loadMore(roomId: String) {
+        val cursor = nextCursor ?: return
+        if (_isLoadingMore.value) return
+        _isLoadingMore.value = true
+        _pagingError.value = null
+        viewModelScope.launch {
+            runCatching { repository.deletedCoupons(roomId, cursor) }
+                .onSuccess { page ->
+                    val current = (_coupons.value as? UiState.Success)?.data.orEmpty()
+                    _coupons.value = UiState.Success((current + page.coupons).distinctBy(DeletedCoupon::couponId))
+                    nextCursor = page.nextCursor
+                    _hasMore.value = page.nextCursor != null
+                }
+                .onFailure { _pagingError.value = it.localizedMessage ?: "다음 쿠폰을 불러오지 못했습니다." }
+            _isLoadingMore.value = false
+        }
+    }
+
+    fun retry(roomId: String) {
+        if (_pagingError.value != null && nextCursor != null) loadMore(roomId) else load(roomId)
+    }
+
+    fun restore(roomId: String, couponId: String) = runCouponAction(roomId, couponId, "restore") {
+        repository.restoreDeletedCoupon(roomId, couponId)
+        "쿠폰을 목록으로 복원했습니다."
+    }
+
+    fun permanentlyDelete(roomId: String, couponId: String) = runCouponAction(roomId, couponId, "delete") {
+        val cleanupPending = repository.permanentlyDeleteCoupon(roomId, couponId)
+        if (cleanupPending) {
+            "쿠폰은 영구 삭제됐고 이미지 정리는 재시도됩니다."
+        } else {
+            "쿠폰을 영구 삭제했습니다."
+        }
+    }
+
+    private fun runCouponAction(
+        roomId: String,
+        couponId: String,
+        action: String,
+        block: suspend () -> String
+    ) {
+        if (_busyCouponId.value != null) return
+        _busyCouponId.value = couponId
+        _busyAction.value = action
+        viewModelScope.launch {
+            _message.value = null
+            runCatching { block() }
+                .onSuccess {
+                    _message.value = it
+                    val current = (_coupons.value as? UiState.Success)?.data.orEmpty()
+                    _coupons.value = UiState.Success(current.filterNot { coupon -> coupon.couponId == couponId })
+                }
+                .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
+            _busyCouponId.value = null
+            _busyAction.value = null
+        }
+    }
+
+    private suspend fun refresh(roomId: String) {
+        _message.value = null
+        _coupons.value = UiState.Loading
+        _pagingError.value = null
+        _isLoadingMore.value = false
+        nextCursor = null
+        _hasMore.value = false
+        runCatching { repository.deletedCoupons(roomId) }
+            .onSuccess { page ->
+                _coupons.value = UiState.Success(page.coupons)
+                nextCursor = page.nextCursor
+                _hasMore.value = page.nextCursor != null
+            }
+            .onFailure { _coupons.value = UiState.Error(it.localizedMessage ?: "복구함을 불러오지 못했습니다.") }
     }
 }
 

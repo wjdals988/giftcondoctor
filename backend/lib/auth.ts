@@ -52,6 +52,9 @@ export async function requireCouponAccess(roomId: string, couponId: string, uid:
 
   const visibility = coupon.get("visibility") ?? "room";
   const ownerUid = coupon.get("ownerUid");
+  if (visibility !== "room" && visibility !== "private") {
+    throw new ApiError(404, "쿠폰을 찾을 수 없습니다.");
+  }
   if (visibility === "private" && ownerUid !== uid) {
     throw new ApiError(403, "비공개 쿠폰은 등록자만 접근할 수 있습니다.");
   }

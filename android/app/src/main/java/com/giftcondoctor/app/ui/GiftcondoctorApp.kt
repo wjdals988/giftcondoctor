@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -25,6 +29,7 @@ import androidx.navigation.navArgument
 import com.giftcondoctor.app.ui.screens.AppInfoScreen
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponDetailScreen
+import com.giftcondoctor.app.ui.screens.CouponTrashScreen
 import com.giftcondoctor.app.ui.screens.CreateRoomScreen
 import com.giftcondoctor.app.ui.screens.JoinRoomScreen
 import com.giftcondoctor.app.ui.screens.LoginScreen
@@ -33,7 +38,7 @@ import com.giftcondoctor.app.ui.screens.NotificationSettingsScreen
 import com.giftcondoctor.app.ui.screens.RoomDetailScreen
 import com.giftcondoctor.app.ui.screens.RoomListScreen
 import com.giftcondoctor.app.ui.screens.RoomSettingsScreen
-import com.giftcondoctor.app.ui.components.RequestNotificationPermissionOnLaunch
+import com.giftcondoctor.app.ui.screens.DeletedCouponFeedback
 import com.giftcondoctor.app.ui.theme.GDTheme
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionAuthState
@@ -49,6 +54,7 @@ object Routes {
     const val AddCoupon = "rooms/{roomId}/coupons/add"
     const val CouponDetail = "rooms/{roomId}/coupons/{couponId}"
     const val RoomSettings = "rooms/{roomId}/settings"
+    const val RoomTrash = "rooms/{roomId}/trash"
     const val Members = "rooms/{roomId}/members"
 }
 
@@ -64,6 +70,8 @@ fun GiftcondoctorApp(
     val authState by sessionViewModel.authState.collectAsStateWithLifecycle()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
+    var newlyAddedCouponId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletedCouponFeedback by remember { mutableStateOf<DeletedCouponFeedback?>(null) }
 
     LaunchedEffect(authState, currentRoute, deepLink) {
         if (authState == SessionAuthState.Loading) return@LaunchedEffect
@@ -77,6 +85,7 @@ fun GiftcondoctorApp(
                 launchSingleTop = true
             }
         } else if (authState == SessionAuthState.Unauthenticated && currentRoute != null && currentRoute != Routes.Login) {
+            newlyAddedCouponId = null
             navController.navigate(Routes.Login) {
                 popUpTo(Routes.Rooms) { inclusive = true }
                 launchSingleTop = true
@@ -85,7 +94,6 @@ fun GiftcondoctorApp(
     }
 
     GDTheme {
-        RequestNotificationPermissionOnLaunch()
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -145,7 +153,9 @@ fun GiftcondoctorApp(
                         onAddCoupon = { navController.navigate("rooms/$roomId/coupons/add") },
                         onOpenCoupon = { couponId -> navController.navigate("rooms/$roomId/coupons/$couponId") },
                         onOpenMembers = { navController.navigate("rooms/$roomId/members") },
-                        onOpenSettings = { navController.navigate("rooms/$roomId/settings") }
+                        onOpenSettings = { navController.navigate("rooms/$roomId/settings") },
+                        deletedCouponFeedback = deletedCouponFeedback?.takeIf { feedback -> feedback.roomId == roomId },
+                        onDeletedFeedbackConsumed = { deletedCouponFeedback = null }
                     )
                 }
                 composable(
@@ -157,6 +167,7 @@ fun GiftcondoctorApp(
                         roomId = roomId,
                         onBack = { navController.popBackStack() },
                         onAdded = { couponId ->
+                            newlyAddedCouponId = couponId
                             navController.navigate("rooms/$roomId/coupons/$couponId") {
                                 popUpTo("rooms/$roomId")
                             }
@@ -177,7 +188,28 @@ fun GiftcondoctorApp(
                         roomId = roomId,
                         couponId = couponId,
                         onBack = { navController.popBackStack() },
-                        onDeleted = { navController.popBackStack("rooms/$roomId", false) }
+                        onDeleted = { deletedCoupon ->
+                            deletedCouponFeedback = DeletedCouponFeedback(
+                                roomId = roomId,
+                                couponId = deletedCoupon.couponId,
+                                title = deletedCoupon.title
+                            )
+                            val returnedToRoom = navController.popBackStack("rooms/$roomId", false)
+                            if (!returnedToRoom) {
+                                navController.navigate("rooms/$roomId") {
+                                    launchSingleTop = true
+                                    popUpTo(Routes.Rooms)
+                                }
+                            }
+                        },
+                        showAddedFeedback = newlyAddedCouponId == couponId,
+                        onAddedFeedbackConsumed = {
+                            if (newlyAddedCouponId == couponId) newlyAddedCouponId = null
+                        },
+                        onAddAnother = {
+                            newlyAddedCouponId = null
+                            navController.navigate("rooms/$roomId/coupons/add")
+                        }
                     )
                 }
                 composable(
@@ -189,8 +221,16 @@ fun GiftcondoctorApp(
                         roomId = roomId,
                         onBack = { navController.popBackStack() },
                         onOpenNotifications = { navController.navigate(Routes.Notifications) },
+                        onOpenTrash = { navController.navigate("rooms/$roomId/trash") },
                         onLeft = { navController.navigate(Routes.Rooms) { popUpTo(Routes.Rooms) { inclusive = true } } }
                     )
+                }
+                composable(
+                    route = Routes.RoomTrash,
+                    arguments = listOf(navArgument("roomId") { type = NavType.StringType })
+                ) {
+                    val roomId = it.arguments?.getString("roomId").orEmpty()
+                    CouponTrashScreen(roomId = roomId, onBack = { navController.popBackStack() })
                 }
                 composable(
                     route = Routes.Members,

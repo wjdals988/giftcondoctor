@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/*.test.mjs",
+    "benchmark:image-api": "node scripts/benchmark-image-api.mjs",
     "test:rules": "firebase emulators:exec --config ../firebase.json --project demo-giftcondoctor --only firestore \"vitest run --config vitest.rules.config.ts\"",
     "typecheck": "tsc --noEmit"
   },

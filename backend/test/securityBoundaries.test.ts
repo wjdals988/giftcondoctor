@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { GET as notificationStatus } from "../app/api/notifications/status/route";
 import { couponBlobPrefix, requireCouponBlobPath } from "../lib/blobPath";
-import { ApiError, requireCronSecret } from "../lib/http";
+import { ApiError, requireCronSecret, serverTiming } from "../lib/http";
 import { detectSupportedImage } from "../lib/imageUpload";
 import { legacyCouponThumbnailPath } from "../lib/imageThumbnail";
 import { rateLimitDocumentId, rateLimitWindow } from "../lib/rateLimit";
@@ -11,6 +11,16 @@ const originalCronSecret = process.env.CRON_SECRET;
 afterEach(() => {
   if (originalCronSecret === undefined) delete process.env.CRON_SECRET;
   else process.env.CRON_SECRET = originalCronSecret;
+});
+
+describe("server timing", () => {
+  it("formats bounded metrics and rejects free-form names", () => {
+    expect(serverTiming([
+      { name: "blob-store", durationMs: 12.34 },
+      { name: "cleanup", durationMs: -2 }
+    ])).toBe("blob-store;dur=12.3, cleanup;dur=0.0");
+    expect(() => serverTiming([{ name: "bad metric", durationMs: 1 }])).toThrow();
+  });
 });
 
 describe("cron authentication", () => {

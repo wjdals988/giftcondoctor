@@ -24,7 +24,18 @@ function serviceAccount() {
 
 export function getAdminApp() {
   if (adminApp) return adminApp;
-  adminApp = getApps()[0] ?? initializeApp({ credential: cert(serviceAccount()) });
+  const existing = getApps()[0];
+  if (existing) {
+    adminApp = existing;
+    return adminApp;
+  }
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    adminApp = initializeApp({
+      projectId: process.env.FIREBASE_PROJECT_ID ?? process.env.GCLOUD_PROJECT ?? "demo-giftcondoctor"
+    });
+    return adminApp;
+  }
+  adminApp = initializeApp({ credential: cert(serviceAccount()) });
   return adminApp;
 }
 

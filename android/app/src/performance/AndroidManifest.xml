@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <profileable android:shell="true" />
+        <activity
+            android:name=".BenchmarkActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Giftcondoctor" />
+        <activity
+            android:name=".BenchmarkImageActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Giftcondoctor" />
+    </application>
+</manifest>

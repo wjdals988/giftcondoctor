@@ -1,11 +1,12 @@
 import { BlobNotFoundError, get } from "@vercel/blob";
 import { requireCouponAccess, requireUser } from "@/lib/auth";
 import { requireCouponBlobPath } from "@/lib/blobPath";
-import { ApiError, jsonError } from "@/lib/http";
+import { ApiError, jsonError, serverTiming } from "@/lib/http";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   try {
     const token = await requireUser(request);
     const url = new URL(request.url);
@@ -23,7 +24,9 @@ export async function GET(request: Request) {
       : coupon.get("imageBlobPath");
     const blobPath = requireCouponBlobPath(requestedPath, roomId, couponId);
 
+    const blobStartedAt = performance.now();
     const privateBlob = await get(blobPath, { access: "private", useCache: false });
+    const finishedAt = performance.now();
     if (!privateBlob || privateBlob.statusCode !== 200 || !privateBlob.stream) {
       throw new ApiError(404, "쿠폰 이미지를 찾을 수 없습니다.");
     }
@@ -34,7 +37,11 @@ export async function GET(request: Request) {
         "Content-Length": String(privateBlob.blob.size),
         "ETag": privateBlob.blob.etag,
         "Cache-Control": variant === "thumbnail" ? "private, max-age=3600" : "private, no-store",
-        "X-Content-Type-Options": "nosniff"
+        "X-Content-Type-Options": "nosniff",
+        "Server-Timing": serverTiming([
+          { name: "access", durationMs: blobStartedAt - startedAt },
+          { name: "blob-get", durationMs: finishedAt - blobStartedAt }
+        ])
       }
     });
   } catch (error) {

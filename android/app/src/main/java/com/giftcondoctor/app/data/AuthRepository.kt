@@ -82,6 +82,7 @@ class AuthRepository(
 
     fun signOut() {
         CouponImageLoader.clear()
+        CouponImageFileStore.clearTracked()
         auth.signOut()
     }
 }

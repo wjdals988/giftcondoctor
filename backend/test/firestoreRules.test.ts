@@ -16,6 +16,7 @@ import {
   serverTimestamp,
   setDoc,
   startAfter,
+  Timestamp,
   updateDoc,
   where
 } from "firebase/firestore";
@@ -94,6 +95,33 @@ describe("coupon security rules", () => {
     }));
   });
 
+  it("accepts only paired, bounded barcode metadata in supported formats", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertSucceeds(setDoc(doc(db, "rooms/room-1/coupons/coupon-barcode"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/coupon-barcode/image.jpg",
+      barcodeValue: "8801234567890",
+      barcodeFormat: "EAN_13"
+    }));
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-unpaired"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/coupon-unpaired/image.jpg",
+      barcodeValue: "8801234567890"
+    }));
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-long"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/coupon-long/image.jpg",
+      barcodeValue: "1".repeat(81),
+      barcodeFormat: "CODE_128"
+    }));
+    await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-invalid-ean"), {
+      ...validCoupon(),
+      imageBlobPath: "rooms/room-1/coupons/coupon-invalid-ean/image.jpg",
+      barcodeValue: "not-a-number",
+      barcodeFormat: "EAN_13"
+    }));
+  });
+
   it("rejects a Blob path owned by another coupon", async () => {
     const db = testEnvironment.authenticatedContext("member-1").firestore();
     await assertFails(setDoc(doc(db, "rooms/room-1/coupons/coupon-1"), {
@@ -166,12 +194,91 @@ describe("coupon security rules", () => {
     }));
   });
 
+  it("lets only the member who marked a coupon used undo it within five minutes", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "used",
+        usedByUid: "member-2",
+        usedAt: Timestamp.now()
+      });
+    });
+    const update = {
+      status: "active",
+      reservedByUid: null,
+      usedByUid: null,
+      usedAt: null,
+      updatedAt: serverTimestamp()
+    };
+    const memberDb = testEnvironment.authenticatedContext("member-2").firestore();
+    await assertSucceeds(updateDoc(doc(memberDb, "rooms/room-1/coupons/coupon-1"), update));
+  });
+
+  it("blocks another member from undoing a used coupon", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "used",
+        usedByUid: "member-2",
+        usedAt: Timestamp.now()
+      });
+    });
+    const ownerDb = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(updateDoc(doc(ownerDb, "rooms/room-1/coupons/coupon-1"), {
+      status: "active",
+      reservedByUid: null,
+      usedByUid: null,
+      usedAt: null,
+      updatedAt: serverTimestamp()
+    }));
+  });
+
+  it("blocks undo after the five-minute recovery window", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "used",
+        usedByUid: "member-2",
+        usedAt: Timestamp.fromMillis(Date.now() - 6 * 60 * 1000)
+      });
+    });
+    const memberDb = testEnvironment.authenticatedContext("member-2").firestore();
+    await assertFails(updateDoc(doc(memberDb, "rooms/room-1/coupons/coupon-1"), {
+      status: "active",
+      reservedByUid: null,
+      usedByUid: null,
+      usedAt: null,
+      updatedAt: serverTimestamp()
+    }));
+  });
+
   it("blocks a non-member from reading a coupon", async () => {
     await testEnvironment.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), validCoupon());
     });
     const db = testEnvironment.authenticatedContext("outsider").firestore();
     await assertFails(getDoc(doc(db, "rooms/room-1/coupons/coupon-1")));
+  });
+
+  it("hides a soft-deleted coupon and its comments even from the coupon owner", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1"), {
+        ...validCoupon(),
+        status: "deleted",
+        visibility: "deleted",
+        deletedByUid: "member-1",
+        deletedAt: Timestamp.now(),
+        purgeAt: Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        trashState: { status: "active", visibility: "room" }
+      });
+      await setDoc(doc(context.firestore(), "rooms/room-1/coupons/coupon-1/comments/comment-1"), {
+        authorUid: "member-1",
+        body: "삭제된 댓글"
+      });
+    });
+    const ownerDb = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(getDoc(doc(ownerDb, "rooms/room-1/coupons/coupon-1")));
+    await assertFails(getDoc(doc(ownerDb, "rooms/room-1/coupons/coupon-1/comments/comment-1")));
   });
 
   it("allows bounded cursor queries but rejects another owner's private coupon query", async () => {
@@ -249,16 +356,19 @@ describe("notification setting security rules", () => {
   });
 });
 
-describe("server-only notification state", () => {
-  it("blocks clients from reading or writing outbox and cron lease documents", async () => {
+describe("server-only operational state", () => {
+  it("blocks clients from reading or writing outbox, Blob cleanup, and cron lease documents", async () => {
     await testEnvironment.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "notificationOutbox/message-1"), { status: "pending" });
+      await setDoc(doc(context.firestore(), "blobCleanupQueue/cleanup-1"), { status: "pending" });
       await setDoc(doc(context.firestore(), "cronLeases/expiry-reminders-2026-08-15"), { status: "running" });
     });
 
     const db = testEnvironment.authenticatedContext("member-1").firestore();
     await assertFails(getDoc(doc(db, "notificationOutbox/message-1")));
     await assertFails(setDoc(doc(db, "notificationOutbox/message-2"), { status: "sent" }));
+    await assertFails(getDoc(doc(db, "blobCleanupQueue/cleanup-1")));
+    await assertFails(setDoc(doc(db, "blobCleanupQueue/cleanup-2"), { status: "deleted" }));
     await assertFails(getDoc(doc(db, "cronLeases/expiry-reminders-2026-08-15")));
     await assertFails(setDoc(doc(db, "cronLeases/manual"), { status: "completed" }));
   });
