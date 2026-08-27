@@ -139,6 +139,7 @@ import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import com.giftcondoctor.app.core.couponListSupportingText
+import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
 
 @Composable
 fun RoomListScreen(
@@ -1089,7 +1090,7 @@ private fun CouponListThumbnail(
 
 @Composable
 private fun CouponCategoryThumbnail(coupon: Coupon, loading: Boolean = false) {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalGDDarkTheme.current
     val category = remember(coupon.title, coupon.brand, dark) { couponCategory(coupon.title, coupon.brand, dark) }
     Box(
         modifier = Modifier
