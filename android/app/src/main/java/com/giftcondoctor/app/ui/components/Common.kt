@@ -60,6 +60,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.LinearEasing
 import com.giftcondoctor.app.ui.theme.GDSkeletonDark
 import com.giftcondoctor.app.ui.theme.GDSkeletonLight
+import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -302,7 +303,7 @@ fun GDExpiryBadge(
     text: String,
     modifier: Modifier = Modifier
 ) {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalGDDarkTheme.current
     val container: Color
     val content: Color
     val icon: ImageVector
@@ -354,7 +355,7 @@ fun Modifier.gdHeading(): Modifier = semantics { heading() }
 
 @Composable
 private fun skeletonColor(): Color =
-    if (isSystemInDarkTheme()) GDSkeletonDark else GDSkeletonLight
+    if (LocalGDDarkTheme.current) GDSkeletonDark else GDSkeletonLight
 
 /**
  * 스켈레톤 플레이스홀더 한 조각.

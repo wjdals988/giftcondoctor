@@ -9,6 +9,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 
 // 대비 검증값은 UIUX_REVIEW_2026-08-28.md 1절 기준이다.
 // GDBrand 는 브랜드 색조 보존용이며 텍스트·아이콘을 얹지 않는다.
@@ -104,15 +106,30 @@ private val GDShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
+/**
+ * 현재 컴포지션이 다크 테마인지 알려준다.
+ *
+ * GDTheme 이 darkTheme 을 파라미터로 받으므로 프리뷰·테스트·향후 인앱 토글에서
+ * 시스템 설정과 다른 값을 넘길 수 있다. 컴포넌트가 isSystemInDarkTheme() 을 직접
+ * 호출하면 그 override 를 무시해서, 다크 스킴 위에 라이트 배지가 얹히는 불일치가
+ * 생긴다. 색을 테마별로 분기해야 하는 컴포넌트는 반드시 이 값을 읽는다.
+ *
+ * MaterialTheme.colorScheme 만으로는 판별할 수 없다. GDExpiryBadge 의 긴급도 색과
+ * 카테고리 아이콘 색은 의미 기반 고정값이라 colorScheme 에 들어 있지 않다.
+ */
+val LocalGDDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
 fun GDTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) GDDarkColorScheme else GDColorScheme,
-        typography = GDTypography,
-        shapes = GDShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalGDDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) GDDarkColorScheme else GDColorScheme,
+            typography = GDTypography,
+            shapes = GDShapes,
+            content = content
+        )
+    }
 }
