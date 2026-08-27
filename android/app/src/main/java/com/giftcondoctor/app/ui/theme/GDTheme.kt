@@ -40,6 +40,12 @@ val GDDarkOnPrimaryContainer = Color(0xFFA7EFE5)
 val GDDarkTertiary = Color(0xFF7CC9F0)
 val GDDarkError = Color(0xFFFF8A85)
 
+// 스켈레톤 전용 색. surfaceVariant(#F4F7F9)는 배경 대비 1.048 로 사실상 비가시라
+// 스켈레톤에 쓸 수 없다. 아래 값은 알파 0.7~1.0 왕복 시 라이트 1.17~1.26,
+// 다크 1.27~1.45 범위가 되어 "은은하지만 보이는" 구간에 들어간다.
+val GDSkeletonLight = Color(0xFFDDE3E9)
+val GDSkeletonDark = Color(0xFF2C3336)
+
 private val GDColorScheme = lightColorScheme(
     primary = GDPrimary,
     onPrimary = Color.White,

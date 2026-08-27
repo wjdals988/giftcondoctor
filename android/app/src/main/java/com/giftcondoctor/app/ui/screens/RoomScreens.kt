@@ -123,6 +123,7 @@ import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.LoadingState
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
+import com.giftcondoctor.app.ui.components.CouponListSkeleton
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.components.gdHeading
@@ -630,7 +631,7 @@ fun RoomDetailScreen(
         }
     ) { modifier ->
         when {
-            coupons.isInitialLoading && coupons.coupons.isEmpty() -> LoadingState()
+            coupons.isInitialLoading && coupons.coupons.isEmpty() -> CouponListSkeleton(modifier)
             coupons.coupons.isEmpty() && coupons.errorMessage != null -> ErrorState(
                 message = coupons.errorMessage ?: "쿠폰 목록을 불러오지 못했습니다.",
                 actionLabel = "다시 시도",

@@ -47,6 +47,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.giftcondoctor.app.BuildConfig
 import com.giftcondoctor.app.core.ExpiryUrgency
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.height
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
+import com.giftcondoctor.app.ui.theme.GDSkeletonDark
+import com.giftcondoctor.app.ui.theme.GDSkeletonLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -338,3 +351,104 @@ fun GDExpiryBadge(
  * 붙이지 않는다. 항목이 100개면 heading 이 100개가 되어 제목 탐색 자체가 무의미해진다.
  */
 fun Modifier.gdHeading(): Modifier = semantics { heading() }
+
+@Composable
+private fun skeletonColor(): Color =
+    if (isSystemInDarkTheme()) GDSkeletonDark else GDSkeletonLight
+
+/**
+ * 스켈레톤 플레이스홀더 한 조각.
+ *
+ * 전체화면 스피너는 화면이 어떤 구조인지 알려주지 않아서, 데이터가 도착하는 순간
+ * 레이아웃이 통째로 나타난다. 스켈레톤은 최종 레이아웃과 같은 자리를 미리 차지해
+ * 그 급격한 전환을 없앤다.
+ *
+ * 색은 surfaceVariant 를 쓰지 않는다. #F4F7F9 는 배경 #FBFCFE 대비 1.048 로 사실상
+ * 보이지 않아서, 스켈레톤이 보이지 않는 스켈레톤이 된다. GDSkeletonLight/Dark 를
+ * 알파 0.7~1.0 으로 왕복시켜 라이트 1.17~1.26, 다크 1.27~1.45 구간을 유지한다.
+ *
+ * 애니메이션은 알파 왕복 정도로만 둔다. 강한 shimmer 는 시선을 끌어 오히려 대기
+ * 시간을 길게 느끼게 하고, 전정기관 민감 사용자에게 부담이 된다.
+ */
+@Composable
+fun GDSkeletonBlock(
+    modifier: Modifier = Modifier,
+    height: Dp = 16.dp,
+    shape: Shape = MaterialTheme.shapes.extraSmall
+) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeleton-alpha"
+    )
+    Box(
+        modifier = modifier
+            .height(height)
+            .background(skeletonColor().copy(alpha = alpha), shape)
+    )
+}
+
+/**
+ * 쿠폰 목록 초기 로딩 스켈레톤.
+ *
+ * 실제 RoomDashboard 의 구조(현황 카드 -> 목록 제목 -> 썸네일 + 2줄 텍스트 + 배지 행)를
+ * 그대로 흉내낸다. 구조가 어긋나면 스켈레톤의 존재 이유인 "전환의 매끄러움" 이 사라진다.
+ *
+ * 스크린리더에는 개별 조각을 노출하지 않고 컨테이너 하나로만 안내한다. 의미 없는
+ * 회색 상자 여러 개를 순차 탐색하게 만들면 스피너보다 나쁘다.
+ */
+@Composable
+fun CouponListSkeleton(modifier: Modifier = Modifier, rowCount: Int = 4) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "쿠폰 목록을 불러오는 중입니다"
+            },
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                GDSkeletonBlock(modifier = Modifier.fillMaxWidth(0.5f), height = 18.dp)
+                GDSkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f), height = 14.dp)
+            }
+        }
+        GDSkeletonBlock(modifier = Modifier.fillMaxWidth(0.3f), height = 18.dp)
+        repeat(rowCount) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GDSkeletonBlock(
+                        modifier = Modifier.width(56.dp),
+                        height = 56.dp,
+                        shape = MaterialTheme.shapes.small
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        GDSkeletonBlock(modifier = Modifier.fillMaxWidth(0.6f), height = 16.dp)
+                        GDSkeletonBlock(modifier = Modifier.fillMaxWidth(0.85f), height = 13.dp)
+                    }
+                    GDSkeletonBlock(
+                        modifier = Modifier.width(52.dp),
+                        height = 24.dp,
+                        shape = MaterialTheme.shapes.small
+                    )
+                }
+            }
+        }
+    }
+}
