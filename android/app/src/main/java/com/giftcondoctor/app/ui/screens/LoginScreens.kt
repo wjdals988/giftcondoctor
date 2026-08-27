@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.giftcondoctor.app.ui.components.AppVersionText
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
+import com.giftcondoctor.app.ui.components.gdHeading
 import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.core.SharedImageImportState
 
@@ -94,7 +95,7 @@ fun LoginScreen(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(top = 20.dp)
+            modifier = Modifier.padding(top = 20.dp).gdHeading()
         )
         Text(
             "가족, 친구, 동료와 쿠폰을 공유하고 매일 오전 9시에 만료 알림을 받아보세요.",

@@ -204,4 +204,56 @@ class AccessibilityFlowsInstrumentedTest {
         defaultNotificationMode = "basic",
         defaultNotificationDays = listOf(7, 3, 1, 0)
     )
+
+    @Test
+    fun screenAndSectionTitlesAreExposedAsHeadingsForTalkBack() {
+        // TalkBack 은 heading 표식이 있는 노드만 제목 단위로 건너뛴다. 표식이 없으면
+        // 긴 설정 화면에서 원하는 섹션까지 모든 요소를 하나씩 지나가야 한다.
+        setLargeFontContent {
+            NotificationSettingsContent(
+                modifier = Modifier,
+                state = NotificationSettingsUiState(
+                    mode = NotificationMode.Basic,
+                    pushEnabled = true,
+                    canUsePush = true,
+                    busy = false,
+                    busyAction = null,
+                    testPushBusy = false,
+                    expiryTestPushBusy = false,
+                    joinedTestRoom = false,
+                    testRoomBusy = false,
+                    testRoomMessage = null,
+                    message = null
+                ),
+                notificationPermission = NotificationPermissionState(true, true, {}),
+                actions = NotificationSettingsActions({}, {}, {}, {}, {}, {}, {})
+            )
+        }
+
+        listOf("기본 만료 알림", "푸시 연결 확인").forEach { title ->
+            composeRule.onNodeWithText(title)
+                .performScrollTo()
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        }
+    }
+
+    @Test
+    fun listItemTitlesAreNotExposedAsHeadings() {
+        // 목록 항목 제목까지 heading 이면 항목 100개에서 heading 도 100개가 되어
+        // 제목 단위 탐색이 무의미해진다. 의도적으로 표식하지 않는다.
+        val member = RoomMember(
+            uid = "member-heading",
+            role = "member",
+            displayName = "목록 항목 이름",
+            notificationEnabled = true,
+            notificationMode = null,
+            notificationDays = null
+        )
+        setLargeFontContent {
+            MemberRow(member = member, canRemove = false, onRemove = {})
+        }
+
+        composeRule.onNodeWithText(member.displayName)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Heading))
+    }
 }
