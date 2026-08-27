@@ -335,7 +335,7 @@ private fun RoomList(
                     },
                     leadingContent = {
                         Box(
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier.size(48.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -1090,17 +1090,17 @@ private fun couponCategory(title: String, brand: String): CouponCategory {
         containsAny(CAFE_KEYWORDS) ->
             CouponCategory("카페", Icons.Default.LocalCafe, Color(0xFFE3F7F2), Color(0xFF008E85))
         containsAny(FOOD_KEYWORDS) ->
-            CouponCategory("음식", Icons.Default.Restaurant, Color(0xFFFFF0E7), Color(0xFFE86E2F))
+            CouponCategory("음식", Icons.Default.Restaurant, Color(0xFFFFF0E7), Color(0xFFB8491A))
         containsAny(CONVENIENCE_KEYWORDS) ->
             CouponCategory("편의점", Icons.Default.Store, Color(0xFFE8F2FF), Color(0xFF2878D8))
         containsAny(CINEMA_KEYWORDS) ->
             CouponCategory("영화", Icons.Default.Theaters, Color(0xFFF1EAFF), Color(0xFF7B52CC))
         containsAny(TRAVEL_KEYWORDS) ->
-            CouponCategory("여행", Icons.Default.Flight, Color(0xFFE7F7FF), Color(0xFF0095D6))
+            CouponCategory("여행", Icons.Default.Flight, Color(0xFFE7F7FF), Color(0xFF0070A3))
         containsAny(SHOPPING_KEYWORDS) ->
-            CouponCategory("쇼핑", Icons.Default.ShoppingBag, Color(0xFFFFF7D9), Color(0xFFC28A00))
+            CouponCategory("쇼핑", Icons.Default.ShoppingBag, Color(0xFFFFF7D9), Color(0xFF7A5600))
         else ->
-            CouponCategory("쿠폰", Icons.Default.CardGiftcard, Color(0xFFEAFBF6), Color(0xFF00A89C))
+            CouponCategory("쿠폰", Icons.Default.CardGiftcard, Color(0xFFEAFBF6), Color(0xFF00786F))
     }
 }
 
