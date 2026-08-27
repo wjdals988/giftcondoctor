@@ -125,6 +125,7 @@ import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
+import com.giftcondoctor.app.ui.components.gdHeading
 import com.giftcondoctor.app.ui.viewmodel.MemberListViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponTrashViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomDetailViewModel
@@ -442,7 +443,7 @@ fun JoinRoomScreen(
             modifier = modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("초대코드로 입장", style = MaterialTheme.typography.titleMedium)
+            Text("초대코드로 입장", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
             OutlinedTextField(
                 value = code,
                 onValueChange = { code = it.uppercase() },
@@ -462,7 +463,7 @@ fun JoinRoomScreen(
             }
             HorizontalDivider()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("공개 방", style = MaterialTheme.typography.titleMedium)
+                Text("공개 방", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
                 TextButton(onClick = { viewModel.refreshPublicRooms() }) {
                     Text("새로고침")
                 }
@@ -765,7 +766,7 @@ internal fun RoomDashboard(
             }
         }
         item {
-            Text("쿠폰 목록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+            Text("쿠폰 목록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp).gdHeading())
         }
         if (coupons.isNotEmpty()) {
             item {

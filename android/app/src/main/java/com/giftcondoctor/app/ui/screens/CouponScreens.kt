@@ -131,6 +131,7 @@ import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
 import com.giftcondoctor.app.ui.components.KeepScreenBrightWhileVisible
 import com.giftcondoctor.app.ui.components.LoadingState
+import com.giftcondoctor.app.ui.components.gdHeading
 import com.giftcondoctor.app.ui.viewmodel.AddCouponViewModel
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadStage
 import com.giftcondoctor.app.ui.viewmodel.CouponUploadState
@@ -439,7 +440,7 @@ fun AddCouponScreen(
                         Text("바코드 직접 입력")
                     }
                 }
-                Text("쿠폰 정보 확인", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("쿠폰 정보 확인", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.gdHeading())
                 OutlinedTextField(
                     value = draft.title,
                     onValueChange = draft::updateTitle,
@@ -1113,7 +1114,7 @@ private fun CouponDetailContent(
                     Text("이미지 교체")
                 }
             } else {
-                Text("새 이미지 미리보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("새 이미지 미리보기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.gdHeading())
                 SelectedImagePreview(replacement)
                 GDInfoBanner(
                     title = "확인 후 교체해 주세요",
@@ -1200,7 +1201,7 @@ private fun CouponDetailContent(
                 }
             )
         } else {
-            Text(coupon.title, style = MaterialTheme.typography.headlineSmall)
+            Text(coupon.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.gdHeading())
             Text(coupon.brand.ifBlank { "브랜드 없음" })
             val today = remember { seoulToday() }
             GDExpiryBadge(
@@ -1353,7 +1354,7 @@ private fun CouponBarcodeDialog(value: String, format: String, onDismiss: () -> 
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
-                    Text("계산대용 바코드", color = Color.Black, style = MaterialTheme.typography.titleLarge)
+                    Text("계산대용 바코드", color = Color.Black, style = MaterialTheme.typography.titleLarge, modifier = Modifier.gdHeading())
                     Text("최대 밝기 · 화면 켜짐", color = Color.DarkGray, style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = onDismiss) {
@@ -1403,7 +1404,7 @@ private fun CouponCommentsSection(
     var body by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("댓글", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("댓글", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.gdHeading())
         Text(
             "방 멤버들이 이 쿠폰에 대해 메모를 남길 수 있습니다.",
             style = MaterialTheme.typography.bodySmall,

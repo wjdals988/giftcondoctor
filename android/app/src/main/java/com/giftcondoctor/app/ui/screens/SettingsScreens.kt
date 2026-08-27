@@ -49,6 +49,7 @@ import com.giftcondoctor.app.ui.components.NotificationPermissionState
 import com.giftcondoctor.app.ui.components.NotificationPermissionStatus
 import com.giftcondoctor.app.ui.components.ReminderTimeBanner
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
+import com.giftcondoctor.app.ui.components.gdHeading
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
 
@@ -168,7 +169,7 @@ private fun NotificationDefaultsSection(
     actions: NotificationSettingsActions
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("기본 만료 알림", style = MaterialTheme.typography.titleMedium)
+        Text("기본 만료 알림", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
         ReminderTimeBanner()
         Text(
             "최소: 3일 전/당일 · 기본: 7일 전/3일 전/1일 전/당일 · 꼼꼼: 7/5/3/2/1일 전/당일",
@@ -201,7 +202,7 @@ private fun PushDiagnosticsSection(
     actions: NotificationSettingsActions
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("푸시 연결 확인", style = MaterialTheme.typography.titleMedium)
+        Text("푸시 연결 확인", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
         Text(
             "알림 권한 → FCM 기기 등록 → 서버 전송 순서로 확인합니다. 실패한 단계와 해결 방법을 바로 표시해요.",
             style = MaterialTheme.typography.bodySmall,
@@ -322,7 +323,7 @@ fun AppInfoScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             HorizontalDivider()
-            Text("변경사항", style = MaterialTheme.typography.titleMedium)
+            Text("변경사항", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
             ChangeLogEntry(
                 version = "0.1.20",
                 changes = listOf(

@@ -120,7 +120,7 @@ Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "
 | --- | --- | --- |
 | `contentDescription = null` | 19 / 40 (47.5%) | 절반이 스크린리더에서 침묵 |
 | `heading` semantics | 0 | TalkBack 제목 단위 탐색 불가 |
-| `SemanticsProperties` 직접 지정 | 0 | 상태 변화 안내(`stateDescription`) 없음 |
+| ~~`SemanticsProperties` 직접 지정~~ | ~~0~~ | **(2026-08-28 정정)** 측정 오류였다. `SemanticsProperties`는 테스트 측 클래스명이라 소스에서 0건인 것이 정상이다. 소스는 프로퍼티 세터 `stateDescription`을 쓰며 실제로 **3곳**에 있다 — 확대 배율(`CouponScreens.kt:1671`), 스위치 켜짐/꺼짐(`SettingsScreens.kt:291`), 접힘/펼쳐짐(`RoomScreens.kt:898`). 결함이 아니다 |
 | 44dp 터치 타겟 | `RoomScreens.kt:338` | 48dp 최소 기준 미달 |
 
 `contentDescription = null`은 장식용 아이콘에는 올바른 선택이다. 다만 `Common.kt:116`처럼 카드의 유일한 의미 전달 아이콘에도 `null`이 들어가 있어 항목별 재판정이 필요하다.

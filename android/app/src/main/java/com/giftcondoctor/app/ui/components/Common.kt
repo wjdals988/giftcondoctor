@@ -38,6 +38,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -62,7 +64,7 @@ fun GDScaffold(
         snackbarHost = snackbarHost,
         topBar = {
             TopAppBar(
-                title = { Text(title) },
+                title = { Text(title, modifier = Modifier.gdHeading()) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
@@ -324,3 +326,15 @@ fun GDExpiryBadge(
         Text(text, color = content, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     }
 }
+
+/**
+ * TalkBack 제목 단위 탐색용 heading 표식.
+ *
+ * 스크린리더 사용자는 화면 전체를 순차 탐색하지 않고 제목만 건너뛰며 구조를 파악한다.
+ * heading() 이 없으면 이 탐색이 불가능해 긴 설정 화면에서 원하는 섹션까지 모든 요소를
+ * 하나씩 지나가야 한다.
+ *
+ * 적용 대상은 화면 제목과 섹션 제목뿐이다. 목록 항목의 제목(쿠폰 이름, 방 이름)에는
+ * 붙이지 않는다. 항목이 100개면 heading 이 100개가 되어 제목 탐색 자체가 무의미해진다.
+ */
+fun Modifier.gdHeading(): Modifier = semantics { heading() }
