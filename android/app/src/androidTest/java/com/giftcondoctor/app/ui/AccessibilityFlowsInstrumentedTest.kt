@@ -40,6 +40,18 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
+import com.giftcondoctor.app.ui.components.GDScaffold
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Column
 
 @RunWith(AndroidJUnit4::class)
 class AccessibilityFlowsInstrumentedTest {
@@ -255,5 +267,47 @@ class AccessibilityFlowsInstrumentedTest {
 
         composeRule.onNodeWithText(member.displayName)
             .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Heading))
+    }
+
+    @Test
+    fun iconOnlyControlsCarryContentDescriptionAndDecorativeIconsStaySilent() {
+        // 이 저장소의 contentDescription 운용 불변식을 고정한다.
+        //   - 아이콘만 있는 컨트롤: 설명 필수. 없으면 스크린리더에서 정체불명 버튼이 된다.
+        //   - 텍스트가 함께 있는 장식 아이콘: null 필수. 설명을 붙이면
+        //     "로그인 로그인" 처럼 이중 announce 가 발생한다.
+        // 2026-08-28 전수 감사에서 소스 40건이 이미 이 규칙을 지키고 있음을 확인했고,
+        // 이 테스트는 그 상태가 깨지는 것을 막는다.
+        setLargeFontContent {
+            GDScaffold(
+                title = "테스트 화면",
+                onBack = {},
+                actions = {
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.Settings, contentDescription = "설정")
+                    }
+                }
+            ) { modifier ->
+                Column(modifier) {
+                    // 장식 아이콘 + 텍스트 조합. 아이콘은 침묵해야 한다.
+                    Button(onClick = {}) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Text(DECORATIVE_BUTTON_LABEL)
+                    }
+                }
+            }
+        }
+
+        // 아이콘 전용 컨트롤은 설명으로 찾을 수 있어야 한다.
+        composeRule.onNodeWithContentDescription("뒤로").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("설정").assertIsDisplayed()
+
+        // 장식 아이콘 쌍은 텍스트 하나로만 announce 되어야 한다.
+        composeRule.onNodeWithText(DECORATIVE_BUTTON_LABEL).assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription(DECORATIVE_BUTTON_LABEL)
+            .assertCountEquals(0)
+    }
+
+    private companion object {
+        const val DECORATIVE_BUTTON_LABEL = "방 만들기"
     }
 }
