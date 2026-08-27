@@ -2,6 +2,7 @@ package com.giftcondoctor.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -276,7 +277,9 @@ fun GDStatCard(label: String, value: String, modifier: Modifier = Modifier, acce
 
 /**
  * 만료 긴급도 배지. 색·아이콘·텍스트 3중으로 인코딩해 색각 이상 사용자도 구분할 수 있게 한다.
- * 색 대비는 모두 WCAG AA(4.5:1) 이상이다 — 긴급 5.84:1, 임박 6.07:1, 여유 5.83:1, 종료 5.69:1.
+ * 라이트·다크 8개 조합 모두 WCAG AA(4.5:1) 이상이다.
+ * 라이트 — 긴급 5.84, 임박 6.07, 여유 5.83, 종료 5.69
+ * 다크 — 긴급 9.53, 임박 10.04, 여유 8.34, 종료 7.84
  */
 @Composable
 fun GDExpiryBadge(
@@ -284,21 +287,30 @@ fun GDExpiryBadge(
     text: String,
     modifier: Modifier = Modifier
 ) {
+    val dark = isSystemInDarkTheme()
     val container: Color
     val content: Color
     val icon: ImageVector
     when (urgency) {
         ExpiryUrgency.Critical -> {
-            container = Color(0xFFFDECEC); content = Color(0xFFB32025); icon = Icons.Default.ErrorOutline
+            container = if (dark) Color(0xFF3A1416) else Color(0xFFFDECEC)
+            content = if (dark) Color(0xFFFFB3AE) else Color(0xFFB32025)
+            icon = Icons.Default.ErrorOutline
         }
         ExpiryUrgency.Soon -> {
-            container = Color(0xFFFFF4D6); content = Color(0xFF7A5600); icon = Icons.Default.WarningAmber
+            container = if (dark) Color(0xFF332401) else Color(0xFFFFF4D6)
+            content = if (dark) Color(0xFFF5CE7A) else Color(0xFF7A5600)
+            icon = Icons.Default.WarningAmber
         }
         ExpiryUrgency.Relaxed -> {
-            container = Color(0xFFE7F8F4); content = Color(0xFF006B63); icon = Icons.Default.Schedule
+            container = if (dark) Color(0xFF0B3B36) else Color(0xFFE7F8F4)
+            content = if (dark) Color(0xFF8FE3D6) else Color(0xFF006B63)
+            icon = Icons.Default.Schedule
         }
         ExpiryUrgency.Ended -> {
-            container = Color(0xFFF4F7F9); content = Color(0xFF5A636B); icon = Icons.Default.CheckCircle
+            container = if (dark) Color(0xFF22272A) else Color(0xFFF4F7F9)
+            content = if (dark) Color(0xFFB4BCC1) else Color(0xFF5A636B)
+            icon = Icons.Default.CheckCircle
         }
     }
     Row(

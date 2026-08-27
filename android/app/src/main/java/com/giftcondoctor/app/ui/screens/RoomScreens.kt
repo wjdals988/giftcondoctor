@@ -3,6 +3,7 @@ package com.giftcondoctor.app.ui.screens
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -1059,7 +1060,8 @@ private fun CouponListThumbnail(
 
 @Composable
 private fun CouponCategoryThumbnail(coupon: Coupon, loading: Boolean = false) {
-    val category = remember(coupon.title, coupon.brand) { couponCategory(coupon.title, coupon.brand) }
+    val dark = isSystemInDarkTheme()
+    val category = remember(coupon.title, coupon.brand, dark) { couponCategory(coupon.title, coupon.brand, dark) }
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -1089,25 +1091,25 @@ private data class CouponCategory(
     val contentColor: Color
 )
 
-private fun couponCategory(title: String, brand: String): CouponCategory {
+private fun couponCategory(title: String, brand: String, dark: Boolean): CouponCategory {
     val source = "$title $brand".lowercase()
     fun containsAny(keywords: List<String>): Boolean = keywords.any(source::contains)
 
     return when {
         containsAny(CAFE_KEYWORDS) ->
-            CouponCategory("카페", Icons.Default.LocalCafe, Color(0xFFE3F7F2), Color(0xFF008E85))
+            CouponCategory("카페", Icons.Default.LocalCafe, if (dark) Color(0xFF0E2F2C) else Color(0xFFE3F7F2), if (dark) Color(0xFF7FD8CE) else Color(0xFF008E85))
         containsAny(FOOD_KEYWORDS) ->
-            CouponCategory("음식", Icons.Default.Restaurant, Color(0xFFFFF0E7), Color(0xFFB8491A))
+            CouponCategory("음식", Icons.Default.Restaurant, if (dark) Color(0xFF33190C) else Color(0xFFFFF0E7), if (dark) Color(0xFFF0A97F) else Color(0xFFB8491A))
         containsAny(CONVENIENCE_KEYWORDS) ->
-            CouponCategory("편의점", Icons.Default.Store, Color(0xFFE8F2FF), Color(0xFF2878D8))
+            CouponCategory("편의점", Icons.Default.Store, if (dark) Color(0xFF0F2440) else Color(0xFFE8F2FF), if (dark) Color(0xFF9CC6F5) else Color(0xFF2878D8))
         containsAny(CINEMA_KEYWORDS) ->
-            CouponCategory("영화", Icons.Default.Theaters, Color(0xFFF1EAFF), Color(0xFF7B52CC))
+            CouponCategory("영화", Icons.Default.Theaters, if (dark) Color(0xFF241A3D) else Color(0xFFF1EAFF), if (dark) Color(0xFFC4AEF0) else Color(0xFF7B52CC))
         containsAny(TRAVEL_KEYWORDS) ->
-            CouponCategory("여행", Icons.Default.Flight, Color(0xFFE7F7FF), Color(0xFF0070A3))
+            CouponCategory("여행", Icons.Default.Flight, if (dark) Color(0xFF0A2A3D) else Color(0xFFE7F7FF), if (dark) Color(0xFF8FD0F0) else Color(0xFF0070A3))
         containsAny(SHOPPING_KEYWORDS) ->
-            CouponCategory("쇼핑", Icons.Default.ShoppingBag, Color(0xFFFFF7D9), Color(0xFF7A5600))
+            CouponCategory("쇼핑", Icons.Default.ShoppingBag, if (dark) Color(0xFF2E2405) else Color(0xFFFFF7D9), if (dark) Color(0xFFE8C878) else Color(0xFF7A5600))
         else ->
-            CouponCategory("쿠폰", Icons.Default.CardGiftcard, Color(0xFFEAFBF6), Color(0xFF00786F))
+            CouponCategory("쿠폰", Icons.Default.CardGiftcard, if (dark) Color(0xFF0B3B36) else Color(0xFFEAFBF6), if (dark) Color(0xFF8FE3D6) else Color(0xFF00786F))
     }
 }
 

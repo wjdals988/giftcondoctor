@@ -3,5 +3,6 @@
     <style name="Theme.Giftcondoctor" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/white</item>
     </style>
 </resources>
