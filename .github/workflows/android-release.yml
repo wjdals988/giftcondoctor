@@ -72,12 +72,14 @@ jobs:
         uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Validate build secrets
         env:
+          RELEASE_MODE: ${{ inputs.mode }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
           ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
           ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
           ANDROID_GOOGLE_WEB_CLIENT_ID: ${{ secrets.ANDROID_GOOGLE_WEB_CLIENT_ID }}
+          DASHBOARD_UPDATE_TOKEN: ${{ secrets.DASHBOARD_UPDATE_TOKEN }}
         run: |
           set -euo pipefail
           missing=()
@@ -87,8 +89,22 @@ jobs:
           do
             if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
+          if [ "$RELEASE_MODE" = "release" ] && [ -z "$DASHBOARD_UPDATE_TOKEN" ]; then
+            missing+=("DASHBOARD_UPDATE_TOKEN")
+          fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+      - name: Validate dashboard write access
+        if: inputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.DASHBOARD_UPDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          can_push="$(gh api "repos/$DASHBOARD_REPO" --jq '.permissions.push // false')"
+          if [ "$can_push" != "true" ]; then
+            echo "DASHBOARD_UPDATE_TOKEN cannot push to $DASHBOARD_REPO."
             exit 1
           fi
       - name: Set up JDK 17

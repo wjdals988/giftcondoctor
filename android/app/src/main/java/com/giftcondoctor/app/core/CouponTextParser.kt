@@ -61,7 +61,10 @@ private val couponKeywords = listOf(
 )
 
 private val datePattern = Regex("""(?<!\d)(20\d{2}|\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*(?:일)?(?!\d)""")
-private val noisyPattern = Regex("""(?i)(barcode|pin|order|주문|바코드|쿠폰번호|인증번호|유효기간|만료|사용기간|까지|주의|환불|취소|문의|http|www|\d{6,})""")
+private val noisyPattern = Regex("""(?i)(barcode|pin|order|주문|발행일|구매일|결제일|바코드|쿠폰번호|인증번호|유효기간|만료|사용기간|까지|주의|환불|취소|문의|http|www|\d{6,})""")
+private val expiryLabels = listOf("유효기간", "사용기간", "만료일", "만료")
+private val nonExpiryDateLabels = listOf("주문일", "발행일", "구매일", "결제일", "승인일")
+private val dateRangeSeparator = Regex("""(?:~|〜|–|—|부터)""")
 
 fun parseCouponText(text: String, today: LocalDate = LocalDate.now(ZoneIdProvider.seoul)): CouponTextSuggestion {
     val normalizedLines = text
@@ -102,23 +105,67 @@ private fun detectTitle(lines: List<String>, brand: String?): String? {
 }
 
 private fun detectExpiry(text: String, today: LocalDate): LocalDate? {
-    return datePattern.findAll(text)
+    val candidates = datePattern.findAll(text)
         .mapNotNull { match ->
             val yearText = match.groupValues[1]
             val year = if (yearText.length == 2) 2000 + yearText.toInt() else yearText.toInt()
             val month = match.groupValues[2].toInt()
             val day = match.groupValues[3].toInt()
             val date = runCatching { LocalDate.of(year, month, day) }.getOrNull() ?: return@mapNotNull null
-            val contextStart = (match.range.first - 20).coerceAtLeast(0)
-            val contextEnd = (match.range.last + 12).coerceAtMost(text.lastIndex)
-            val context = text.substring(contextStart..contextEnd)
-            val labelScore = listOf("유효기간", "사용기간", "만료", "까지").count { context.contains(it) }
-            date to labelScore
+            ExpiryDateCandidate(date, match.range)
         }
-        .filter { (date) -> date >= today.minusDays(1) }
+        .filter { it.date >= today.minusDays(1) }
+        .toList()
+
+    return candidates
+        .mapIndexed { index, candidate ->
+            candidate.date to expiryLabelScore(text, candidates, index)
+        }
         .sortedWith(compareByDescending<Pair<LocalDate, Int>> { it.second }.thenBy { it.first })
         .firstOrNull()
         ?.first
+}
+
+private data class ExpiryDateCandidate(val date: LocalDate, val range: IntRange)
+
+private fun expiryLabelScore(
+    text: String,
+    candidates: List<ExpiryDateCandidate>,
+    index: Int
+): Int {
+    val candidate = candidates[index]
+    val lineStart = text.lastIndexOf('\n', candidate.range.first - 1).let { if (it < 0) 0 else it + 1 }
+    val lineEnd = text.indexOf('\n', candidate.range.last + 1).let { if (it < 0) text.length else it }
+    val sameLineBefore = text.substring(lineStart, candidate.range.first).takeLast(32)
+    val sameLineAfter = text.substring(candidate.range.last + 1, lineEnd).take(16)
+    var score = nearestDateLabelScore(sameLineBefore)
+
+    if (score == 0) {
+        val previousLine = text.substring(0, lineStart).lineSequence().lastOrNull().orEmpty().takeLast(32)
+        if (expiryLabels.any(previousLine::contains)) score += 2
+    }
+    if (sameLineAfter.contains("까지")) score += 4
+
+    candidates.getOrNull(index - 1)?.let { previous ->
+        val between = text.substring(previous.range.last + 1, candidate.range.first)
+        if (dateRangeSeparator.containsMatchIn(between)) score += 3
+    }
+    candidates.getOrNull(index + 1)?.let { next ->
+        val between = text.substring(candidate.range.last + 1, next.range.first)
+        if (dateRangeSeparator.containsMatchIn(between)) score -= 2
+    }
+    return score
+}
+
+private fun nearestDateLabelScore(textBeforeDate: String): Int {
+    val labels = expiryLabels.map { it to 5 } + nonExpiryDateLabels.map { it to -6 }
+    return labels
+        .mapNotNull { (label, score) ->
+            textBeforeDate.lastIndexOf(label).takeIf { it >= 0 }?.let { index -> Triple(index, label.length, score) }
+        }
+        .maxWithOrNull(compareBy<Triple<Int, Int, Int>> { it.first }.thenBy { it.second })
+        ?.third
+        ?: 0
 }
 
 private fun String.cleanTitleCandidate(): String =
