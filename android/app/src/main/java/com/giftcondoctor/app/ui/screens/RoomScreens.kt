@@ -432,6 +432,8 @@ fun JoinRoomScreen(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val publicRooms by viewModel.publicRooms.collectAsStateWithLifecycle()
+    val publicRoomsRefreshing by viewModel.publicRoomsRefreshing.collectAsStateWithLifecycle()
+    val publicRoomsMessage by viewModel.publicRoomsMessage.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf("") }
     var selectedRoom by remember { mutableStateOf<PublicRoom?>(null) }
     var password by remember { mutableStateOf("") }
@@ -464,8 +466,16 @@ fun JoinRoomScreen(
             HorizontalDivider()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("공개 방", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
-                TextButton(onClick = { viewModel.refreshPublicRooms() }) {
-                    Text("새로고침")
+                TextButton(
+                    onClick = { viewModel.refreshPublicRooms() },
+                    enabled = !publicRoomsRefreshing,
+                    modifier = Modifier.testTag("refresh-public-rooms")
+                ) {
+                    if (publicRoomsRefreshing) {
+                        ButtonProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(if (publicRoomsRefreshing) "갱신 중..." else "새로고침")
                 }
             }
             Text(
@@ -473,6 +483,14 @@ fun JoinRoomScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            publicRoomsMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("public-rooms-refresh-error")
+                )
+            }
             when (val state = publicRooms) {
                 UiState.Loading -> Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),

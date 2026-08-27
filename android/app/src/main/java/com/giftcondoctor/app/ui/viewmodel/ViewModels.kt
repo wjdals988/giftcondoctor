@@ -206,6 +206,12 @@ class RoomListViewModel(
     private val _publicRooms = MutableStateFlow<UiState<List<PublicRoom>>>(UiState.Loading)
     val publicRooms: StateFlow<UiState<List<PublicRoom>>> = _publicRooms
 
+    private val _publicRoomsRefreshing = MutableStateFlow(false)
+    val publicRoomsRefreshing: StateFlow<Boolean> = _publicRoomsRefreshing
+
+    private val _publicRoomsMessage = MutableStateFlow<String?>(null)
+    val publicRoomsMessage: StateFlow<String?> = _publicRoomsMessage
+
     init {
         viewModelScope.launch {
             repository.observeMemberships()
@@ -234,12 +240,36 @@ class RoomListViewModel(
         onJoined(roomId)
     }
 
+    /**
+     * 공개 방 목록을 다시 불러온다.
+     *
+     * 이미 목록이 보이는 상태에서 UiState.Loading 으로 되돌리면 화면이 스피너로
+     * 교체되어 사용자가 보고 있던 내용이 사라진다. CouponPager.refresh() 가
+     * previouslyLoadedCoupons 를 보존하는 것과 같은 이유로, 재조회 중에는 기존
+     * Success 데이터를 유지하고 갱신 중 여부만 별도 플래그로 알린다.
+     *
+     * 실패해도 기존 목록은 남긴다. 목록을 지우고 오류만 남기면 사용자는 방금까지
+     * 보던 정보를 잃고 재시도 외에 선택지가 없어진다.
+     */
     fun refreshPublicRooms() {
+        if (_publicRoomsRefreshing.value) return
         viewModelScope.launch {
-            _publicRooms.value = UiState.Loading
+            _publicRoomsRefreshing.value = true
+            if (_publicRooms.value !is UiState.Success) _publicRooms.value = UiState.Loading
             runCatching { repository.publicRooms() }
-                .onSuccess { _publicRooms.value = UiState.Success(it) }
-                .onFailure { _publicRooms.value = UiState.Error(it.localizedMessage ?: "공개 방 목록을 불러오지 못했습니다.") }
+                .onSuccess {
+                    _publicRooms.value = UiState.Success(it)
+                    _publicRoomsMessage.value = null
+                }
+                .onFailure { error ->
+                    val message = error.localizedMessage ?: "공개 방 목록을 불러오지 못했습니다."
+                    if (_publicRooms.value is UiState.Success) {
+                        _publicRoomsMessage.value = message
+                    } else {
+                        _publicRooms.value = UiState.Error(message)
+                    }
+                }
+            _publicRoomsRefreshing.value = false
         }
     }
 
