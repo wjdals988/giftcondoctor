@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.giftcondoctor.app.BuildConfig
+import com.giftcondoctor.app.core.ExpiryUrgency
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -267,5 +271,44 @@ fun GDStatCard(label: String, value: String, modifier: Modifier = Modifier, acce
             Text(label, color = accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+/**
+ * 만료 긴급도 배지. 색·아이콘·텍스트 3중으로 인코딩해 색각 이상 사용자도 구분할 수 있게 한다.
+ * 색 대비는 모두 WCAG AA(4.5:1) 이상이다 — 긴급 5.84:1, 임박 6.07:1, 여유 5.83:1, 종료 5.69:1.
+ */
+@Composable
+fun GDExpiryBadge(
+    urgency: ExpiryUrgency,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val container: Color
+    val content: Color
+    val icon: ImageVector
+    when (urgency) {
+        ExpiryUrgency.Critical -> {
+            container = Color(0xFFFDECEC); content = Color(0xFFB32025); icon = Icons.Default.ErrorOutline
+        }
+        ExpiryUrgency.Soon -> {
+            container = Color(0xFFFFF4D6); content = Color(0xFF7A5600); icon = Icons.Default.WarningAmber
+        }
+        ExpiryUrgency.Relaxed -> {
+            container = Color(0xFFE7F8F4); content = Color(0xFF006B63); icon = Icons.Default.Schedule
+        }
+        ExpiryUrgency.Ended -> {
+            container = Color(0xFFF4F7F9); content = Color(0xFF5A636B); icon = Icons.Default.CheckCircle
+        }
+    }
+    Row(
+        modifier = modifier
+            .background(container, MaterialTheme.shapes.small)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
+        Text(text, color = content, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     }
 }

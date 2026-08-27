@@ -100,6 +100,9 @@ import com.giftcondoctor.app.core.daysBeforeExpiry
 import com.giftcondoctor.app.core.filterAndSortCoupons
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.shouldLoadNextPage
+import com.giftcondoctor.app.core.couponDdayLabel
+import com.giftcondoctor.app.core.expiryDateLabel
+import com.giftcondoctor.app.core.expiryUrgency
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.data.model.Coupon
@@ -111,6 +114,7 @@ import com.giftcondoctor.app.data.model.RoomMembership
 import com.giftcondoctor.app.ui.components.EmptyState
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDBadge
+import com.giftcondoctor.app.ui.components.GDExpiryBadge
 import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.GDStatCard
@@ -842,12 +846,15 @@ internal fun RoomDashboard(
                 ListItem(
                     headlineContent = { Text(coupon.title, fontWeight = FontWeight.SemiBold) },
                     supportingContent = {
-                        Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${coupon.expiresLocalDate} · ${statusLabel(coupon.status)}")
+                        Text("${coupon.brand.ifBlank { "브랜드 없음" }} · ${expiryDateLabel(coupon.expiresLocalDate)} · ${statusLabel(coupon.status)}")
                     },
                     leadingContent = { CouponListThumbnail(roomId, coupon, thumbnailLoader) },
                     trailingContent = {
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            GDBadge(couponDdayText(coupon, today))
+                            GDExpiryBadge(
+                                urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
+                                text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+                            )
                             if (coupon.visibility == "private") {
                                 Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                             }
@@ -1110,17 +1117,6 @@ private val CONVENIENCE_KEYWORDS = listOf("cu", "gs25", "세븐", "이마트24",
 private val CINEMA_KEYWORDS = listOf("cgv", "메가박스", "롯데시네마", "영화", "시네마")
 private val TRAVEL_KEYWORDS = listOf("항공", "호텔", "여행", "야놀자", "여기어때", "숙박")
 private val SHOPPING_KEYWORDS = listOf("쿠팡", "네이버", "백화점", "올리브영", "상품권", "쇼핑", "마트")
-
-private fun couponDdayText(coupon: Coupon, today: LocalDate): String {
-    if (coupon.status == "used") return "사용 완료"
-    if (coupon.status == "expired") return "만료"
-    val days = daysBeforeExpiry(today, coupon.expiresLocalDate)
-    return when {
-        days < 0 -> "만료"
-        days == 0 -> "오늘"
-        else -> "D-$days"
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
