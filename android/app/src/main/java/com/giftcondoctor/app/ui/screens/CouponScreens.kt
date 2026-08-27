@@ -157,15 +157,18 @@ private val manualBarcodeFormats = listOf(
 internal enum class BatchRegistrationBackAction {
     ConfirmBusyExit,
     ConfirmCancel,
+    ConfirmDiscardDraft,
     Exit
 }
 
 internal fun batchRegistrationBackAction(
     busy: Boolean,
-    batchRemaining: Int
+    batchRemaining: Int,
+    hasUnsavedDraft: Boolean
 ): BatchRegistrationBackAction = when {
     busy -> BatchRegistrationBackAction.ConfirmBusyExit
     batchRemaining > 1 -> BatchRegistrationBackAction.ConfirmCancel
+    hasUnsavedDraft -> BatchRegistrationBackAction.ConfirmDiscardDraft
     else -> BatchRegistrationBackAction.Exit
 }
 
@@ -207,6 +210,7 @@ fun AddCouponScreen(
     var showSharingOptions by rememberSaveable { mutableStateOf(false) }
     var showSkipImageDialog by remember { mutableStateOf(false) }
     var showCancelBatchDialog by remember { mutableStateOf(false) }
+    var showDiscardDraftDialog by remember { mutableStateOf(false) }
     var showBusyExitDialog by remember { mutableStateOf(false) }
     var exitAfterUploadCancellation by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
@@ -232,9 +236,16 @@ fun AddCouponScreen(
         )
     }
     val handleBack = {
-        when (batchRegistrationBackAction(busy, batchRemaining)) {
+        when (
+            batchRegistrationBackAction(
+                busy = busy,
+                batchRemaining = batchRemaining,
+                hasUnsavedDraft = imageUri != null
+            )
+        ) {
             BatchRegistrationBackAction.ConfirmBusyExit -> showBusyExitDialog = true
             BatchRegistrationBackAction.ConfirmCancel -> showCancelBatchDialog = true
+            BatchRegistrationBackAction.ConfirmDiscardDraft -> showDiscardDraftDialog = true
             BatchRegistrationBackAction.Exit -> onBack()
         }
     }
@@ -553,6 +564,16 @@ fun AddCouponScreen(
         )
     }
 
+    if (showDiscardDraftDialog) {
+        CouponDraftExitDialog(
+            onDismiss = { showDiscardDraftDialog = false },
+            onDiscard = {
+                showDiscardDraftDialog = false
+                onBack()
+            }
+        )
+    }
+
     if (showBusyExitDialog) {
         CouponUploadExitDialog(
             uploadState = uploadState,
@@ -604,6 +625,34 @@ internal fun NextCouponPrefetchStatus(state: NextCouponPrefetchState) {
             color = MaterialTheme.colorScheme.primary
         )
     }
+}
+
+@Composable
+internal fun CouponDraftExitDialog(
+    onDismiss: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("등록을 그만둘까요?") },
+        text = { Text("선택한 이미지와 입력한 쿠폰 정보가 저장되지 않습니다.") },
+        confirmButton = {
+            TextButton(
+                onClick = onDiscard,
+                modifier = Modifier.testTag("confirm-discard-coupon-draft")
+            ) {
+                Text("입력 버리고 나가기")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("keep-editing-coupon-draft")
+            ) {
+                Text("계속 입력")
+            }
+        }
+    )
 }
 
 @Composable

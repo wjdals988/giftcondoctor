@@ -2,7 +2,23 @@
 
 이 프로젝트는 공개된 버전을 덮어쓰지 않고 새 `versionName`과 `versionCode`로 발행합니다.
 
-## Unreleased — 0.1.27 (28)
+## Unreleased — 0.1.28 (29)
+
+### UI/UX
+
+- 단일 쿠폰이나 일괄 등록 마지막 장에서 뒤로가기를 눌러도 선택 이미지와 입력값을 즉시 버리지 않고 확인
+- `계속 입력`은 현재 폼을 그대로 유지하고, `입력 버리고 나가기`를 명시적으로 선택한 경우에만 등록 큐를 정리
+- 이미지가 없는 빈 등록 화면은 추가 확인 없이 바로 나가며, 업로드 중·남은 묶음 취소 확인의 기존 우선순위 유지
+
+### 안정성·검증
+
+- 뒤로가기 정책을 업로드 중·남은 묶음·미저장 초안·빈 화면의 4단계 순수 상태로 분리
+- 단일·마지막 초안 보호와 빈 화면 즉시 이탈 단위 회귀, 확인창 유지·폐기 Compose 계측 회귀 추가
+- Android 단위 102/102, Android 16 AVD 계측 52/52, lint 오류 0건, R8 release/benchmark build 통과
+- Firestore Rules 24/24, Backend Vitest 58/58·도구 4/4, typecheck·Next production build와 npm High/Critical 0건 회귀 통과
+- GitHub signing dry-run `31884412198` 성공: signed APK 47,012,293 bytes, SHA-256 `f1569432c76004974696615fa9af3c59f347edc267eb095f8fd0243bc4e4f266`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
+
+## 배포 대기 — 0.1.27 (28)
 
 ### UI/UX
 
