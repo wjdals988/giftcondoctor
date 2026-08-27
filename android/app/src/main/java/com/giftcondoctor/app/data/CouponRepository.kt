@@ -3,7 +3,10 @@ package com.giftcondoctor.app.data
 import android.content.Context
 import android.net.Uri
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.core.CouponDuplicateCandidate
+import com.giftcondoctor.app.core.CouponDuplicateInput
 import com.giftcondoctor.app.core.DetectedCouponBarcode
+import com.giftcondoctor.app.core.findPossibleCouponDuplicates
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
 import com.giftcondoctor.app.data.model.DeletedCoupon
@@ -12,10 +15,13 @@ import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
 import com.giftcondoctor.app.data.model.toCoupon
 import com.giftcondoctor.app.data.model.toCouponComment
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -23,6 +29,8 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
+
+private const val DUPLICATE_QUERY_LIMIT_PER_VISIBILITY = 20L
 
 class CouponRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -61,6 +69,46 @@ class CouponRepository(
                 trySend(snapshot?.documents?.mapNotNull { it.toCouponComment() }?.reversed().orEmpty())
             }
         awaitClose { registration.remove() }
+    }
+
+    suspend fun findPossibleDuplicates(
+        roomId: String,
+        title: String,
+        brand: String,
+        expiresLocalDate: LocalDate,
+        barcodeValue: String?
+    ): List<CouponDuplicateCandidate> = coroutineScope {
+        val coupons = firestore.collection("rooms/$roomId/coupons")
+        val roomCoupons = async {
+            coupons
+                .whereEqualTo("visibility", "room")
+                .whereEqualTo("expiresLocalDate", expiresLocalDate.toString())
+                .orderBy(FieldPath.documentId())
+                .limit(DUPLICATE_QUERY_LIMIT_PER_VISIBILITY)
+                .get()
+                .await()
+                .documents
+        }
+        val privateCoupons = currentUid?.let { uid ->
+            async {
+                coupons
+                    .whereEqualTo("visibility", "private")
+                    .whereEqualTo("ownerUid", uid)
+                    .whereEqualTo("expiresLocalDate", expiresLocalDate.toString())
+                    .orderBy(FieldPath.documentId())
+                    .limit(DUPLICATE_QUERY_LIMIT_PER_VISIBILITY)
+                    .get()
+                    .await()
+                    .documents
+            }
+        }
+        val visibleCoupons = (roomCoupons.await() + privateCoupons?.await().orEmpty())
+            .distinctBy { it.id }
+            .mapNotNull { it.toCoupon(roomId) }
+        findPossibleCouponDuplicates(
+            input = CouponDuplicateInput(title, brand, expiresLocalDate, barcodeValue),
+            coupons = visibleCoupons
+        )
     }
 
     suspend fun addCoupon(

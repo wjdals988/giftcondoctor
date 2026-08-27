@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.giftcondoctor.app.core.NotificationMode
 import com.giftcondoctor.app.core.CouponTextSuggestion
+import com.giftcondoctor.app.core.CouponDuplicateCandidate
 import com.giftcondoctor.app.core.DetectedCouponBarcode
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.couponBarcodeValidationError
@@ -49,7 +50,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
-enum class CouponUploadStage { Idle, Preparing, Uploading, Cancelling, Saving }
+enum class CouponUploadStage { Idle, CheckingDuplicates, Preparing, Uploading, Cancelling, Saving }
 
 internal suspend fun performSafeSignOut(
     deletePushToken: suspend () -> Unit,
@@ -85,8 +86,19 @@ internal fun uploadCancellationMessage(hasPreparedUpload: Boolean): String =
         "이미지 업로드를 취소했습니다. 전송된 임시 파일이 있으면 자동 정리합니다."
     }
 
+internal fun couponRegistrationCancellationMessage(
+    cancelledStage: CouponUploadStage?,
+    hasPreparedUpload: Boolean
+): String = if (cancelledStage == CouponUploadStage.CheckingDuplicates) {
+    "중복 쿠폰 확인을 취소했습니다. 입력한 정보와 준비한 이미지는 그대로 유지했어요."
+} else {
+    uploadCancellationMessage(hasPreparedUpload)
+}
+
 internal fun canCancelCouponUpload(stage: CouponUploadStage): Boolean =
-    stage == CouponUploadStage.Preparing || stage == CouponUploadStage.Uploading
+    stage == CouponUploadStage.CheckingDuplicates ||
+        stage == CouponUploadStage.Preparing ||
+        stage == CouponUploadStage.Uploading
 
 sealed interface CouponOriginalImageState {
     data object Idle : CouponOriginalImageState
@@ -335,12 +347,17 @@ class AddCouponViewModel(
 
     private val _uploadState = MutableStateFlow(CouponUploadState())
     val uploadState: StateFlow<CouponUploadState> = _uploadState
+
+    private val _duplicateCandidates = MutableStateFlow<List<CouponDuplicateCandidate>>(emptyList())
+    val duplicateCandidates: StateFlow<List<CouponDuplicateCandidate>> = _duplicateCandidates
+
     private var addCouponJob: Job? = null
     private var imageAnalysisJob: Job? = null
     private var imageAnalysisRequestId = 0L
     private var preparedUpload: PreparedCouponUpload? = null
     private var analysisResultMessage: String? = null
     private var preparationResultMessage: String? = null
+    private var cancelledRegistrationStage: CouponUploadStage? = null
 
     fun recognizeCouponImage(context: Context, imageUri: Uri) {
         imageAnalysisJob?.cancel()
@@ -354,6 +371,7 @@ class AddCouponViewModel(
         preparationResultMessage = null
         _message.value = null
         _uploadState.value = CouponUploadState()
+        _duplicateCandidates.value = emptyList()
         _analysisMessage.value = null
         _suggestion.value = null
         _barcode.value = null
@@ -475,30 +493,34 @@ class AddCouponViewModel(
         notifyTarget: String,
         barcodeValue: String?,
         barcodeFormat: String?,
+        allowPossibleDuplicate: Boolean = false,
         onAdded: (String) -> Unit
     ) {
         if (_busy.value) return
+        _duplicateCandidates.value = emptyList()
         addCouponJob = viewModelScope.launch {
             _busy.value = true
             _message.value = null
-            _uploadState.value = CouponUploadState(CouponUploadStage.Preparing)
-            runCatching {
+            _uploadState.value = CouponUploadState(CouponUploadStage.CheckingDuplicates)
+            try {
                 require(imageUri != null) { "쿠폰 이미지를 선택해 주세요." }
                 require(title.isNotBlank()) { "쿠폰 이름을 입력해 주세요." }
                 val date = LocalDate.parse(expiresLocalDate)
-                val barcode = if (!barcodeValue.isNullOrBlank() && !barcodeFormat.isNullOrBlank()) {
-                    val normalizedValue = barcodeValue.trim()
-                    val normalizedFormat = barcodeFormat.trim()
-                    couponBarcodeValidationError(normalizedValue, normalizedFormat)?.let { error(it) }
-                    val renderable = withContext(Dispatchers.Default) {
-                        renderCouponBarcode(normalizedValue, normalizedFormat)
+                val barcode = createValidatedBarcode(barcodeValue, barcodeFormat)
+                if (!allowPossibleDuplicate) {
+                    val candidates = findDuplicateCandidates(
+                        roomId = roomId,
+                        title = title,
+                        brand = brand,
+                        expiresLocalDate = date,
+                        barcodeValue = barcode?.value
+                    )
+                    if (candidates.isNotEmpty()) {
+                        _duplicateCandidates.value = candidates
+                        return@launch
                     }
-                    require(renderable != null) { "바코드 값과 형식을 다시 확인해 주세요." }
-                    renderable.recycle()
-                    DetectedCouponBarcode(normalizedValue, normalizedFormat)
-                } else {
-                    null
                 }
+                _uploadState.value = CouponUploadState(CouponUploadStage.Preparing)
                 val upload = preparedUpload
                 val couponId = repository.addCoupon(
                     context = context,
@@ -535,30 +557,79 @@ class AddCouponViewModel(
                     upload?.close()
                 }
                 onAdded(couponId)
-            }.onFailure {
-                _message.value = if (it is CancellationException) {
-                    uploadCancellationMessage(preparedUpload != null)
-                } else {
-                    listOfNotNull(
-                        it.localizedMessage ?: "쿠폰을 추가하지 못했습니다.",
-                        preparedUpload?.let { "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요." }
-                    ).joinToString(" ")
-                }
+            } catch (error: CancellationException) {
+                _message.value = couponRegistrationCancellationMessage(
+                    cancelledStage = cancelledRegistrationStage,
+                    hasPreparedUpload = preparedUpload != null
+                )
+            } catch (error: Throwable) {
+                _message.value = listOfNotNull(
+                    error.localizedMessage ?: "쿠폰을 추가하지 못했습니다.",
+                    preparedUpload?.let { "준비한 이미지는 유지했어요. 연결을 확인하고 다시 시도해 주세요." }
+                ).joinToString(" ")
+            } finally {
+                cancelledRegistrationStage = null
+                _busy.value = false
+                _uploadState.value = CouponUploadState()
+                addCouponJob = null
             }
-            _busy.value = false
-            _uploadState.value = CouponUploadState()
-            addCouponJob = null
         }
     }
 
+    private suspend fun createValidatedBarcode(
+        barcodeValue: String?,
+        barcodeFormat: String?
+    ): DetectedCouponBarcode? {
+        if (barcodeValue.isNullOrBlank() || barcodeFormat.isNullOrBlank()) return null
+        val normalizedValue = barcodeValue.trim()
+        val normalizedFormat = barcodeFormat.trim()
+        couponBarcodeValidationError(normalizedValue, normalizedFormat)?.let { error(it) }
+        val renderable = withContext(Dispatchers.Default) {
+            renderCouponBarcode(normalizedValue, normalizedFormat)
+        }
+        require(renderable != null) { "바코드 값과 형식을 다시 확인해 주세요." }
+        renderable.recycle()
+        return DetectedCouponBarcode(normalizedValue, normalizedFormat)
+    }
+
+    private suspend fun findDuplicateCandidates(
+        roomId: String,
+        title: String,
+        brand: String,
+        expiresLocalDate: LocalDate,
+        barcodeValue: String?
+    ): List<CouponDuplicateCandidate> {
+        return try {
+            repository.findPossibleDuplicates(
+                roomId = roomId,
+                title = title,
+                brand = brand,
+                expiresLocalDate = expiresLocalDate,
+                barcodeValue = barcodeValue
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            _message.value = "중복 여부를 확인하지 못했지만 등록은 계속할 수 있어요."
+            emptyList()
+        }
+    }
+
+    fun dismissDuplicateWarning() {
+        _duplicateCandidates.value = emptyList()
+    }
+
     fun cancelUpload(): Boolean {
-        if (!canCancelCouponUpload(_uploadState.value.stage)) return false
+        val currentStage = _uploadState.value.stage
+        if (!canCancelCouponUpload(currentStage)) return false
+        cancelledRegistrationStage = currentStage
         _uploadState.value = CouponUploadState(CouponUploadStage.Cancelling)
         addCouponJob?.cancel()
         return true
     }
 
     override fun onCleared() {
+        addCouponJob?.cancel()
         imageAnalysisJob?.cancel()
         preparedUpload?.close()
         preparedUpload = null

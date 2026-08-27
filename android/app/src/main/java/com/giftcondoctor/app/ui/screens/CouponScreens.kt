@@ -103,6 +103,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.core.CouponDuplicateCandidate
+import com.giftcondoctor.app.core.CouponDuplicateReason
 import com.giftcondoctor.app.core.barcodeValuePreview
 import com.giftcondoctor.app.core.renderCouponBarcode
 import com.giftcondoctor.app.core.UiState
@@ -187,6 +189,7 @@ fun AddCouponScreen(
     val analysisSource by viewModel.analysisSource.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
+    val duplicateCandidates by viewModel.duplicateCandidates.collectAsStateWithLifecycle()
     val imageUri = initialImageUri
     var title by remember(imageUri) { mutableStateOf("") }
     var brand by remember(imageUri) { mutableStateOf("") }
@@ -209,6 +212,22 @@ fun AddCouponScreen(
         ActivityResultContracts.PickMultipleVisualMedia(AppConstants.MAX_SHARED_IMAGE_COUNT)
     ) { uris ->
         if (uris.isNotEmpty()) onImagesSelected(uris)
+    }
+    val submitCoupon: (Boolean) -> Unit = { allowPossibleDuplicate ->
+        viewModel.addCoupon(
+            context = context,
+            roomId = roomId,
+            imageUri = imageUri,
+            title = title,
+            brand = brand,
+            expiresLocalDate = expires,
+            visibility = if (privateCoupon) "private" else "room",
+            notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
+            barcodeValue = barcodeValue.takeIf { it.isNotBlank() },
+            barcodeFormat = barcodeFormat,
+            allowPossibleDuplicate = allowPossibleDuplicate,
+            onAdded = onAdded
+        )
     }
     val handleBack = {
         when (batchRegistrationBackAction(busy, batchRemaining)) {
@@ -451,21 +470,7 @@ fun AddCouponScreen(
                 }
                 Button(
                     enabled = !busy && !analysisBusy && !imagePreparationBusy,
-                    onClick = {
-                        viewModel.addCoupon(
-                            context = context,
-                            roomId = roomId,
-                            imageUri = imageUri,
-                            title = title,
-                            brand = brand,
-                            expiresLocalDate = expires,
-                            visibility = if (privateCoupon) "private" else "room",
-                            notifyTarget = if (privateCoupon || ownerOnly) "ownerOnly" else "allMembers",
-                            barcodeValue = barcodeValue.takeIf { it.isNotBlank() },
-                            barcodeFormat = barcodeFormat,
-                            onAdded = onAdded
-                        )
-                    },
+                    onClick = { submitCoupon(false) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (busy) ButtonProgressIndicator()
@@ -474,6 +479,7 @@ fun AddCouponScreen(
                             !busy && batchTotal > 1 && batchPosition < batchTotal -> "저장하고 다음 쿠폰 확인"
                             !busy && batchTotal > 1 -> "마지막 쿠폰 등록하기"
                             !busy -> "쿠폰 등록하기"
+                            uploadState.stage == CouponUploadStage.CheckingDuplicates -> "중복 쿠폰 확인 중..."
                             uploadState.stage == CouponUploadStage.Preparing -> "이미지 최적화 중..."
                             uploadState.stage == CouponUploadStage.Cancelling -> "정리 중..."
                             uploadState.stage == CouponUploadStage.Saving -> "저장 중..."
@@ -544,6 +550,69 @@ fun AddCouponScreen(
             }
         )
     }
+
+    if (duplicateCandidates.isNotEmpty()) {
+        PossibleDuplicateCouponDialog(
+            candidates = duplicateCandidates,
+            onReview = viewModel::dismissDuplicateWarning,
+            onContinue = {
+                viewModel.dismissDuplicateWarning()
+                submitCoupon(true)
+            }
+        )
+    }
+}
+
+@Composable
+internal fun PossibleDuplicateCouponDialog(
+    candidates: List<CouponDuplicateCandidate>,
+    onReview: () -> Unit,
+    onContinue: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onReview,
+        title = { Text("이미 등록된 쿠폰일 수 있어요") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("이름·만료일 또는 바코드가 같은 쿠폰을 찾았어요. 실제로 다른 쿠폰이면 계속 등록할 수 있습니다.")
+                candidates.forEach { candidate -> DuplicateCouponCandidateText(candidate) }
+                Text(
+                    "방에 공개된 쿠폰과 내가 등록한 비공개 쿠폰만 확인합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onContinue, modifier = Modifier.testTag("continue-duplicate-coupon")) {
+                Text("그래도 등록")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onReview, modifier = Modifier.testTag("review-duplicate-coupon")) {
+                Text("돌아가서 확인")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DuplicateCouponCandidateText(candidate: CouponDuplicateCandidate) {
+    val matchLabel = when (candidate.reason) {
+        CouponDuplicateReason.ExactBarcode -> "바코드 일치"
+        CouponDuplicateReason.SameDetails -> "이름·만료일 일치"
+    }
+    val visibilityLabel = if (candidate.visibility == "private") "나만 보기" else "방 공개"
+    val couponLabel = listOf(candidate.title, candidate.brand)
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+    Text(
+        "• $couponLabel · ${candidate.expiresLocalDate} · $matchLabel · $visibilityLabel",
+        style = MaterialTheme.typography.bodySmall
+    )
 }
 
 @Composable
@@ -556,11 +625,18 @@ internal fun CouponUploadExitDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(if (canCancel) "업로드를 취소하고 나갈까요?" else "안전하게 마무리하는 중이에요")
+            Text(
+                when {
+                    uploadState.stage == CouponUploadStage.CheckingDuplicates -> "확인을 취소하고 나갈까요?"
+                    canCancel -> "업로드를 취소하고 나갈까요?"
+                    else -> "안전하게 마무리하는 중이에요"
+                }
+            )
         },
         text = {
             Text(
                 when (uploadState.stage) {
+                    CouponUploadStage.CheckingDuplicates -> "중복 쿠폰 조회를 중단하고 입력 내용을 유지한 채 등록 화면을 나갑니다."
                     CouponUploadStage.Preparing -> "준비 중인 이미지를 정리한 뒤 등록 화면을 나갑니다."
                     CouponUploadStage.Uploading -> "전송을 중단하고 서버의 임시 파일까지 정리한 뒤 등록 화면을 나갑니다."
                     CouponUploadStage.Cancelling -> "이미지와 임시 파일을 정리하고 있어요. 완료되면 다시 뒤로가기를 눌러 주세요."
@@ -618,6 +694,7 @@ internal fun CouponUploadProgress(uploadState: CouponUploadState, onCancel: () -
     val uploadPercent = uploadState.percent
     val optimizationSummary = uploadState.optimizationSummary()
     val statusText = when (uploadState.stage) {
+        CouponUploadStage.CheckingDuplicates -> "같은 쿠폰이 이미 등록되어 있는지 확인하는 중이에요"
         CouponUploadStage.Preparing -> "빠른 업로드를 위해 이미지를 최적화하는 중이에요"
         CouponUploadStage.Uploading -> listOfNotNull(
             optimizationSummary,
@@ -640,9 +717,9 @@ internal fun CouponUploadProgress(uploadState: CouponUploadState, onCancel: () -
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    if (uploadState.stage in setOf(CouponUploadStage.Preparing, CouponUploadStage.Uploading)) {
+    if (canCancelCouponUpload(uploadState.stage)) {
         TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-            Text("업로드 취소")
+            Text(if (uploadState.stage == CouponUploadStage.CheckingDuplicates) "확인 취소" else "업로드 취소")
         }
     }
 }
@@ -952,6 +1029,7 @@ private fun CouponDetailContent(
                     }
                     Text(
                         when (imageReplaceState.stage) {
+                            CouponUploadStage.CheckingDuplicates -> "새 이미지 상태를 확인하는 중이에요"
                             CouponUploadStage.Preparing -> "빠른 업로드를 위해 새 이미지를 최적화하는 중이에요"
                             CouponUploadStage.Saving -> "새 이미지 적용과 이전 파일 정리 중이에요"
                             CouponUploadStage.Uploading -> listOfNotNull(
