@@ -2,7 +2,22 @@
 
 이 프로젝트는 공개된 버전을 덮어쓰지 않고 새 `versionName`과 `versionCode`로 발행합니다.
 
-## Unreleased — 0.1.28 (29)
+## Unreleased — 0.1.29 (30)
+
+### UI/UX
+
+- OCR이 이름을 찾지 못한 경우 쿠폰 이름 필드에 필수 안내를 즉시 표시하고 등록 버튼을 비활성화
+- 존재하지 않는 날짜나 `YYYY-MM-DD`가 아닌 형식은 만료일 필드 아래에서 바로 설명하고 저장 전에 수정
+- 이름과 만료일이 모두 유효해지면 등록 버튼을 즉시 활성화해 오류 확인을 위한 불필요한 제출 제거
+
+### 안정성·검증
+
+- 이름 공백과 ISO 날짜 유효성을 순수 상태로 분리하고 ViewModel의 최종 방어 검증은 유지
+- 잘못된 입력에서 중복 조회·이미지 업로드 시작 횟수를 1회에서 0회로 제한
+- Android 단위 106/106, Android 16 AVD 계측 54/54, lint 오류 0건·기존 경고 14건, R8 release/benchmark build 통과
+- GitHub signing dry-run `31885274307` 성공: signed APK 47,012,293 bytes, SHA-256 `52fef7b7a3f206634bd3a364a0794eb5c46bb6322fefbb04b4fb552ab051e022`, 새 RSA 4096bit 인증서·v2/v3·ZIP alignment 일치
+
+## 배포 대기 — 0.1.28 (29)
 
 ### UI/UX
 

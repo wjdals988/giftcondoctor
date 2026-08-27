@@ -48,4 +48,20 @@ class ExpiryDateFieldInstrumentedTest {
             assertEquals(1, selectionCount)
         }
     }
+
+    @Test
+    fun invalidDateShowsInlineError() {
+        composeRule.setContent {
+            GDTheme {
+                ExpiryDateField(
+                    value = "2026-02-30",
+                    onValueChange = {},
+                    errorText = "YYYY-MM-DD 형식의 올바른 날짜를 입력해 주세요."
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("YYYY-MM-DD 형식의 올바른 날짜를 입력해 주세요.")
+            .assertIsDisplayed()
+    }
 }
