@@ -63,3 +63,31 @@ fun couponDdayLabel(status: String, today: LocalDate, expiresLocalDate: LocalDat
 /** 사용자에게 보이는 만료일 문구. 타임존 식별자 같은 내부 값을 노출하지 않는다. */
 fun expiryDateLabel(expiresLocalDate: LocalDate): String =
     "${expiresLocalDate.year}년 ${expiresLocalDate.monthValue}월 ${expiresLocalDate.dayOfMonth}일까지"
+
+/**
+ * 만료 배지가 이미 상태를 말하고 있는지 여부.
+ *
+ * couponDdayLabel 은 종료 상태(used/expired)에서 "사용 완료" / "만료" 를 그대로
+ * 반환한다. 이때 본문에 statusLabel 을 또 넣으면 같은 값이 한 행에 두 번 나온다.
+ * 진행 중(active/reserved)일 때는 배지가 "D-7" 처럼 남은 기간만 말하므로
+ * 상태 문구가 여전히 정보를 더한다.
+ */
+fun expiryBadgeAlreadyStatesStatus(urgency: ExpiryUrgency): Boolean =
+    urgency == ExpiryUrgency.Ended
+
+/**
+ * 목록 행 보조 문구. 배지와 중복되지 않는 정보만 남긴다.
+ */
+fun couponListSupportingText(
+    brand: String,
+    status: String,
+    urgency: ExpiryUrgency,
+    expiresLocalDate: LocalDate
+): String {
+    val parts = mutableListOf(
+        brand.ifBlank { "브랜드 없음" },
+        expiryDateLabel(expiresLocalDate)
+    )
+    if (!expiryBadgeAlreadyStatesStatus(urgency)) parts += statusLabel(status)
+    return parts.joinToString(" · ")
+}
