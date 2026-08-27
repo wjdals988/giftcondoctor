@@ -1501,7 +1501,7 @@ private fun CouponCommentsSection(
             is UiState.Error -> Text(commentsState.message, color = MaterialTheme.colorScheme.error)
             is UiState.Success -> {
                 if (commentsState.data.isEmpty()) {
-                    Text("아직 댓글이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("아직 댓글이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     commentsState.data.forEach { comment ->
                         CommentRow(
