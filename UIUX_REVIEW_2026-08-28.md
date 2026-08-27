@@ -107,12 +107,29 @@ Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "
 
 | 어포던스 | 등장 횟수 | 영향 |
 | --- | --- | --- |
-| `PullToRefresh` | 0 | 목록 갱신 방법이 화면 재진입뿐 |
+| ~~`PullToRefresh`~~ | ~~0~~ | **(2026-08-28 정정)** 결함이 아니다. 모든 목록이 Firestore `addSnapshotListener` 실시간이거나 명시적 새로고침 버튼을 갖고 있다. 상세는 아래 참조 |
 | `SwipeToDismiss` | 0 | 사용완료·삭제가 상세 진입 후 버튼뿐 |
 | 스켈레톤(`shimmer`/`placeholder`) | 0 | 로딩이 `CircularProgressIndicator` 10곳뿐 |
 | `HapticFeedback` | 0 | 바코드 감지·사용완료 성공에 촉각 확인 없음 |
 
-당김 새로고침 부재가 가장 눈에 띈다. 다른 멤버가 쿠폰을 등록했을 때 목록에 반영시키는 사용자 조작이 존재하지 않는다. 스켈레톤 부재는 이미 확보한 성능 개선(P50 개선 기록)을 체감으로 전달하지 못하게 만든다 — 스피너는 진행률 정보가 없어 실제보다 느리게 느껴진다.
+**(2026-08-28 정정)** "다른 멤버가 쿠폰을 등록했을 때 목록에 반영시키는 사용자 조작이 존재하지 않는다"고 적었으나 사실과 다르다. 사용자 조작이 필요 없다 — 자동으로 반영된다.
+
+| 목록 | 갱신 방식 | 근거 |
+| --- | --- | --- |
+| 쿠폰 목록 | 실시간 | `CouponPager.kt:102` `query.addSnapshotListener` |
+| 내 방 목록 | 실시간 | `RoomRepository.kt:33` `observeMemberships` |
+| 방 정보·멤버 | 실시간 | `RoomRepository.kt:45,57` |
+| 공개 방 목록 | 진입 시 자동 + 수동 버튼 | `RoomScreens.kt:439` `LaunchedEffect`, `:467` 새로고침 `TextButton` |
+
+목록 로딩 실패 시 복구 경로도 이미 있다. `CouponPagingFooter`가 "목록을 더 불러오지 못했어요 / 다시 시도"를 렌더링하고 `retryCoupons()`에 두 지점이 연결돼 있다(`RoomScreens.kt:619,629`).
+
+### PullToRefresh 를 추가하지 않기로 한 이유
+
+관행상 사용자는 목록에서 아래로 당기는 동작을 시도한다. 그 기대를 충족한다는 가치는 실재한다. 그러나 이 저장소에서는 손해가 더 크다.
+
+`CouponPager.refresh()`는 `pages.values.flatten().forEach { it.registration?.remove() }` 로 모든 snapshot listener 를 해제하고 `attachPage`로 다시 붙인다(`CouponPager.kt:58-70`). 실시간 목록에서 이미 최신인 데이터를 위해 리스너를 전부 재생성하는 것이므로, 당길 때마다 Firestore 읽기가 추가로 발생한다. 즉 당김 새로고침은 이 구조에서 **비용만 늘리고 얻는 것이 없는 no-op**에 가깝다.
+
+당김 제스처가 정말 필요하다고 판단되면, 리스너를 재생성하지 않고 "이미 최신입니다" 피드백만 주는 형태로 별도 설계해야 한다. 지금 상태에서 `PullToRefreshBox`를 그대로 얹는 것은 회귀다. 스켈레톤 부재는 이미 확보한 성능 개선(P50 개선 기록)을 체감으로 전달하지 못하게 만든다 — 스피너는 진행률 정보가 없어 실제보다 느리게 느껴진다.
 
 ## 7. 접근성 잔여 결함
 
@@ -159,7 +176,7 @@ Kotlin 내 한글 리터럴: 712
 5. `Typography` 정의: 한글 `lineHeight` 1.5배, `LineBreak.Paragraph`
 6. `Shapes` 위계 복원: `medium 12 / large 16 / extraLarge 24`
 7. 쿠폰 상세 재구성: 이미지 + D-day → CTA `사용하기` 단일화 → 부가정보 접이식
-8. `PullToRefresh` 도입 (쿠폰 목록, 방 목록)
+8. ~~`PullToRefresh` 도입~~ → 전 목록이 실시간이라 추가하지 않음. 리스너 재생성 비용만 발생 (정정 근거는 6절)
 9. 목록 스켈레톤 도입, 스피너 대체
 10. ~~`contentDescription = null` 19곳 개별 재판정~~ → 전수 재판정 완료, 결함 아님. 불변식 회귀 테스트로 대체
 11. `heading` semantics 부여 (화면별 최상위 제목)
