@@ -13,7 +13,8 @@
 - 다음 배포 후보: `0.1.31 (32)`
 - 최신 GitHub signed R8 APK: `0.1.31 (32)`, 47,012,293 bytes, SHA-256 `1db61d26bee4ce29488ac8a9355cb5cb65e206c997f616bcc7a4ca303acf45b1`
 - GitHub Actions Secrets 6개: signing dry-run `31888994018`에서 값 조합, package·버전·production API와 새 인증서 일치 확인
-- Dashboard 갱신용 `DASHBOARD_UPDATE_TOKEN`: 현재 미등록. 실제 Release 전에 `mydashboard` 저장소 쓰기 권한이 있는 fine-grained token을 별도 등록하고 dry-run으로 갱신 스크립트를 검증해야 함
+- Dashboard 갱신용 `DASHBOARD_UPDATE_TOKEN`: 현재 미등록. `mode=release`는 "Validate required secrets" 단계에서 즉시 실패한다. 자동 경로를 쓰려면 `mydashboard` 쓰기 권한 fine-grained token을 등록해야 하고, 수동 경로는 `DASHBOARD_UPLOAD.md`를 따른다
+- 대시보드 현재 등재값: `0.1.12 (13)`. `main`이 `0.1.31 (32)`이므로 19개 버전 뒤처져 있다
 - 임시 artifact: [signed-release-apk-31888994018](https://github.com/wjdals988/giftcondoctor/actions/runs/31888994018/artifacts/9248082463), 2026-08-22 23:10 KST 만료 예정
 - `v0.1.31` tag와 GitHub Release: 실기기 로그인·FCM 회귀와 PR 검토 전까지 생성 금지
 
@@ -44,7 +45,7 @@ keytool -list -v -keystore /path/to/candidate.jks
 5. [완료] GitHub Actions signing dry-run `31888994018`에서 Secrets 6개, `0.1.31 (32)`, production API, 인증서 SHA-256, v2/v3 서명과 ZIP alignment 검증
 6. [대기] 기존 앱이 없는 AVD 또는 물리 기기에서 Google 로그인·FCM·알림 4상태·딥링크·로그아웃 token 삭제 확인
 7. [대기] `DASHBOARD_UPDATE_TOKEN` 등록 후 `mydashboard` 갱신 스크립트의 버전·URL·SHA-256·설명 동시 변경 dry-run 확인
-8. [대기] 전체 테스트와 PR 검토 완료 후 `main` 병합
+8. [완료] 2026-08-28 PR #13~#24 순차 병합으로 `main`이 `0.1.31 (32)`에 도달. `main` CI run `33085254705` 통과. 이어서 PR #25로 `backend/package.json`을 0.1.31로 동기화하고 `main` branch protection(필수 check 2개, force push·삭제 차단, strict up-to-date)을 적용
 9. [대기] GitHub Release 생성 후 대시보드의 APK URL·버전·SHA-256·설명을 같은 버전으로 갱신
 
 `Android Release APK` workflow의 기본 모드는 `signing-dry-run`입니다. 이 모드는 테스트·빌드·서명·인증서 검증과 7일 보관 artifact 업로드까지만 수행하고 tag, GitHub Release, 대시보드를 변경하지 않습니다. `release` 모드는 `main`에서만 허용되며 production environment 승인 뒤 실제 배포를 수행합니다.
