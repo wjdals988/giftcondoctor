@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.Column
+import com.giftcondoctor.app.ui.components.CouponListSkeleton
 
 @RunWith(AndroidJUnit4::class)
 class AccessibilityFlowsInstrumentedTest {
@@ -309,5 +310,16 @@ class AccessibilityFlowsInstrumentedTest {
 
     private companion object {
         const val DECORATIVE_BUTTON_LABEL = "방 만들기"
+    }
+
+    @Test
+    fun couponListSkeletonAnnouncesOnceInsteadOfExposingEachPlaceholder() {
+        // 스켈레톤 조각은 의미가 없는 회색 상자다. 개별 노출하면 스크린리더
+        // 사용자가 정체불명 요소를 여러 번 지나가야 해서 스피너보다 나쁘다.
+        // 컨테이너 하나로만 안내되는지 고정한다.
+        setLargeFontContent { CouponListSkeleton() }
+
+        composeRule.onNodeWithContentDescription("쿠폰 목록을 불러오는 중입니다")
+            .assertIsDisplayed()
     }
 }
