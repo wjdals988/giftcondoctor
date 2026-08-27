@@ -110,6 +110,10 @@ import com.giftcondoctor.app.core.barcodeValuePreview
 import com.giftcondoctor.app.core.renderCouponBarcode
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.clampZoomOffset
+import com.giftcondoctor.app.core.couponDdayLabel
+import com.giftcondoctor.app.core.expiryDateLabel
+import com.giftcondoctor.app.core.expiryUrgency
+import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
 import com.giftcondoctor.app.core.shouldLoadOriginalImage
 import com.giftcondoctor.app.core.shouldDecodeDisplayResolution
@@ -121,6 +125,7 @@ import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.CouponImageLoader
 import com.giftcondoctor.app.ui.components.ButtonProgressIndicator
 import com.giftcondoctor.app.ui.components.ErrorState
+import com.giftcondoctor.app.ui.components.GDExpiryBadge
 import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
@@ -1197,7 +1202,12 @@ private fun CouponDetailContent(
         } else {
             Text(coupon.title, style = MaterialTheme.typography.headlineSmall)
             Text(coupon.brand.ifBlank { "브랜드 없음" })
-            Text("만료일: ${coupon.expiresLocalDate} (${coupon.timezone})")
+            val today = remember { seoulToday() }
+            GDExpiryBadge(
+                urgency = expiryUrgency(coupon.status, today, coupon.expiresLocalDate),
+                text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+            )
+            Text(expiryDateLabel(coupon.expiresLocalDate))
             Text("상태: ${statusLabel(coupon.status)}")
             Text("공개범위: ${if (coupon.visibility == "private") "비공개" else "방 공개"}")
             Text("알림대상: ${if (coupon.notifyTarget == "ownerOnly") "등록자" else "전체 멤버"}")
