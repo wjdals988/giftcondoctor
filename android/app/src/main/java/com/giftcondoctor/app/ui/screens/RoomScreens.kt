@@ -140,6 +140,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import com.giftcondoctor.app.core.couponListSupportingText
 import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
+import com.giftcondoctor.app.core.shouldShowExpiryBadge
 
 @Composable
 fun RoomListScreen(
@@ -882,10 +883,12 @@ internal fun RoomDashboard(
                     leadingContent = { CouponListThumbnail(roomId, coupon, thumbnailLoader) },
                     trailingContent = {
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            GDExpiryBadge(
-                                urgency = urgency,
-                                text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
-                            )
+                            if (shouldShowExpiryBadge(urgency)) {
+                                GDExpiryBadge(
+                                    urgency = urgency,
+                                    text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+                                )
+                            }
                             if (coupon.visibility == "private") {
                                 Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                             }

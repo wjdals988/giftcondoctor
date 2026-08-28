@@ -132,4 +132,41 @@ class ReminderRulesTest {
         assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Soon))
         assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Relaxed))
     }
+
+    @Test
+    fun distantExpiryDoesNotGetAnUrgencyBadge() {
+        val today = LocalDate.parse("2026-08-28")
+        // 경계: 30일까지는 배지를 붙이고 31일부터는 붙이지 않는다.
+        assertEquals(ExpiryUrgency.Relaxed, expiryUrgency("active", today, today.plusDays(30)))
+        assertEquals(ExpiryUrgency.Distant, expiryUrgency("active", today, today.plusDays(31)))
+        assertEquals(ExpiryUrgency.Distant, expiryUrgency("active", today, today.plusDays(170)))
+
+        assertEquals(true, shouldShowExpiryBadge(ExpiryUrgency.Relaxed))
+        assertEquals(false, shouldShowExpiryBadge(ExpiryUrgency.Distant))
+        // 나머지 계층은 계속 배지를 보여준다.
+        assertEquals(true, shouldShowExpiryBadge(ExpiryUrgency.Critical))
+        assertEquals(true, shouldShowExpiryBadge(ExpiryUrgency.Soon))
+        assertEquals(true, shouldShowExpiryBadge(ExpiryUrgency.Ended))
+    }
+
+    @Test
+    fun distantCouponKeepsStatusInSupportingTextBecauseNoBadgeStatesIt() {
+        // Distant 는 배지가 없으므로 상태 문구를 빼면 상태를 알 수 없게 된다.
+        assertEquals(false, expiryBadgeAlreadyStatesStatus(ExpiryUrgency.Distant))
+        val text = couponListSupportingText(
+            brand = "GS25",
+            status = "active",
+            urgency = ExpiryUrgency.Distant,
+            expiresLocalDate = LocalDate.parse("2027-02-14")
+        )
+        assertEquals("GS25 · 2027년 2월 14일까지 · 사용 가능", text)
+    }
+
+    @Test
+    fun terminalStatusStillWinsOverDistantDate() {
+        val today = LocalDate.parse("2026-08-28")
+        // 만료일이 아무리 멀어도 서버가 종료 상태로 보면 Ended 다.
+        assertEquals(ExpiryUrgency.Ended, expiryUrgency("used", today, today.plusDays(365)))
+        assertEquals(ExpiryUrgency.Ended, expiryUrgency("expired", today, today.plusDays(365)))
+    }
 }

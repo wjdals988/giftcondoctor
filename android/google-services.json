@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1029143691466",
+    "project_id": "giftcondoctor",
+    "storage_bucket": "giftcondoctor.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1029143691466:android:7c20759723095cdbd6b433",
+        "android_client_info": {
+          "package_name": "com.giftcondoctor.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1029143691466-70oa838ottlp8ba26p7redf4uqvhiad6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.giftcondoctor.app",
+            "certificate_hash": "0a1dc141c98c9b76cc1a6ec9af1096619cc36ac9"
+          }
+        },
+        {
+          "client_id": "1029143691466-rbrjltieb8rhgliel0lglndkmutdsj95.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.giftcondoctor.app",
+            "certificate_hash": "5c93610ed21bb982766c14b8c92d499a057eae0c"
+          }
+        },
+        {
+          "client_id": "1029143691466-0reqrr6tgomdq2dd5i091vhgvk8u4v3t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCN7n-8I3l9fOrXoVlkP3cMkEiPzqEOxsA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1029143691466-0reqrr6tgomdq2dd5i091vhgvk8u4v3t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

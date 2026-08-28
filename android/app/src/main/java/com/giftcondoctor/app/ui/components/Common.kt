@@ -328,6 +328,13 @@ fun GDExpiryBadge(
             content = if (dark) Color(0xFFB4BCC1) else Color(0xFF5A636B)
             icon = Icons.Default.CheckCircle
         }
+        // Distant 는 호출부에서 shouldShowExpiryBadge 로 걸러지지만, when 을 완전하게
+        // 두어 새 계층이 추가될 때 컴파일러가 누락을 잡게 한다. 값은 Relaxed 와 같다.
+        ExpiryUrgency.Distant -> {
+            container = if (dark) Color(0xFF0B3B36) else Color(0xFFE7F8F4)
+            content = if (dark) Color(0xFF8FE3D6) else Color(0xFF006B63)
+            icon = Icons.Default.Schedule
+        }
     }
     Row(
         modifier = modifier
