@@ -158,6 +158,7 @@ import com.giftcondoctor.app.core.expiryBadgeAlreadyStatesStatus
 import com.giftcondoctor.app.core.shouldShowExpiryBadge
 import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.components.NotificationOptInPrompt
+import com.giftcondoctor.app.data.RecentCouponShortcuts
 
 private val manualBarcodeFormats = listOf(
     "CODE_128" to "CODE 128",
@@ -952,6 +953,14 @@ fun CouponDetailScreen(
                 onDismiss = { optInDismissed = true }
             )
         }
+    }
+
+    // 최근 연 쿠폰을 앱 아이콘 바로가기로 노출한다. 제목이 필요하므로 로드된 뒤에
+    // 기록한다. 매장에서 바코드까지 가는 경로를 줄이는 것이 목적이다.
+    val loadedCoupon = (couponState as? UiState.Success)?.data
+    LaunchedEffect(loadedCoupon?.id) {
+        val coupon = loadedCoupon ?: return@LaunchedEffect
+        RecentCouponShortcuts.record(context, roomId, couponId, coupon.title)
     }
 
     CouponAddedFeedbackEffect(

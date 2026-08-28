@@ -47,6 +47,7 @@ import com.giftcondoctor.app.ui.viewmodel.SessionViewModel
 import com.giftcondoctor.app.ui.viewmodel.SessionAuthState
 import com.giftcondoctor.app.core.SharedImageImportState
 import com.giftcondoctor.app.data.SharedImageImportStore
+import com.giftcondoctor.app.data.RecentCouponShortcuts
 
 object Routes {
     const val Login = "login"
@@ -318,6 +319,9 @@ fun GiftcondoctorApp(
                         couponId = couponId,
                         onBack = { navController.popBackStack() },
                         onDeleted = { deletedCoupon ->
+                            // 바로가기를 눌렀는데 "쿠폰을 찾을 수 없습니다" 가 뜨면
+                            // 앱이 고장난 것처럼 보인다. 삭제 즉시 목록에서 뺀다.
+                            RecentCouponShortcuts.forget(context, roomId, deletedCoupon.couponId)
                             deletedCouponFeedback = DeletedCouponFeedback(
                                 roomId = roomId,
                                 couponId = deletedCoupon.couponId,
