@@ -30,6 +30,8 @@ import java.io.File
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import com.giftcondoctor.app.data.model.ExpiringCoupon
+import com.giftcondoctor.app.data.model.ExpiringCoupons
 
 class BackendClient(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -92,6 +94,41 @@ class BackendClient(
                 )
             }
         }.filter { it.roomId.isNotBlank() && it.name.isNotBlank() }
+    }
+
+    suspend fun expiringCoupons(days: Int): ExpiringCoupons {
+        val response = authedRequest(
+            Request.Builder()
+                .url("$baseUrl/api/coupons/expiring?days=$days")
+                .get()
+        )
+        val root = JSONObject(response)
+        val items = root.optJSONArray("coupons") ?: JSONArray()
+        val coupons = buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val roomId = item.optString("roomId")
+                val couponId = item.optString("couponId")
+                if (roomId.isBlank() || couponId.isBlank()) continue
+                add(
+                    ExpiringCoupon(
+                        roomId = roomId,
+                        roomName = item.optString("roomName"),
+                        couponId = couponId,
+                        title = item.optString("title"),
+                        brand = item.optString("brand"),
+                        expiresLocalDate = item.optString("expiresLocalDate"),
+                        daysLeft = item.optInt("daysLeft")
+                    )
+                )
+            }
+        }
+        return ExpiringCoupons(
+            days = root.optInt("days", days),
+            coupons = coupons,
+            roomCount = root.optInt("roomCount"),
+            truncated = root.optBoolean("truncated")
+        )
     }
 
     suspend fun regenerateInvite(roomId: String): String {

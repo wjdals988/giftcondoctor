@@ -21,6 +21,33 @@ data class RoomMembership(
     val role: String
 )
 
+/**
+ * 방을 가로지르는 만료 임박 쿠폰 한 건.
+ *
+ * 서버가 사용자의 방 목록 범위에서만 모아 내려준다. 클라이언트는 collectionGroup
+ * 쿼리를 쓸 수 없어(쿠폰 문서에 멤버 식별자가 없고 규칙이 members/{uid} 존재로
+ * 판정한다) 이 화면만은 서버 집계에 의존한다.
+ */
+data class ExpiringCoupon(
+    val roomId: String,
+    val roomName: String,
+    val couponId: String,
+    val title: String,
+    val brand: String,
+    val expiresLocalDate: String,
+    val daysLeft: Int
+)
+
+/**
+ * @param truncated 상한에 걸려 잘렸는지. 잘린 사실을 숨기면 "전부 봤다" 는 오해를 만든다.
+ */
+data class ExpiringCoupons(
+    val days: Int,
+    val coupons: List<ExpiringCoupon>,
+    val roomCount: Int,
+    val truncated: Boolean
+)
+
 data class PublicRoom(
     val roomId: String,
     val name: String,

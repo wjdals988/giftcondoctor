@@ -50,6 +50,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import com.giftcondoctor.app.core.GoogleSignInErrors
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.data.model.ExpiringCoupons
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
 enum class CouponUploadStage { Idle, CheckingDuplicates, Preparing, Uploading, Cancelling, Saving }
@@ -218,6 +219,8 @@ class SessionViewModel(
     }
 }
 
+private const val DEFAULT_EXPIRING_DAYS = 7
+
 class RoomListViewModel(
     private val repository: RoomRepository = RoomRepository()
 ) : ViewModel() {
@@ -229,6 +232,19 @@ class RoomListViewModel(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
+
+    /**
+     * 방을 가로지르는 만료 임박 요약.
+     *
+     * 방 목록은 실시간이지만 이 요약은 서버 집계라 스냅샷이다. 화면에 들어올 때마다
+     * 새로 받는다. 실패해도 방 목록 자체는 보여야 하므로 별도 상태로 분리하고,
+     * 오류는 화면을 막지 않는 인라인 문구로만 다룬다.
+     */
+    private val _expiringSoon = MutableStateFlow<ExpiringCoupons?>(null)
+    val expiringSoon: StateFlow<ExpiringCoupons?> = _expiringSoon
+
+    private val _expiringSoonLoading = MutableStateFlow(false)
+    val expiringSoonLoading: StateFlow<Boolean> = _expiringSoonLoading
 
     private val _publicRooms = MutableStateFlow<UiState<List<PublicRoom>>>(UiState.Loading)
     val publicRooms: StateFlow<UiState<List<PublicRoom>>> = _publicRooms
@@ -290,6 +306,23 @@ class RoomListViewModel(
      * 실패해도 기존 목록은 남긴다. 목록을 지우고 오류만 남기면 사용자는 방금까지
      * 보던 정보를 잃고 재시도 외에 선택지가 없어진다.
      */
+    /**
+     * 만료 임박 요약을 새로 받는다.
+     *
+     * 실패는 조용히 넘긴다. 이 요약은 부가 정보이고, 방 목록은 실시간 리스너로 이미
+     * 표시되고 있다. 요약 조회가 실패했다고 화면 전체를 오류로 덮으면 사용자가 할 수
+     * 있는 일까지 막힌다.
+     */
+    fun refreshExpiringSoon(days: Int = DEFAULT_EXPIRING_DAYS) {
+        if (_expiringSoonLoading.value) return
+        viewModelScope.launch {
+            _expiringSoonLoading.value = true
+            runCatching { repository.expiringCoupons(days) }
+                .onSuccess { _expiringSoon.value = it }
+            _expiringSoonLoading.value = false
+        }
+    }
+
     fun refreshPublicRooms() {
         if (_publicRoomsRefreshing.value) return
         viewModelScope.launch {

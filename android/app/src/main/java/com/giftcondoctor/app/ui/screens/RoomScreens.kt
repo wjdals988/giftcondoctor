@@ -143,11 +143,13 @@ import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
 import com.giftcondoctor.app.core.shouldShowExpiryBadge
 import com.giftcondoctor.app.ui.components.AppVersionText
 import androidx.compose.ui.text.style.TextAlign
+import com.giftcondoctor.app.data.model.ExpiringCoupons
 
 @Composable
 fun RoomListScreen(
     sessionViewModel: SessionViewModel,
     onOpenRoom: (String) -> Unit,
+    onOpenCoupon: (String, String) -> Unit = { _, _ -> },
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit,
     onOpenNotifications: () -> Unit,
@@ -163,6 +165,9 @@ fun RoomListScreen(
     // 생성이 끝나면 화면이 방으로 이동하지만, 실패하면 이 화면에 남는다.
     // busy 가 내려갔는데 아직 이동하지 않았다면 다시 누를 수 있게 되돌린다.
     LaunchedEffect(busy) { if (!busy) creatingPersonalRoom = false }
+    val expiringSoon by viewModel.expiringSoon.collectAsStateWithLifecycle()
+    // 방 목록은 실시간이지만 이 요약은 서버 집계라 스냅샷이다. 화면에 들어올 때 받는다.
+    LaunchedEffect(Unit) { viewModel.refreshExpiringSoon() }
     val onStartPersonalRoom = {
         creatingPersonalRoom = true
         viewModel.createPersonalRoom(onOpenRoom)
@@ -210,6 +215,9 @@ fun RoomListScreen(
                             )
                         }
                     } else {
+                        expiringSoon?.let { summary ->
+                            ExpiringSoonCard(summary = summary, onOpenCoupon = onOpenCoupon)
+                        }
                         if (notificationPermission.runtimeRequired && !notificationPermission.granted) {
                             NotificationPermissionStatus(notificationPermission)
                         } else {
@@ -1150,6 +1158,83 @@ private data class CouponCategory(
     val containerColor: Color,
     val contentColor: Color
 )
+
+/**
+ * 방을 가로지르는 만료 임박 요약.
+ *
+ * 이 앱에는 방 무관 전체 쿠폰 화면이 없어서, 방이 여러 개면 지금 써야 할 쿠폰을 찾으려
+ * 방을 순회해야 했다. 서버는 이미 cron 에서 같은 계산을 하고 있었으므로 그 결과를
+ * 방 목록 맨 위에 드러낸다.
+ *
+ * 항목이 없으면 카드를 그리지 않는다. "0개" 를 위해 자리를 차지할 이유가 없다.
+ */
+@Composable
+internal fun ExpiringSoonCard(
+    summary: ExpiringCoupons,
+    onOpenCoupon: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (summary.coupons.isEmpty()) return
+    val today = remember { seoulToday() }
+    Card(
+        modifier = modifier.fillMaxWidth().testTag("expiring-soon-card"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "${summary.days}일 안에 만료 ${summary.coupons.size}개",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.gdHeading()
+            )
+            // 상위 3개만 미리 보여준다. 방 목록이 주인공인 화면이므로 요약이
+            // 화면을 밀어내면 안 된다.
+            summary.coupons.take(3).forEach { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenCoupon(item.roomId, item.couponId) }
+                        .testTag("expiring-soon-item-${item.couponId}")
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(
+                            listOf(item.roomName, item.brand).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    val expires = runCatching { LocalDate.parse(item.expiresLocalDate) }.getOrNull()
+                    if (expires != null) {
+                        GDExpiryBadge(
+                            urgency = expiryUrgency("active", today, expires),
+                            text = couponDdayLabel("active", today, expires)
+                        )
+                    }
+                }
+            }
+            if (summary.coupons.size > 3) {
+                Text(
+                    "외 ${summary.coupons.size - 3}개",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            // 잘린 사실을 숨기면 "전부 봤다" 는 오해를 만든다.
+            if (summary.truncated) {
+                Text(
+                    "일부만 표시했어요. 방에 들어가면 전체를 볼 수 있습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
 
 private fun couponCategory(title: String, brand: String, dark: Boolean): CouponCategory {
     val source = "$title $brand".lowercase()
