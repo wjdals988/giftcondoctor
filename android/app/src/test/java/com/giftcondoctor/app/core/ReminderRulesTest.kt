@@ -169,4 +169,43 @@ class ReminderRulesTest {
         assertEquals(ExpiryUrgency.Ended, expiryUrgency("used", today, today.plusDays(365)))
         assertEquals(ExpiryUrgency.Ended, expiryUrgency("expired", today, today.plusDays(365)))
     }
+
+    @Test
+    fun undoWindowMatchesTheFirestoreRule() {
+        // 규칙이 5분이므로 화면도 5분이어야 한다. 화면이 더 길면 눌러도 막히는
+        // 죽은 버튼이 되고, 더 짧으면 되돌릴 수 있는 기회를 감춘다.
+        assertEquals(5L, UNDO_MARK_USED_WINDOW_MINUTES)
+    }
+
+    @Test
+    fun undoIsAllowedOnlyInsideTheWindowForTheSameUser() {
+        val usedAt = 1_700_000_000_000L
+        val within = usedAt + 4 * 60_000
+        val onBoundary = usedAt + 5 * 60_000
+        val past = usedAt + 5 * 60_000 + 1
+
+        assertEquals(true, canUndoMarkUsed("used", "me", "me", usedAt, within))
+        assertEquals("경계 시각은 포함한다", true, canUndoMarkUsed("used", "me", "me", usedAt, onBoundary))
+        assertEquals(false, canUndoMarkUsed("used", "me", "me", usedAt, past))
+    }
+
+    @Test
+    fun undoIsBlockedForOtherUsersAndOtherStatuses() {
+        val usedAt = 1_700_000_000_000L
+        val now = usedAt + 60_000
+        assertEquals("처리자가 아니면 불가", false, canUndoMarkUsed("used", "other", "me", usedAt, now))
+        assertEquals("로그인하지 않았으면 불가", false, canUndoMarkUsed("used", "me", null, usedAt, now))
+        assertEquals("사용 완료가 아니면 불가", false, canUndoMarkUsed("active", "me", "me", usedAt, now))
+        assertEquals("시각이 없으면 불가", false, canUndoMarkUsed("used", "me", "me", null, now))
+    }
+
+    @Test
+    fun remainingLabelCountsDownInMinutes() {
+        val usedAt = 1_700_000_000_000L
+        assertEquals("4분 남음", undoMarkUsedRemainingLabel(usedAt, usedAt + 60_000))
+        assertEquals("1분 남음", undoMarkUsedRemainingLabel(usedAt, usedAt + 4 * 60_000))
+        // 30초 단위로 세지 않는다. 계산대 앞에서 조급해질 뿐이다.
+        assertEquals("1분 미만 남음", undoMarkUsedRemainingLabel(usedAt, usedAt + 4 * 60_000 + 30_000))
+        assertEquals("곧 마감", undoMarkUsedRemainingLabel(usedAt, usedAt + 5 * 60_000 + 1))
+    }
 }
