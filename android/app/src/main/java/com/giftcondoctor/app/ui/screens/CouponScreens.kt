@@ -156,6 +156,8 @@ import com.giftcondoctor.app.ui.components.GDBadge
 import androidx.compose.material.icons.filled.ExpandLess
 import com.giftcondoctor.app.core.expiryBadgeAlreadyStatesStatus
 import com.giftcondoctor.app.core.shouldShowExpiryBadge
+import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
+import com.giftcondoctor.app.ui.components.NotificationOptInPrompt
 
 private val manualBarcodeFormats = listOf(
     "CODE_128" to "CODE 128",
@@ -926,6 +928,31 @@ fun CouponDetailScreen(
     val currentUid = viewModel.currentUid
     val snackbarHostState = remember { SnackbarHostState() }
     var usedFeedbackVersion by rememberSaveable(couponId) { mutableIntStateOf(0) }
+
+    // 방금 쿠폰을 저장한 사용자에게만, 아직 알림 권한이 없을 때 한 번 제안한다.
+    // 앱 진입 직후가 아니라 이 시점을 고른 이유는 NotificationOptInPrompt 주석 참조.
+    val notificationPermission = rememberNotificationPermissionState()
+    var optInDismissed by rememberSaveable(couponId) { mutableStateOf(false) }
+    val shouldOfferOptIn = showAddedFeedback &&
+        notificationPermission.runtimeRequired &&
+        !notificationPermission.granted &&
+        !notificationPermission.permanentlyDenied &&
+        !optInDismissed
+    if (shouldOfferOptIn) {
+        val expiryLabel = (couponState as? UiState.Success)?.data?.let { coupon ->
+            couponDdayLabel(coupon.status, remember { seoulToday() }, coupon.expiresLocalDate)
+        }
+        if (expiryLabel != null) {
+            NotificationOptInPrompt(
+                expiryLabel = expiryLabel,
+                onAllow = {
+                    optInDismissed = true
+                    notificationPermission.request()
+                },
+                onDismiss = { optInDismissed = true }
+            )
+        }
+    }
 
     CouponAddedFeedbackEffect(
         showAddedFeedback = showAddedFeedback,
