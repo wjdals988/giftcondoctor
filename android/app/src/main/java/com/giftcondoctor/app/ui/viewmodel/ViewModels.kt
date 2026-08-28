@@ -121,7 +121,21 @@ class SessionViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val pushTokenRepository: PushTokenRepository = PushTokenRepository()
 ) : ViewModel() {
-    private val _authState = MutableStateFlow(SessionAuthState.Loading)
+    /**
+     * 초기값을 동기적으로 결정한다.
+     *
+     * FirebaseAuth 는 초기화 시점에 저장된 세션을 로컬에서 복원하므로 currentUser 를
+     * 즉시 읽을 수 있다. 반면 AuthStateListener 는 비동기로 발화한다. 초기값을 항상
+     * Loading 으로 두면 리스너가 울릴 때까지 startDestination 인 로그인 화면이 그대로
+     * 렌더링되어, 이미 로그인한 사용자에게도 로그인 화면이 잠깐 스쳐 보인다.
+     *
+     * 자동 로그인은 원래 동작하고 있었지만 이 깜빡임 때문에 "매번 로그인해야 하나" 로
+     * 보였다. 동기 판정으로 첫 프레임부터 올바른 화면을 그린다.
+     */
+    private val _authState = MutableStateFlow(
+        if (authRepository.currentUid != null) SessionAuthState.Authenticated
+        else SessionAuthState.Unauthenticated
+    )
     val authState: StateFlow<SessionAuthState> = _authState
 
     private val _busy = MutableStateFlow(false)

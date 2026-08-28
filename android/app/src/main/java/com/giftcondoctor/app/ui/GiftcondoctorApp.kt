@@ -191,7 +191,13 @@ fun GiftcondoctorApp(
                     }
                 }
         ) {
-            NavHost(navController = navController, startDestination = Routes.Login) {
+            // 이미 로그인한 사용자는 첫 프레임부터 방 목록을 본다. Login 을 고정
+            // startDestination 으로 두면 인증 상태가 확정될 때까지 로그인 화면이
+            // 렌더링되어 깜빡인다.
+            val startDestination = remember(sessionViewModel) {
+                if (sessionViewModel.currentUid != null) Routes.Rooms else Routes.Login
+            }
+            NavHost(navController = navController, startDestination = startDestination) {
                 composable(Routes.Login) {
                     LoginScreen(
                         sessionViewModel = sessionViewModel,
