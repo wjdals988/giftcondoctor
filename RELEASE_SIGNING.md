@@ -58,6 +58,25 @@ keytool -list -v -keystore /path/to/candidate.jks
 - keystore와 비밀번호 복구 문서는 서로 다른 위치에 보관합니다.
 - 복원 시험으로 백업 사본의 인증서 SHA-256을 분기마다 비교합니다.
 
+## Google 로그인과 서명 인증서 (2026-08-28 추가)
+
+Google 로그인은 **서명 인증서 SHA-1 이 Firebase Android 앱에 등록된 빌드에서만** 동작한다. 등록되지 않은 인증서로 서명된 APK 는 `ApiException` 상태 코드 `10`(`DEVELOPER_ERROR`)으로 실패한다.
+
+현재 `android/app/google-services.json` 에 등록된 인증서 해시는 2개다.
+
+| 해시 | 정체 |
+| --- | --- |
+| `0a1dc141c98c9b76cc1a6ec9af1096619cc36ac9` | 새 release 인증서. 이 문서 상단의 SHA-1 과 일치 |
+| `5c93610ed21bb982766c14b8c92d499a057eae0c` | 미확인. 과거에 등록된 debug 인증서로 추정 |
+
+2026-08-28 기준 개발 머신의 debug keystore(`~/.android/debug.keystore`) SHA-1 은 `1a2dc063a2979ccf5d84951acf51f968cbd41972` 이고, **위 목록에 없다.**
+
+즉 이 머신에서 만든 `assembleDebug` APK 는 Google 로그인이 실패한다. release 서명 APK 는 `0a1dc141...` 이 등록돼 있으므로 영향받지 않는다.
+
+debug 빌드에서 Google 로그인을 테스트하려면 Firebase 콘솔의 Android 앱 설정에 위 debug SHA-1 을 추가하고 `google-services.json` 을 다시 내려받아야 한다. debug keystore 는 머신마다 다르게 생성되므로, 개발자가 늘어나면 각자의 SHA-1 을 등록해야 한다.
+
+이메일·비밀번호 로그인은 인증서와 무관하므로 debug 빌드에서도 동작한다.
+
 ## GitHub Actions Secrets
 
 - `GOOGLE_SERVICES_JSON_BASE64`
