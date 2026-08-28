@@ -2,6 +2,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "./firebaseAdmin";
 import { ApiError } from "./http";
+import { resolveDisplayName } from "@/lib/displayName";
 
 export async function requireUser(request: Request): Promise<DecodedIdToken> {
   const header = request.headers.get("authorization") ?? "";
@@ -64,7 +65,7 @@ export async function requireCouponAccess(roomId: string, couponId: string, uid:
 
 export function userProfile(token: DecodedIdToken) {
   return {
-    displayName: token.name ?? token.email ?? "이름 없음",
+    displayName: resolveDisplayName(token.name, token.email, token.uid),
     email: token.email ?? null,
     photoUrl: token.picture ?? null
   };

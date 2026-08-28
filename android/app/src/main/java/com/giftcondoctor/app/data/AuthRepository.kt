@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.io.IOException
+import com.giftcondoctor.app.core.resolveDisplayName
 
 class AuthRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -77,7 +78,7 @@ class AuthRepository(
         firestore.runTransaction { transaction ->
             val existing = transaction.get(ref)
             val data = mutableMapOf<String, Any?>(
-            "displayName" to (user.displayName ?: user.email ?: "이름 없음"),
+            "displayName" to resolveDisplayName(user.displayName, user.email, user.uid),
             "email" to user.email,
             "photoUrl" to user.photoUrl?.toString(),
             "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
