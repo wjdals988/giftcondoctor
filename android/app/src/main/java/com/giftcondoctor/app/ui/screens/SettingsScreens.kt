@@ -52,6 +52,7 @@ import com.giftcondoctor.app.ui.components.rememberNotificationPermissionState
 import com.giftcondoctor.app.ui.components.gdHeading
 import com.giftcondoctor.app.ui.viewmodel.SettingsViewModel
 import com.giftcondoctor.app.ui.viewmodel.RoomListViewModel
+import com.giftcondoctor.app.ui.components.appVersionLabel
 
 @Composable
 fun NotificationSettingsScreen(
@@ -318,12 +319,22 @@ fun AppInfoScreen(onBack: () -> Unit) {
         ) {
             Text("기프티콘닥터", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "버전 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                appVersionLabel(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
+            ChangeLogEntry(
+                version = "0.1.32",
+                changes = listOf(
+                    "시스템 다크 모드를 지원합니다. 계산대용 바코드 화면은 스캐너 인식을 위해 흰 배경을 유지합니다.",
+                    "버튼과 입력 필드 색 대비를 WCAG AA 기준으로 교정하고 한글 본문 행간을 넓혔습니다.",
+                    "만료 임박도를 색·아이콘·문구 3중으로 표시하고, 30일 넘게 남은 쿠폰에는 D-day를 붙이지 않습니다.",
+                    "바코드 자동 감지와 사용 완료 시 짧은 진동으로 알려드립니다.",
+                    "Google 로그인이 실패하면 원인을 화면에 표시합니다."
+                )
+            )
             ChangeLogEntry(
                 version = "0.1.20",
                 changes = listOf(
