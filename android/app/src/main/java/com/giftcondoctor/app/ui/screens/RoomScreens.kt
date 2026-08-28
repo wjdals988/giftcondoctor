@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -655,6 +657,7 @@ fun RoomDetailScreen(
     LaunchedEffect(roomId) { viewModel.start(roomId) }
     val room by viewModel.room.collectAsStateWithLifecycle()
     val coupons by viewModel.coupons.collectAsStateWithLifecycle()
+    val favoriteCouponIds by viewModel.favoriteCouponIds.collectAsStateWithLifecycle()
     val title = (room as? UiState.Success<Room>)?.data?.name ?: "쿠폰방"
     val roomData = (room as? UiState.Success<Room>)?.data
     val isOwner = roomData?.ownerUid == viewModel.currentUid
@@ -707,6 +710,8 @@ fun RoomDetailScreen(
                 onRetry = viewModel::retryCoupons,
                 onOpenCoupon = onOpenCoupon,
                 onAddCoupon = onAddCoupon,
+                favoriteCouponIds = favoriteCouponIds,
+                onToggleFavorite = { couponId -> viewModel.toggleFavorite(roomId, couponId) },
                 modifier = modifier
             )
         }
@@ -762,6 +767,8 @@ internal fun RoomDashboard(
     onRetry: () -> Unit,
     onOpenCoupon: (String) -> Unit,
     onAddCoupon: () -> Unit,
+    favoriteCouponIds: Set<String> = emptySet(),
+    onToggleFavorite: (String) -> Unit = {},
     modifier: Modifier,
     thumbnailLoader: suspend (String, Coupon, Int, Int) -> Bitmap? = { requestedRoomId, coupon, width, height ->
         CouponImageLoader.load(
@@ -784,8 +791,8 @@ internal fun RoomDashboard(
     val soonCount = actionable.count { daysBeforeExpiry(today, it.expiresLocalDate) in 0..3 }
     val activeCount = actionable.count()
     val usedCount = coupons.count { it.status == "used" }
-    val visibleCoupons = remember(coupons, searchQuery, selectedFilter, today) {
-        filterAndSortCoupons(coupons, searchQuery, selectedFilter, today)
+    val visibleCoupons = remember(coupons, searchQuery, selectedFilter, today, favoriteCouponIds) {
+        filterAndSortCoupons(coupons, searchQuery, selectedFilter, today, favoriteCouponIds)
     }
     val shouldLoadMore by remember(listState, hasMore, isLoadingMore, pagingError) {
         derivedStateOf {
@@ -873,7 +880,8 @@ internal fun RoomDashboard(
             }
             item {
                 Text(
-                    "불러온 ${coupons.size}개 중 ${visibleCoupons.size}개 · 만료 임박순",
+                    "불러온 ${coupons.size}개 중 ${visibleCoupons.size}개 · " +
+                        if (favoriteCouponIds.isEmpty()) "만료 임박순" else "즐겨찾기 먼저, 만료 임박순",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -938,15 +946,34 @@ internal fun RoomDashboard(
                     },
                     leadingContent = { CouponListThumbnail(roomId, coupon, thumbnailLoader) },
                     trailingContent = {
-                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (shouldShowExpiryBadge(urgency)) {
-                                GDExpiryBadge(
-                                    urgency = urgency,
-                                    text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
-                                )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (shouldShowExpiryBadge(urgency)) {
+                                    GDExpiryBadge(
+                                        urgency = urgency,
+                                        text = couponDdayLabel(coupon.status, today, coupon.expiresLocalDate)
+                                    )
+                                }
+                                if (coupon.visibility == "private") {
+                                    Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                }
                             }
-                            if (coupon.visibility == "private") {
-                                Text("비공개", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                            val favorited = coupon.id in favoriteCouponIds
+                            IconButton(
+                                onClick = { onToggleFavorite(coupon.id) },
+                                modifier = Modifier.testTag("coupon-favorite-${coupon.id}")
+                            ) {
+                                Icon(
+                                    if (favorited) Icons.Default.Star else Icons.Default.StarBorder,
+                                    // 상태를 아이콘 모양으로만 알리면 화면을 못 보는
+                                    // 사용자에게는 전달되지 않는다. 설명에 상태를 담는다.
+                                    contentDescription = if (favorited) "즐겨찾기 해제" else "즐겨찾기에 추가",
+                                    tint = if (favorited) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
                             }
                         }
                     }

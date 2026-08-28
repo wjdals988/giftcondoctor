@@ -183,6 +183,29 @@ service cloud.firestore {
           && request.resource.data.appVersion.size() <= 30;
       }
 
+      // 즐겨찾기는 사용자별 값이다. 쿠폰 문서에 favoritedBy 배열을 두면 남의
+      // 즐겨찾기 때문에 쿠폰 문서가 갱신되고, 그 쓰기를 허용하려면 쿠폰 규칙을
+      // 넓혀야 한다. 사용자 하위 컬렉션에 두면 쿠폰 규칙을 건드리지 않는다.
+      //
+      // 여기에는 참조(roomId/couponId)만 담는다. 제목·브랜드를 복사해 두면
+      // 쿠폰을 수정했을 때 즐겨찾기 목록만 옛 정보를 보이게 된다.
+      match /favorites/{favoriteId} {
+        allow read, delete: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && favoriteId == request.resource.data.roomId + "__" + request.resource.data.couponId
+          && request.resource.data.keys().hasOnly(["roomId", "couponId", "createdAt"])
+          && request.resource.data.roomId is string
+          && request.resource.data.roomId.size() > 0
+          && request.resource.data.roomId.size() <= 128
+          && request.resource.data.couponId is string
+          && request.resource.data.couponId.size() > 0
+          && request.resource.data.couponId.size() <= 128
+          // 즐겨찾기는 접근 권한이 아니다. 방 멤버가 아닌 쿠폰을 담아 둘 수는
+          // 있어도 그 쿠폰을 읽는 것은 여전히 쿠폰 규칙이 판정한다. 그래도
+          // 무의미한 문서가 쌓이지 않게 멤버십을 요구한다.
+          && isRoomMember(request.resource.data.roomId);
+      }
+
       match /roomMemberships/{roomId} {
         allow read: if isSelf(uid);
         allow create, update, delete: if false;

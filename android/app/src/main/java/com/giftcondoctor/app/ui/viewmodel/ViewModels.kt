@@ -449,6 +449,7 @@ class RoomDetailViewModel(
     private var couponJob: Job? = null
     private var couponPager: CouponPager? = null
     private var startedRoomId: String? = null
+    private var favoriteJob: Job? = null
 
     private val _room = MutableStateFlow<UiState<Room>>(UiState.Loading)
     val room: StateFlow<UiState<Room>> = _room
@@ -458,6 +459,15 @@ class RoomDetailViewModel(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
+
+    /**
+     * 이 방에서 내가 즐겨찾기한 쿠폰 ID.
+     *
+     * 쿠폰 목록과 별도 스트림이다. 즐겨찾기는 사용자 하위 컬렉션에 있고 쿠폰은
+     * 방 하위 컬렉션에 있어서 한 쿼리로 묶을 수 없다. 정렬할 때 화면에서 합친다.
+     */
+    private val _favoriteCouponIds = MutableStateFlow<Set<String>>(emptySet())
+    val favoriteCouponIds: StateFlow<Set<String>> = _favoriteCouponIds
 
     val currentUid: String?
         get() = roomRepository.currentUid
@@ -483,6 +493,35 @@ class RoomDetailViewModel(
         couponPager = couponRepository.couponPager(roomId)
         couponJob = viewModelScope.launch {
             couponPager?.state?.collect { _coupons.value = it }
+        }
+        favoriteJob?.cancel()
+        _favoriteCouponIds.value = emptySet()
+        favoriteJob = viewModelScope.launch {
+            couponRepository.observeFavoriteCouponIds(roomId)
+                // 즐겨찾기를 못 읽어도 목록은 보여야 한다. 정렬이 기본으로
+                // 돌아갈 뿐 사용자가 할 수 있는 일은 그대로다.
+                .catch { _favoriteCouponIds.value = emptySet() }
+                .collect { _favoriteCouponIds.value = it }
+        }
+    }
+
+    /**
+     * 즐겨찾기를 토글한다.
+     *
+     * 실시간 리스너가 결과를 되돌려주므로 화면 상태를 직접 만지지 않는다.
+     * 실패했을 때 별표만 켜진 채 서버에는 없는 상태가 생기지 않는다.
+     */
+    fun toggleFavorite(roomId: String, couponId: String) {
+        val favorite = couponId !in _favoriteCouponIds.value
+        viewModelScope.launch {
+            runCatching { couponRepository.setFavorite(roomId, couponId, favorite) }
+                .onFailure {
+                    _message.value = if (favorite) {
+                        "즐겨찾기에 추가하지 못했습니다."
+                    } else {
+                        "즐겨찾기를 해제하지 못했습니다."
+                    }
+                }
         }
     }
 
