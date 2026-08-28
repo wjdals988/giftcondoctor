@@ -51,6 +51,7 @@ import java.time.LocalDate
 import com.giftcondoctor.app.core.GoogleSignInErrors
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.data.model.ExpiringCoupons
+import android.util.Log
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
 enum class CouponUploadStage { Idle, CheckingDuplicates, Preparing, Uploading, Cancelling, Saving }
@@ -221,6 +222,9 @@ class SessionViewModel(
 
 private const val DEFAULT_EXPIRING_DAYS = 7
 
+/** 만료 임박 조회 진단용 로그 태그. `adb logcat -s GDExpiringSoon` 으로 볼 수 있다. */
+private const val EXPIRING_SOON_LOG_TAG = "GDExpiringSoon"
+
 class RoomListViewModel(
     private val repository: RoomRepository = RoomRepository()
 ) : ViewModel() {
@@ -318,7 +322,23 @@ class RoomListViewModel(
         viewModelScope.launch {
             _expiringSoonLoading.value = true
             runCatching { repository.expiringCoupons(days) }
-                .onSuccess { _expiringSoon.value = it }
+                .onSuccess { summary ->
+                    _expiringSoon.value = summary
+                    // 카드가 보이지 않을 때 "조회는 됐는데 대상이 없음" 과 "조회가
+                    // 실패함" 을 구분할 수 있어야 한다. 사용자에게는 노출하지 않지만
+                    // 로그에는 남긴다.
+                    Log.i(
+                        EXPIRING_SOON_LOG_TAG,
+                        "만료 임박 조회 성공: ${summary.coupons.size}건, 방 ${summary.roomCount}개, " +
+                            "기준 ${summary.days}일, 잘림=${summary.truncated}"
+                    )
+                }
+                .onFailure { error ->
+                    // 실패해도 화면은 막지 않는다. 이 요약은 부가 정보이고 방 목록은
+                    // 실시간 리스너로 이미 표시되고 있다. 다만 조용히 삼키면 진단이
+                    // 불가능하므로 로그는 남긴다.
+                    Log.w(EXPIRING_SOON_LOG_TAG, "만료 임박 조회 실패", error)
+                }
             _expiringSoonLoading.value = false
         }
     }
