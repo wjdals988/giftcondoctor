@@ -16,6 +16,7 @@ import {
   parseBlobCleanupData,
   type BlobCleanupJob
 } from "@/lib/blobCleanupQueue";
+import { EXPIRE_BATCH_SIZE, selectCouponsToExpire } from "@/lib/couponExpiry";
 import { deleteCouponImages } from "@/lib/couponImageStorage";
 import { claimExpiredCouponForPurge, purgeCouponDocument } from "@/lib/couponTrashStore";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebaseAdmin";
@@ -78,6 +79,8 @@ type Summary = {
   cleanedBlobCleanup: number;
   trashPurged: number;
   trashPurgeBacklog: number;
+  expiredTransitioned: number;
+  expiredBacklog: number;
   errors: string[];
 };
 
@@ -651,6 +654,67 @@ async function purgeExpiredCouponTrash(now: Date, summary: Summary) {
     .get()).size;
 }
 
+/**
+ * 만료일이 지났는데 아직 active/reserved 로 남아 있는 쿠폰을 expired 로 바꾼다.
+ *
+ * 지금까지 cron 에 이 단계가 없어서 서버 status 와 실제 만료 여부가 어긋났다.
+ * 클라이언트는 그 공백을 세 곳에서 날짜 계산으로 우회하고 있었다. 근원을 여기서
+ * 고치되 클라이언트 방어는 그대로 둔다 — 이 배치는 하루 한 번 돌므로 그 사이의
+ * 공백은 여전히 남는다.
+ *
+ * status + expiresLocalDate collection group 인덱스가 이미 있으므로 그것을 쓴다.
+ * 가져온 문서는 selectCouponsToExpire 로 한 번 더 판정한다. 인덱스나 쿼리가
+ * 바뀌어도 used·deleted 같은 문서를 덮어쓰지 않기 위해서다.
+ */
+async function expireStaleCoupons(now: Date, summary: Summary) {
+  const db = getAdminDb();
+  const today = seoulLocalDate(now);
+
+  const snapshot = await db.collectionGroup("coupons")
+    .where("status", "in", ["active", "reserved"])
+    .where("expiresLocalDate", "<", today)
+    .limit(EXPIRE_BATCH_SIZE)
+    .get();
+
+  const targets = selectCouponsToExpire(
+    snapshot.docs.map((doc) => ({
+      ref: doc.ref,
+      status: doc.get("status"),
+      expiresLocalDate: doc.get("expiresLocalDate")
+    })),
+    today
+  );
+
+  for (const target of targets) {
+    try {
+      // 트랜잭션으로 읽고 다시 판정한다. 사용자가 방금 "사용 완료" 를 눌렀다면
+      // 그 결과를 만료로 덮으면 안 된다.
+      await db.runTransaction(async (transaction) => {
+        const fresh = await transaction.get(target.ref as DocumentReference);
+        if (!fresh.exists) return;
+        const stillStale = selectCouponsToExpire(
+          [{ status: fresh.get("status"), expiresLocalDate: fresh.get("expiresLocalDate") }],
+          today
+        ).length > 0;
+        if (!stillStale) return;
+        transaction.update(target.ref, {
+          status: "expired",
+          expiredAt: Timestamp.fromDate(now)
+        });
+      });
+      summary.expiredTransitioned += 1;
+    } catch (error) {
+      summary.errors.push(`coupon-expire:${target.ref.path}:${errorMessage(error)}`);
+    }
+  }
+
+  summary.expiredBacklog = (await db.collectionGroup("coupons")
+    .where("status", "in", ["active", "reserved"])
+    .where("expiresLocalDate", "<", today)
+    .limit(1)
+    .get()).size;
+}
+
 async function cleanupNotificationHistory(now: Date, summary: Summary) {
   const db = getAdminDb();
   const cutoff = Timestamp.fromDate(notificationRetentionCutoff(now));
@@ -822,6 +886,8 @@ async function runExpiryReminders(now = new Date()) {
     cleanedBlobCleanup: 0,
     trashPurged: 0,
     trashPurgeBacklog: 0,
+    expiredTransitioned: 0,
+    expiredBacklog: 0,
     errors: []
   };
   if (lease.lease !== "acquired") return summary;
@@ -830,6 +896,9 @@ async function runExpiryReminders(now = new Date()) {
     await enqueueExpiryReminders(now, summary);
     await enqueueDailyPushTest(runDate, now, summary);
     await processDueDeliveries(lease.runId, now, summary);
+    // 알림을 보낸 뒤에 전이시킨다. 순서를 뒤집으면 "오늘 만료" 알림 대상이
+    // 전이 대상과 겹치는 경계에서 알림이 누락될 수 있다.
+    await expireStaleCoupons(now, summary);
     await purgeExpiredCouponTrash(now, summary);
     await processDueBlobCleanups(lease.runId, now, summary);
     await cleanupNotificationHistory(now, summary);
@@ -839,7 +908,7 @@ async function runExpiryReminders(now = new Date()) {
       summary,
       summary.errors.length > 0 || summary.retried > 0 || summary.deadLetters > 0 || summary.backlog > 0 ||
         summary.blobCleanupRetried > 0 || summary.blobCleanupDeadLetters > 0 || summary.blobCleanupBacklog > 0 ||
-        summary.trashPurgeBacklog > 0
+        summary.trashPurgeBacklog > 0 || summary.expiredBacklog > 0
         ? "partial"
         : "completed"
     );
