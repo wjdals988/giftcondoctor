@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import java.time.Instant
 import java.time.LocalDate
+import com.giftcondoctor.app.core.resolveDisplayName
 
 data class UserProfile(
     val uid: String,
@@ -153,7 +154,9 @@ fun DocumentSnapshot.toRoomMember(): RoomMember? {
     return RoomMember(
         uid = id,
         role = getString("role") ?: "member",
-        displayName = getString("displayName") ?: "이름 없음",
+        // 저장된 표시명이 없을 때도 멤버끼리 구분되어야 한다. 방장이 멤버를 제거할 때
+        // 확인 다이얼로그가 이 값을 그대로 보여주기 때문이다.
+        displayName = resolveDisplayName(getString("displayName"), null, id),
         notificationEnabled = getBoolean("notificationEnabled") ?: true,
         notificationMode = getString("notificationMode"),
         notificationDays = getLongList("notificationDays")
@@ -189,7 +192,11 @@ fun DocumentSnapshot.toCouponComment(): CouponComment? {
     return CouponComment(
         id = id,
         authorUid = getString("authorUid") ?: return null,
-        authorName = getString("authorName") ?: "이름 없음",
+        authorName = resolveDisplayName(
+            getString("authorName"),
+            null,
+            getString("authorUid").orEmpty()
+        ),
         authorPhotoUrl = getString("authorPhotoUrl"),
         body = getString("body") ?: return null,
         createdAt = getTimestamp("createdAt")?.toDate()?.toInstant()

@@ -29,6 +29,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
+import com.giftcondoctor.app.core.resolveDisplayName
 
 private const val DUPLICATE_QUERY_LIMIT_PER_VISIBILITY = 20L
 
@@ -352,7 +353,7 @@ class CouponRepository(
         firestore.collection("rooms/$roomId/coupons/$couponId/comments").add(
             mapOf(
                 "authorUid" to user.uid,
-                "authorName" to (user.displayName ?: user.email ?: "이름 없음"),
+                "authorName" to resolveDisplayName(user.displayName, user.email, user.uid),
                 "authorPhotoUrl" to user.photoUrl?.toString(),
                 "body" to trimmed,
                 "createdAt" to now,
