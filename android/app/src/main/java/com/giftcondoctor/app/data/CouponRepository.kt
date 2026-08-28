@@ -6,6 +6,7 @@ import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.CouponDuplicateCandidate
 import com.giftcondoctor.app.core.CouponDuplicateInput
 import com.giftcondoctor.app.core.DetectedCouponBarcode
+import com.giftcondoctor.app.core.favoriteDocId
 import com.giftcondoctor.app.core.findPossibleCouponDuplicates
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
@@ -45,6 +46,63 @@ class CouponRepository(
         roomId: String,
         pageSize: Int = DEFAULT_COUPON_PAGE_SIZE_PER_VISIBILITY
     ): CouponPager = CouponPager(roomId, currentUid, firestore, pageSize)
+
+    /**
+     * 이 방에서 내가 즐겨찾기한 쿠폰 ID 를 관찰한다.
+     *
+     * 즐겨찾기는 사용자 하위 컬렉션(`users/{uid}/favorites`)에 있고 쿠폰 목록은
+     * 방 하위 컬렉션에 있다. 두 스트림을 화면에서 합친다. 서버 조인을 만들지
+     * 않는 이유는 즐겨찾기가 보통 몇 건이고, 참조만 담고 있어 합치는 비용이
+     * 거의 없기 때문이다.
+     *
+     * 로그인하지 않았으면 빈 집합을 한 번 내보내고 끝낸다. 오류로 다루면 목록
+     * 자체가 뜨지 않는다.
+     */
+    fun observeFavoriteCouponIds(roomId: String): Flow<Set<String>> = callbackFlow {
+        val uid = currentUid
+        if (uid == null) {
+            trySend(emptySet())
+            close()
+            return@callbackFlow
+        }
+        val registration = firestore.collection("users/$uid/favorites")
+            .whereEqualTo("roomId", roomId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    // 즐겨찾기 조회가 실패해도 쿠폰 목록은 보여야 한다. 정렬이
+                    // 기본으로 돌아갈 뿐 사용자가 할 수 있는 일은 그대로다.
+                    trySend(emptySet())
+                    return@addSnapshotListener
+                }
+                val ids = snapshot?.documents.orEmpty()
+                    .mapNotNull { it.getString("couponId") }
+                    .toSet()
+                trySend(ids)
+            }
+        awaitClose { registration.remove() }
+    }
+
+    /**
+     * 즐겨찾기를 켜거나 끈다.
+     *
+     * 문서 ID 를 참조에서 유도하므로 같은 쿠폰을 두 번 담아도 문서가 하나다.
+     * 해제는 그 ID 를 지우면 끝이라 "무엇을 지울지" 를 따로 찾지 않아도 된다.
+     */
+    suspend fun setFavorite(roomId: String, couponId: String, favorite: Boolean) {
+        val uid = currentUid ?: throw IllegalStateException("로그인이 필요합니다.")
+        val ref = firestore.document("users/$uid/favorites/${favoriteDocId(roomId, couponId)}")
+        if (favorite) {
+            ref.set(
+                mapOf(
+                    "roomId" to roomId,
+                    "couponId" to couponId,
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } else {
+            ref.delete().await()
+        }
+    }
 
     fun observeCoupon(roomId: String, couponId: String): Flow<Coupon?> = callbackFlow {
         val registration = firestore.document("rooms/$roomId/coupons/$couponId")

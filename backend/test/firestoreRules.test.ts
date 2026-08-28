@@ -420,3 +420,60 @@ describe("server-only operational state", () => {
     await assertFails(setDoc(doc(db, "cronLeases/manual"), { status: "completed" }));
   });
 });
+
+describe("favorite security rules", () => {
+  it("본인 즐겨찾기는 만들고 읽고 지울 수 있다", async () => {
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    const ref = doc(db, "users/member-1/favorites/room-1__coupon-1");
+    await assertSucceeds(
+      setDoc(ref, { roomId: "room-1", couponId: "coupon-1", createdAt: serverTimestamp() })
+    );
+    await assertSucceeds(getDoc(ref));
+    await assertSucceeds(getDocs(collection(db, "users/member-1/favorites")));
+  });
+
+  it("남의 즐겨찾기는 읽지도 쓰지도 못한다", async () => {
+    const db = testEnvironment.authenticatedContext("member-2").firestore();
+    const ref = doc(db, "users/member-1/favorites/room-1__coupon-1");
+    await assertFails(
+      setDoc(ref, { roomId: "room-1", couponId: "coupon-1", createdAt: serverTimestamp() })
+    );
+    await assertFails(getDoc(ref));
+  });
+
+  it("문서 ID 가 roomId__couponId 와 맞지 않으면 거부한다", async () => {
+    // ID 규칙이 없으면 같은 쿠폰이 여러 문서로 중복되고 해제도 불가능해진다.
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(
+      setDoc(doc(db, "users/member-1/favorites/anything"), {
+        roomId: "room-1",
+        couponId: "coupon-1",
+        createdAt: serverTimestamp()
+      })
+    );
+  });
+
+  it("멤버가 아닌 방의 쿠폰은 즐겨찾기할 수 없다", async () => {
+    const db = testEnvironment.authenticatedContext("outsider").firestore();
+    await assertFails(
+      setDoc(doc(db, "users/outsider/favorites/room-1__coupon-1"), {
+        roomId: "room-1",
+        couponId: "coupon-1",
+        createdAt: serverTimestamp()
+      })
+    );
+  });
+
+  it("허용하지 않은 필드는 거부한다", async () => {
+    // 제목을 복사해 두면 쿠폰을 수정했을 때 즐겨찾기만 옛 정보를 보인다.
+    const db = testEnvironment.authenticatedContext("member-1").firestore();
+    await assertFails(
+      setDoc(doc(db, "users/member-1/favorites/room-1__coupon-1"), {
+        roomId: "room-1",
+        couponId: "coupon-1",
+        title: "아메리카노",
+        createdAt: serverTimestamp()
+      })
+    );
+  });
+});
