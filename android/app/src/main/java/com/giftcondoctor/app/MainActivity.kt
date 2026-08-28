@@ -21,6 +21,7 @@ import com.giftcondoctor.app.ui.GiftcondoctorApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import com.giftcondoctor.app.data.HttpCache
 
 class MainActivity : ComponentActivity() {
     private val pendingDeepLink = mutableStateOf<Uri?>(null)
@@ -36,6 +37,9 @@ class MainActivity : ComponentActivity() {
         CouponUploadOptimizer.purgeAbandonedOnce(applicationContext)
         SharedImageImportStore.purgeAbandonedOnce(applicationContext)
         NotificationChannels.create(this)
+        // 서버가 썸네일에 max-age=3600 을 보내지만 OkHttp 는 Cache 가 있어야 그 헤더를
+        // 쓴다. 첫 네트워크 요청 전에 준비해야 한다.
+        HttpCache.install(this)
         if (savedInstanceState == null) {
             handleIntent(intent)
         } else {
