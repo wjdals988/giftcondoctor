@@ -213,6 +213,11 @@ fun GiftcondoctorApp(
                                 navController.navigate("rooms/$roomId")
                             }
                         },
+                        // 만료 임박 요약에서 쿠폰을 바로 연다. 방을 거치지 않는 것이
+                        // 이 요약의 존재 이유다.
+                        onOpenCoupon = { roomId, couponId ->
+                            navController.navigate("rooms/$roomId/coupons/$couponId")
+                        },
                         onCreateRoom = { navController.navigate(Routes.CreateRoom) },
                         onJoinRoom = { navController.navigate(Routes.JoinRoom) },
                         onOpenNotifications = { navController.navigate(Routes.Notifications) },

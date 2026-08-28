@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import com.giftcondoctor.app.data.model.ExpiringCoupons
 
 class RoomRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -75,6 +76,8 @@ class RoomRepository(
     suspend fun joinPushTestRoom(): String = backend.joinPushTestRoom()
 
     suspend fun publicRooms(): List<PublicRoom> = backend.publicRooms()
+
+    suspend fun expiringCoupons(days: Int): ExpiringCoupons = backend.expiringCoupons(days)
 
     suspend fun regenerateInvite(roomId: String): String = backend.regenerateInvite(roomId)
 
