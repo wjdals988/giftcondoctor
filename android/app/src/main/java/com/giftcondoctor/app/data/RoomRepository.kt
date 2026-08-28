@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import com.giftcondoctor.app.data.model.CouponSearchResults
 import com.giftcondoctor.app.data.model.ExpiringCoupons
 
 class RoomRepository(
@@ -78,6 +79,8 @@ class RoomRepository(
     suspend fun publicRooms(): List<PublicRoom> = backend.publicRooms()
 
     suspend fun expiringCoupons(days: Int): ExpiringCoupons = backend.expiringCoupons(days)
+
+    suspend fun searchCoupons(query: String): CouponSearchResults = backend.searchCoupons(query)
 
     suspend fun regenerateInvite(roomId: String): String = backend.regenerateInvite(roomId)
 
