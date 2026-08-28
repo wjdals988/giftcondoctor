@@ -11,6 +11,10 @@ android/build/
 android/app/build/
 android/benchmark/build/
 android/local.properties
+# google-services.json 은 위치와 무관하게 커밋하지 않는다.
+# 2026-08-28: SHA-1 재등록 과정에서 android/google-services.json 로 백업본이
+# 생겼는데 기존 규칙(android/app/ 한정)에 걸리지 않아 커밋될 뻔했다.
+google-services.json
 android/app/google-services.json
 android/keystore.properties
 android/app/*.jks
