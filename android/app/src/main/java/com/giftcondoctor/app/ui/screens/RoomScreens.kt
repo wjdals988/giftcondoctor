@@ -144,6 +144,15 @@ import com.giftcondoctor.app.core.shouldShowExpiryBadge
 import com.giftcondoctor.app.ui.components.AppVersionText
 import androidx.compose.ui.text.style.TextAlign
 import com.giftcondoctor.app.data.model.ExpiringCoupons
+import com.giftcondoctor.app.core.inviteShareMessage
+import com.giftcondoctor.app.core.formatInviteCodeForDisplay
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import android.content.Intent
+import com.giftcondoctor.app.core.isInviteCodeUsable
 
 @Composable
 fun RoomListScreen(
@@ -1359,7 +1368,82 @@ private fun RoomInviteSection(state: RoomSettingsUiState, onRegenerate: () -> Un
         )
         return
     }
-    Text("초대코드: ${state.room.inviteCode ?: "없음"}")
+    val inviteCode = state.room.inviteCode
+    val inviteUsable = isInviteCodeUsable(state.room.inviteExpiresAt?.toEpochMilli(), System.currentTimeMillis())
+    if (inviteCode.isNullOrBlank()) {
+        Text("초대코드가 없습니다.")
+    } else if (!inviteUsable) {
+        // 서버는 입장 시 만료를 검사해 거부한다. 쓸 수 없는 코드를 공유하면 상대는
+        // 입장에 실패하고 보낸 사람도 이유를 모른다. 복사·공유를 아예 제공하지 않고
+        // 재발급으로 유도한다.
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+            modifier = Modifier.testTag("invite-expired-card")
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    "초대코드가 만료됐어요",
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    if (state.isOwner) {
+                        "지금 공유해도 상대가 입장할 수 없습니다. 아래에서 새 코드를 발급해 주세요."
+                    } else {
+                        "지금 공유해도 상대가 입장할 수 없습니다. 방장에게 재발급을 요청해 주세요."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    } else {
+        val context = LocalContext.current
+        val clipboard = LocalClipboardManager.current
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("초대코드", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 표시용으로만 끊어 준다. 복사·공유에는 원본을 쓴다.
+                Text(
+                    formatInviteCodeForDisplay(inviteCode),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
+                        modifier = Modifier.weight(1f).testTag("copy-invite-code"),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("코드 복사", modifier = Modifier.padding(start = 6.dp))
+                    }
+                    Button(
+                        onClick = {
+                            val message = inviteShareMessage(state.room.name, inviteCode)
+                            val send = Intent(Intent.ACTION_SEND)
+                                .setType("text/plain")
+                                .putExtra(Intent.EXTRA_TEXT, message)
+                            runCatching {
+                                context.startActivity(Intent.createChooser(send, "초대코드 공유"))
+                            }
+                        },
+                        modifier = Modifier.weight(1f).testTag("share-invite-code"),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("공유", modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+            }
+        }
+    }
     Text("만료: ${state.room.inviteExpiresAt?.let { inviteFormatter.format(it) } ?: "없음"}")
     if (state.isOwner) {
         Button(
