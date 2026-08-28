@@ -141,6 +141,8 @@ import java.time.format.DateTimeFormatter
 import com.giftcondoctor.app.core.couponListSupportingText
 import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
 import com.giftcondoctor.app.core.shouldShowExpiryBadge
+import com.giftcondoctor.app.ui.components.AppVersionText
+import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun RoomListScreen(
@@ -356,6 +358,17 @@ private fun RoomList(
                     }
                 )
             }
+        }
+        // 로그인 이후에는 버전을 볼 곳이 알림 설정 아래 "앱 정보" 뿐이었다.
+        // 문의·버그 신고에서 가장 먼저 필요한 값이므로 목록 끝에 상시 노출한다.
+        item(key = "app-version-footer") {
+            AppVersionText(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 16.dp)
+                    .testTag("room-list-app-version"),
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

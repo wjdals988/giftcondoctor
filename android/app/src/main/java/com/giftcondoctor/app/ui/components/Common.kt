@@ -207,12 +207,27 @@ fun ButtonProgressIndicator(color: Color = MaterialTheme.colorScheme.onPrimary) 
     Spacer(Modifier.width(8.dp))
 }
 
+/**
+ * 설치된 앱의 버전 문구.
+ *
+ * debug 빌드에서는 뒤에 "· 개발 빌드" 를 붙인다. 2026-08-28 에 같은 versionName
+ * 을 가진 debug 와 release 를 번갈아 설치하다가 Google 로그인 가능 여부가 갈렸는데,
+ * 화면만 봐서는 어느 쪽이 깔려 있는지 구분할 방법이 없었다. 서명 인증서가 달라
+ * 동작이 실제로 달라지므로 화면에서 구분되어야 한다.
+ */
 @Composable
-fun AppVersionText(modifier: Modifier = Modifier) {
+fun appVersionLabel(): String {
+    val suffix = if (BuildConfig.DEBUG) " · 개발 빌드" else ""
+    return "버전 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})$suffix"
+}
+
+@Composable
+fun AppVersionText(modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
     Text(
-        text = "버전 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        text = appVersionLabel(),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
+        textAlign = textAlign,
         modifier = modifier
     )
 }
