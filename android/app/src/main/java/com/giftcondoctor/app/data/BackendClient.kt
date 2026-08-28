@@ -38,7 +38,13 @@ class BackendClient(
     private val client: OkHttpClient = sharedHttpClient
 ) {
     companion object {
-        private val sharedHttpClient = OkHttpClient()
+        // HttpCache.install 이 앱 시작 시 캐시를 준비한다. 준비되기 전에 만들어지면
+        // 캐시 없는 클라이언트가 되므로 by lazy 로 첫 사용 시점까지 늦춘다.
+        private val sharedHttpClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .cache(HttpCache.current())
+                .build()
+        }
     }
     private val baseUrl = BuildConfig.API_BASE_URL.trimEnd('/')
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()

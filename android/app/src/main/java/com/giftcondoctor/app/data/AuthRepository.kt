@@ -98,6 +98,9 @@ class AuthRepository(
     fun signOut() {
         CouponImageLoader.clear()
         CouponImageFileStore.clearTracked()
+        // HTTP 캐시 키는 URL 이고 URL 에는 계정 정보가 없다. 한 기기에서 계정을
+        // 바꾸면 이전 계정의 이미지가 재사용될 수 있으므로 함께 비운다.
+        HttpCache.evictAll()
         auth.signOut()
     }
 }
