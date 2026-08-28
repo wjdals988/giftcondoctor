@@ -61,6 +61,7 @@ import androidx.compose.animation.core.LinearEasing
 import com.giftcondoctor.app.ui.theme.GDSkeletonDark
 import com.giftcondoctor.app.ui.theme.GDSkeletonLight
 import com.giftcondoctor.app.ui.theme.LocalGDDarkTheme
+import androidx.compose.material3.TextButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,7 +121,9 @@ fun EmptyState(
     primaryActionLabel: String? = null,
     onPrimaryAction: (() -> Unit)? = null,
     secondaryActionLabel: String? = null,
-    onSecondaryAction: (() -> Unit)? = null
+    onSecondaryAction: (() -> Unit)? = null,
+    tertiaryActionLabel: String? = null,
+    onTertiaryAction: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 40.dp),
@@ -161,6 +164,13 @@ fun EmptyState(
         if (secondaryActionLabel != null && onSecondaryAction != null) {
             OutlinedButton(onClick = onSecondaryAction, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Text(secondaryActionLabel)
+            }
+        }
+        // 3순위 동작은 TextButton 으로 둔다. 버튼 3개가 모두 같은 무게를 가지면
+        // 사용자는 무엇을 먼저 눌러야 할지 판단해야 하고, 그 판단 자체가 비용이다.
+        if (tertiaryActionLabel != null && onTertiaryAction != null) {
+            TextButton(onClick = onTertiaryAction, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                Text(tertiaryActionLabel)
             }
         }
     }

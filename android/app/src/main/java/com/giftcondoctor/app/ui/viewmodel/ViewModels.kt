@@ -49,6 +49,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import com.giftcondoctor.app.core.GoogleSignInErrors
+import com.giftcondoctor.app.core.AppConstants
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
 enum class CouponUploadStage { Idle, CheckingDuplicates, Preparing, Uploading, Cancelling, Saving }
@@ -248,6 +249,18 @@ class RoomListViewModel(
 
     fun createRoom(name: String, isPublic: Boolean, password: String, onCreated: (String) -> Unit) = runAction {
         val roomId = repository.createRoom(name, isPublic, password)
+        onCreated(roomId)
+    }
+
+    /**
+     * 이름 입력 없이 개인 보관함을 만든다.
+     *
+     * 방 만들기 화면을 거치지 않는다는 점만 다르고, 만들어지는 것은 평범한
+     * 비공개 방이다. 나중에 이름을 바꾸거나 멤버를 초대해 공유 방으로 쓸 수 있다.
+     * 데이터 모델을 바꾸지 않으므로 Firestore 규칙·cron·알림 경로에 영향이 없다.
+     */
+    fun createPersonalRoom(onCreated: (String) -> Unit) = runAction {
+        val roomId = repository.createRoom(AppConstants.PERSONAL_ROOM_NAME, false, "")
         onCreated(roomId)
     }
 
