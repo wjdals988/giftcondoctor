@@ -144,6 +144,8 @@ import com.giftcondoctor.app.core.shouldShowExpiryBadge
 import com.giftcondoctor.app.ui.components.AppVersionText
 import androidx.compose.ui.text.style.TextAlign
 import com.giftcondoctor.app.data.model.ExpiringCoupons
+import com.giftcondoctor.app.data.RecentCouponShortcuts
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun RoomListScreen(
@@ -178,6 +180,7 @@ fun RoomListScreen(
     }
     val roomSelectionEnabled = sharedImageImport !is SharedImageImportState.Copying
     var showLogoutDialog by remember { mutableStateOf(false) }
+    val logoutContext = LocalContext.current
 
     GDScaffold(
         title = "내 쿠폰방",
@@ -259,6 +262,8 @@ fun RoomListScreen(
                 TextButton(
                     onClick = {
                         showLogoutDialog = false
+                        // 다음 사용자에게 이전 계정의 쿠폰 이름이 바로가기로 남으면 안 된다.
+                        RecentCouponShortcuts.clear(logoutContext)
                         sessionViewModel.signOut()
                     }
                 ) {
