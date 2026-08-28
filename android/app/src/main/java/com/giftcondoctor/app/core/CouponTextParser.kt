@@ -89,6 +89,27 @@ private fun detectBrand(lines: List<String>): String? {
     return brandCandidates.firstOrNull { joined.contains(it.uppercase()) }
 }
 
+/**
+ * 숫자와 구분자로만 이루어진 줄인지 판정한다.
+ *
+ * noisyPattern 의 `\d{6,}` 는 연속된 6자리 이상만 걸러낸다. 그런데 OCR 이 읽어낸
+ * 바코드·카드 번호는 "9313 3685 7353 5282" 처럼 공백이나 하이픈으로 끊겨 있어서
+ * 각 그룹이 4자리에 그치고, 이 규칙을 그대로 통과했다. 2026-08-28 실기기 확인에서
+ * 쿠폰 제목이 바코드 번호로 저장된 항목이 실제로 있었다.
+ *
+ * 잘못된 제목은 빈 제목보다 나쁘다. 목록에서 그 쿠폰이 무엇인지 알 방법이 없고,
+ * 사용자는 제목이 채워져 있으니 고칠 생각도 하지 않는다. 이런 줄은 후보에서
+ * 제외해 사용자가 직접 입력하게 둔다.
+ *
+ * 구분자를 걷어낸 숫자가 8자리 미만이면 제외하지 않는다. "1000" 이나 "5000원"
+ * 같은 금액·수량 표기까지 버리면 정상 제목을 놓칠 수 있다.
+ */
+internal fun String.isDigitsOnlyIdentifier(): Boolean {
+    val digits = count { it.isDigit() }
+    if (digits < 8) return false
+    return all { it.isDigit() || it.isWhitespace() || it == '-' || it == '.' }
+}
+
 private fun detectTitle(lines: List<String>, brand: String?): String? {
     val candidates = lines
         .map { it.cleanTitleCandidate() }
@@ -97,6 +118,7 @@ private fun detectTitle(lines: List<String>, brand: String?): String? {
                 line != brand &&
                 !noisyPattern.containsMatchIn(line) &&
                 !datePattern.containsMatchIn(line) &&
+                !line.isDigitsOnlyIdentifier() &&
                 line.count { it.isLetterOrDigit() } >= 3
         }
 
