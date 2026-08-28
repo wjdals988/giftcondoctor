@@ -110,3 +110,47 @@ fun couponListSupportingText(
     if (!expiryBadgeAlreadyStatesStatus(urgency)) parts += statusLabel(status)
     return parts.joinToString(" · ")
 }
+
+/**
+ * 사용 완료 실행 취소가 가능한 창의 길이.
+ *
+ * Firestore 보안 규칙 `memberCanUndoMarkUsed` 가
+ * `request.time <= usedAt + duration.value(5, "m")` 로 강제한다
+ * (`firebase/firestore.rules:139-149`). 화면은 그 규칙과 같은 값을 써야 한다.
+ * 화면이 더 길게 잡으면 눌러도 규칙에 막혀 실패하는 죽은 버튼이 되고, 더 짧게
+ * 잡으면 아직 되돌릴 수 있는데 기회를 감춘다.
+ */
+const val UNDO_MARK_USED_WINDOW_MINUTES = 5L
+
+/**
+ * 지금 이 쿠폰의 사용 완료를 되돌릴 수 있는지 판정한다.
+ *
+ * 규칙과 같은 세 조건을 본다. 상태가 `used`, 처리자가 본인, 그리고 5분 창 안.
+ */
+fun canUndoMarkUsed(
+    status: String,
+    usedByUid: String?,
+    currentUid: String?,
+    usedAtEpochMillis: Long?,
+    nowEpochMillis: Long
+): Boolean {
+    if (status != "used") return false
+    if (currentUid == null || usedByUid != currentUid) return false
+    if (usedAtEpochMillis == null) return false
+    return nowEpochMillis <= usedAtEpochMillis + UNDO_MARK_USED_WINDOW_MINUTES * 60_000
+}
+
+/**
+ * 실행 취소 창에 남은 시간 문구.
+ *
+ * 창이 닫히는 중이라는 사실을 알아야 사용자가 판단할 수 있다. 30초 미만은 초
+ * 단위로 세지 않는다. 계산대 앞에서 숫자가 빠르게 줄어드는 것을 보면 조급해질
+ * 뿐이고, 어차피 곧 사라진다.
+ */
+fun undoMarkUsedRemainingLabel(usedAtEpochMillis: Long, nowEpochMillis: Long): String {
+    val deadline = usedAtEpochMillis + UNDO_MARK_USED_WINDOW_MINUTES * 60_000
+    val remainingMillis = deadline - nowEpochMillis
+    if (remainingMillis <= 0) return "곧 마감"
+    val remainingMinutes = remainingMillis / 60_000
+    return if (remainingMinutes >= 1) "${remainingMinutes}분 남음" else "1분 미만 남음"
+}

@@ -90,6 +90,8 @@ data class Coupon(
     val status: String,
     val reservedByUid: String?,
     val usedByUid: String?,
+    /** 사용 완료 시각. Firestore 규칙의 5분 실행 취소 창을 화면에서 계산하기 위해 쓴다. */
+    val usedAt: Instant? = null,
     val visibility: String,
     val notifyTarget: String,
     val barcodeValue: String? = null,
@@ -181,6 +183,7 @@ fun DocumentSnapshot.toCoupon(roomId: String): Coupon? {
         status = getString("status") ?: "active",
         reservedByUid = getString("reservedByUid"),
         usedByUid = getString("usedByUid"),
+        usedAt = getTimestamp("usedAt")?.toDate()?.toInstant(),
         visibility = getString("visibility") ?: "room",
         notifyTarget = getString("notifyTarget") ?: "allMembers",
         barcodeValue = getString("barcodeValue"),

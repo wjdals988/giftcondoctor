@@ -67,6 +67,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -103,10 +104,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import com.giftcondoctor.app.core.AppConstants
 import com.giftcondoctor.app.core.CouponDuplicateCandidate
 import com.giftcondoctor.app.core.CouponDuplicateReason
 import com.giftcondoctor.app.core.barcodeValuePreview
+import com.giftcondoctor.app.core.canUndoMarkUsed
+import com.giftcondoctor.app.core.undoMarkUsedRemainingLabel
 import com.giftcondoctor.app.core.renderCouponBarcode
 import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.clampZoomOffset
@@ -1010,6 +1014,7 @@ fun CouponDetailScreen(
                             usedFeedbackVersion += 1
                         }
                     },
+                    onUndoUsed = { viewModel.undoMarkUsed(roomId, couponId) },
                     onDelete = { viewModel.delete(roomId, couponId, onDeleted) },
                     onAddComment = { body, onAdded -> viewModel.addComment(roomId, couponId, body, onAdded) },
                     onDeleteComment = { commentId -> viewModel.deleteComment(roomId, couponId, commentId) },
@@ -1093,6 +1098,7 @@ private fun CouponDetailContent(
     message: String?,
     onReserve: () -> Unit,
     onCancelReservation: () -> Unit,
+    onUndoUsed: () -> Unit,
     onUsed: () -> Unit,
     onDelete: () -> Unit,
     onAddComment: (String, () -> Unit) -> Unit,
@@ -1315,6 +1321,12 @@ private fun CouponDetailContent(
             }
         }
         InlineMessage(message)
+        UndoMarkUsedSection(
+            coupon = coupon,
+            currentUid = currentUid,
+            actionBusy = actionBusy,
+            onUndoUsed = onUndoUsed
+        )
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (coupon.status == "active") {
@@ -2096,6 +2108,65 @@ internal fun ExpiryDateField(
             }
         ) {
             DatePicker(state = datePickerState)
+        }
+    }
+}
+
+/**
+ * 사용 완료를 되돌릴 수 있는 동안만 보이는 인라인 진입점.
+ *
+ * 지금까지 실행 취소는 사용 완료 직후 스낵바에만 있었다. 스낵바는 몇 초 뒤
+ * 사라지고 화면을 벗어났다 돌아오면 다시 나오지 않는다. 그런데 서버 규칙은
+ * 5분을 허용한다(`firebase/firestore.rules:139-149`). 즉 되돌릴 수 있는 시간의
+ * 대부분에 진입점이 없었다. 매장에서 잘못 눌렀다는 것을 깨닫는 데 걸리는 시간이
+ * 스낵바 수명보다 길다는 점을 생각하면 이쪽이 실제 필요한 경로다.
+ *
+ * 창이 닫힌 뒤에는 아예 그리지 않는다. 규칙이 막을 버튼을 남겨 두면 눌러도
+ * 실패하는 죽은 버튼이 된다.
+ */
+@Composable
+internal fun UndoMarkUsedSection(
+    coupon: Coupon,
+    currentUid: String?,
+    actionBusy: Boolean,
+    onUndoUsed: () -> Unit
+) {
+    val usedAtMillis = coupon.usedAt?.toEpochMilli()
+    if (usedAtMillis == null || coupon.status != "used" || coupon.usedByUid != currentUid) return
+
+    // 남은 시간을 15초마다 다시 계산한다. 초 단위로 갱신할 이유는 없다 — 문구가
+    // 분 단위이고, 창이 닫히는 순간 카드가 사라지기만 하면 된다.
+    var now by remember(coupon.id) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(coupon.id, usedAtMillis) {
+        while (canUndoMarkUsed("used", coupon.usedByUid, currentUid, usedAtMillis, now)) {
+            delay(15_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    if (!canUndoMarkUsed(coupon.status, coupon.usedByUid, currentUid, usedAtMillis, now)) return
+
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag("coupon-undo-used")
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("잘못 눌렀나요?", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "사용 완료는 ${undoMarkUsedRemainingLabel(usedAtMillis, now)} 안에만 되돌릴 수 있어요.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedButton(
+                onClick = onUndoUsed,
+                enabled = !actionBusy,
+                modifier = Modifier.testTag("coupon-undo-used-button")
+            ) {
+                Text("실행 취소")
+            }
         }
     }
 }
