@@ -326,6 +326,17 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
             ChangeLogEntry(
+                version = "0.1.33",
+                changes = listOf(
+                    "방 목록 맨 위에서 7일 안에 만료되는 쿠폰을 모아 보고, 탭하면 방을 거치지 않고 바로 열 수 있습니다.",
+                    "방 이름을 정하지 않고 \"내 쿠폰 바로 시작\"으로 혼자 쓰기를 시작할 수 있습니다.",
+                    "알림이 꺼져 있으면 눈에 띄게 알리고, 차단된 경우 설정 화면으로 바로 이동합니다.",
+                    "첫 쿠폰을 저장한 직후에 만료 알림을 켤지 물어봅니다.",
+                    "쿠폰 이름을 찾지 못했을 때 바코드 번호를 제목으로 쓰지 않습니다.",
+                    "앱 버전을 방 목록 아래에서 바로 확인할 수 있습니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.32",
                 changes = listOf(
                     "시스템 다크 모드를 지원합니다. 계산대용 바코드 화면은 스캐너 인식을 위해 흰 배경을 유지합니다.",
