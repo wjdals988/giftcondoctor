@@ -67,7 +67,9 @@ fun LoginScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             sessionViewModel.signInWithGoogleIntent(result.data)
         } else {
-            sessionViewModel.showMessage("Google 로그인이 취소되었습니다.")
+            // RESULT_CANCELED 는 사용자의 취소만 뜻하지 않는다. 설정 오류와 네트워크
+            // 실패도 같은 코드로 돌아오므로 인텐트에 담긴 상태 코드로 원인을 가른다.
+            sessionViewModel.reportGoogleSignInFailure(result.data)
         }
     }
 

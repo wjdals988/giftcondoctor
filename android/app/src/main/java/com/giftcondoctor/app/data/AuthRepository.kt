@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import com.giftcondoctor.app.BuildConfig
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -47,6 +48,19 @@ class AuthRepository(
             .requestEmail()
             .build()
         return GoogleSignIn.getClient(context, options).signInIntent
+    }
+
+    /**
+     * 실패한 Google 로그인 인텐트에서 상태 코드를 꺼낸다.
+     *
+     * GoogleSignIn 은 설정 오류·네트워크 실패에서도 RESULT_CANCELED 를 돌려주므로,
+     * 결과 코드만으로는 "사용자가 취소함" 과 "설정이 잘못됨" 을 구분할 수 없다.
+     * 인텐트에 담긴 Status 를 읽어야 실제 원인을 알 수 있다.
+     */
+    fun googleSignInFailureCode(data: Intent?): Int? {
+        val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+        return runCatching { task.getResult(ApiException::class.java); null }
+            .getOrElse { error -> (error as? ApiException)?.statusCode }
     }
 
     suspend fun signInWithGoogleIntent(data: Intent?) {

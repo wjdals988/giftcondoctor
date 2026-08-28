@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import com.giftcondoctor.app.core.GoogleSignInErrors
 
 enum class SessionAuthState { Loading, Authenticated, Unauthenticated }
 enum class CouponUploadStage { Idle, CheckingDuplicates, Preparing, Uploading, Cancelling, Saving }
@@ -160,6 +161,17 @@ class SessionViewModel(
     }
 
     fun googleSignInIntent(context: Context): Intent = authRepository.googleSignInIntent(context)
+
+    /**
+     * Google 로그인이 RESULT_OK 가 아닌 결과로 끝났을 때 원인을 안내한다.
+     *
+     * 이전에는 무조건 "취소되었습니다" 로 안내해서, 서명 인증서 미등록 같은 설정 오류를
+     * 사용자가 취소한 것처럼 표시했다.
+     */
+    fun reportGoogleSignInFailure(data: Intent?) {
+        val code = authRepository.googleSignInFailureCode(data)
+        _message.value = GoogleSignInErrors.message(code)
+    }
 
     fun signInWithGoogleIntent(data: Intent?) = runAuth {
         authRepository.signInWithGoogleIntent(data)
