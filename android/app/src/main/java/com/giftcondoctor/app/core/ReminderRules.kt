@@ -35,7 +35,17 @@ fun statusLabel(status: String): String = when (status) {
  * 서버 status 가 used/expired 면 클라이언트 D-day 계산보다 우선한다. 서버 만료 상태
  * 갱신 배치가 지연되어 status 가 active 로 남아 있어도 계산된 days 로 Ended 를 판정한다.
  */
-enum class ExpiryUrgency { Ended, Critical, Soon, Relaxed }
+enum class ExpiryUrgency { Ended, Critical, Soon, Relaxed, Distant }
+
+/**
+ * 만료 배지를 붙이지 않는 경계.
+ *
+ * 이 앱의 알림 사다리는 최대 D-7 에서 시작한다(NotificationMode.Careful). 그보다
+ * 4배 이상 떨어진 시점의 남은 일수는 사용자가 행동을 바꿀 근거가 되지 못한다.
+ * 실기기 확인에서 "D-170" 배지가 D-1 과 같은 시각적 슬롯을 차지하고 있었는데,
+ * 배지의 존재 이유가 임박 신호이므로 이런 표시는 신호를 희석한다.
+ */
+const val EXPIRY_BADGE_MAX_DAYS = 30
 
 fun expiryUrgency(status: String, today: LocalDate, expiresLocalDate: LocalDate): ExpiryUrgency {
     if (status == "used" || status == "expired") return ExpiryUrgency.Ended
@@ -44,9 +54,18 @@ fun expiryUrgency(status: String, today: LocalDate, expiresLocalDate: LocalDate)
         days < 0 -> ExpiryUrgency.Ended
         days <= 1 -> ExpiryUrgency.Critical
         days <= 3 -> ExpiryUrgency.Soon
-        else -> ExpiryUrgency.Relaxed
+        days <= EXPIRY_BADGE_MAX_DAYS -> ExpiryUrgency.Relaxed
+        else -> ExpiryUrgency.Distant
     }
 }
+
+/**
+ * 배지를 렌더링할지 여부.
+ *
+ * Distant 는 배지를 그리지 않는다. 만료일은 보조 문구에 이미 있으므로 정보가
+ * 사라지지 않고, 비워진 가로 공간만큼 제목·보조 문구가 넓게 쓰인다.
+ */
+fun shouldShowExpiryBadge(urgency: ExpiryUrgency): Boolean = urgency != ExpiryUrgency.Distant
 
 fun couponDdayLabel(status: String, today: LocalDate, expiresLocalDate: LocalDate): String {
     if (status == "used") return "사용 완료"
