@@ -157,7 +157,16 @@ fun RoomListScreen(
 ) {
     val rooms by viewModel.rooms.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val busy by viewModel.busy.collectAsStateWithLifecycle()
     val notificationPermission = rememberNotificationPermissionState()
+    var creatingPersonalRoom by rememberSaveable { mutableStateOf(false) }
+    // 생성이 끝나면 화면이 방으로 이동하지만, 실패하면 이 화면에 남는다.
+    // busy 가 내려갔는데 아직 이동하지 않았다면 다시 누를 수 있게 되돌린다.
+    LaunchedEffect(busy) { if (!busy) creatingPersonalRoom = false }
+    val onStartPersonalRoom = {
+        creatingPersonalRoom = true
+        viewModel.createPersonalRoom(onOpenRoom)
+    }
     val joinedTestRoom = when (val state = rooms) {
         is UiState.Success -> state.data.any { it.roomId == AppConstants.PUSH_TEST_ROOM_ID }
         else -> false
@@ -185,14 +194,19 @@ fun RoomListScreen(
                 is UiState.Success -> {
                     if (state.data.isEmpty()) {
                         Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            // 첫 화면의 주인공을 "방" 에서 "쿠폰" 으로 바꾼다.
+                            // 첫 사용자의 필요는 혼자 저장하고 알림 받는 것이고,
+                            // 공유는 나중에 생긴다. 방 이름을 정하는 결정을 없앤다.
                             EmptyState(
-                                title = "첫 쿠폰방을 만들어 보세요",
-                                message = "가족이나 친구와 함께 쓸 방을 만들거나, 받은 초대코드로 바로 입장할 수 있어요.",
+                                title = "첫 쿠폰을 저장해 보세요",
+                                message = "혼자 모아두고 만료 전에 알림을 받을 수 있어요. 가족·친구와 함께 쓰려면 방을 만들거나 초대코드로 입장하세요.",
                                 icon = Icons.Default.CardGiftcard,
-                                primaryActionLabel = "새 쿠폰방 만들기",
-                                onPrimaryAction = onCreateRoom,
+                                primaryActionLabel = if (creatingPersonalRoom) "만드는 중..." else "내 쿠폰 바로 시작",
+                                onPrimaryAction = if (creatingPersonalRoom) null else onStartPersonalRoom,
                                 secondaryActionLabel = "초대코드로 입장",
-                                onSecondaryAction = onJoinRoom
+                                onSecondaryAction = onJoinRoom,
+                                tertiaryActionLabel = "함께 쓸 방 만들기",
+                                onTertiaryAction = onCreateRoom
                             )
                         }
                     } else {
