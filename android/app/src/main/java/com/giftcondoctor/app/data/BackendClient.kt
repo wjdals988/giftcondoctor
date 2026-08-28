@@ -23,6 +23,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
+import java.net.URLEncoder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -30,6 +31,8 @@ import java.io.File
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import com.giftcondoctor.app.data.model.CouponSearchHit
+import com.giftcondoctor.app.data.model.CouponSearchResults
 import com.giftcondoctor.app.data.model.ExpiringCoupon
 import com.giftcondoctor.app.data.model.ExpiringCoupons
 
@@ -100,6 +103,48 @@ class BackendClient(
                 )
             }
         }.filter { it.roomId.isNotBlank() && it.name.isNotBlank() }
+    }
+
+    /**
+     * 방을 가로지르는 쿠폰 검색.
+     *
+     * 서버가 사용자의 방 목록 범위에서만 모아 내려준다. 클라이언트가
+     * collectionGroup 을 쓸 수 없는 사정은 만료 임박 요약과 같다.
+     */
+    suspend fun searchCoupons(query: String): CouponSearchResults {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val response = authedRequest(
+            Request.Builder()
+                .url("$baseUrl/api/coupons/search?q=$encoded")
+                .get()
+        )
+        val root = JSONObject(response)
+        val items = root.optJSONArray("coupons") ?: JSONArray()
+        val coupons = buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val roomId = item.optString("roomId")
+                val couponId = item.optString("couponId")
+                if (roomId.isBlank() || couponId.isBlank()) continue
+                add(
+                    CouponSearchHit(
+                        roomId = roomId,
+                        roomName = item.optString("roomName"),
+                        couponId = couponId,
+                        title = item.optString("title"),
+                        brand = item.optString("brand"),
+                        expiresLocalDate = item.optString("expiresLocalDate"),
+                        status = item.optString("status").ifBlank { "active" }
+                    )
+                )
+            }
+        }
+        return CouponSearchResults(
+            query = root.optString("query", query),
+            coupons = coupons,
+            roomCount = root.optInt("roomCount"),
+            truncated = root.optBoolean("truncated")
+        )
     }
 
     suspend fun expiringCoupons(days: Int): ExpiringCoupons {

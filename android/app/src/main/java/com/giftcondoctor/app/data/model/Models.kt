@@ -49,6 +49,33 @@ data class ExpiringCoupons(
     val truncated: Boolean
 )
 
+/**
+ * 방을 가로지르는 검색 결과 한 건.
+ *
+ * 방 안 검색(`filterAndSortCoupons`)과 달리 어느 방의 쿠폰인지가 결과의 일부다.
+ * 방 밖에서 찾았으니 어디에 있는지를 함께 알려줘야 사용자가 다음 행동을 정한다.
+ */
+data class CouponSearchHit(
+    val roomId: String,
+    val roomName: String,
+    val couponId: String,
+    val title: String,
+    val brand: String,
+    val expiresLocalDate: String,
+    val status: String
+)
+
+/**
+ * @param truncated 상한에 걸려 잘렸는지. 검색에서 잘린 사실을 숨기면 "그런 쿠폰은
+ *   없다" 는 정반대의 결론을 만든다.
+ */
+data class CouponSearchResults(
+    val query: String,
+    val coupons: List<CouponSearchHit>,
+    val roomCount: Int,
+    val truncated: Boolean
+)
+
 data class PublicRoom(
     val roomId: String,
     val name: String,

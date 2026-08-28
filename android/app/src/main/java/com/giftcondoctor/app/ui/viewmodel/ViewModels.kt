@@ -50,6 +50,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import com.giftcondoctor.app.core.GoogleSignInErrors
 import com.giftcondoctor.app.core.AppConstants
+import com.giftcondoctor.app.data.model.CouponSearchResults
 import com.giftcondoctor.app.data.model.ExpiringCoupons
 import android.util.Log
 
@@ -373,6 +374,70 @@ class RoomListViewModel(
                 .onFailure { _message.value = it.localizedMessage ?: "요청에 실패했습니다." }
             _busy.value = false
         }
+    }
+}
+
+/**
+ * 방을 가로지르는 쿠폰 검색 화면의 상태.
+ *
+ * 방 목록·쿠폰 목록과 달리 실시간 리스너가 아니라 서버 질의다. 그래서 입력할 때마다
+ * 던지면 그대로 읽기 비용이 된다. 화면이 요청 시점을 정하도록 조회는 명시적으로
+ * 호출하게 두고, 여기서는 겹친 요청만 막는다.
+ */
+class CouponSearchViewModel(
+    private val repository: RoomRepository = RoomRepository()
+) : ViewModel() {
+
+    private val _results = MutableStateFlow<CouponSearchResults?>(null)
+    val results: StateFlow<CouponSearchResults?> = _results
+
+    private val _searching = MutableStateFlow(false)
+    val searching: StateFlow<Boolean> = _searching
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
+
+    private var inFlightQuery: String? = null
+
+    /**
+     * 검색을 실행한다.
+     *
+     * 같은 질의가 이미 날아가 있으면 다시 던지지 않는다. 사용자가 검색 버튼을
+     * 연타하는 것은 결과가 늦다는 신호이지 다시 읽으라는 요청이 아니다.
+     */
+    fun search(rawQuery: String) {
+        val query = rawQuery.trim()
+        if (query.length < MIN_SEARCH_QUERY_LENGTH) {
+            // 오류로 다루지 않는다. 두 글자를 채우는 중인 상태는 실수가 아니다.
+            _results.value = null
+            _message.value = null
+            return
+        }
+        if (_searching.value && inFlightQuery == query) return
+        inFlightQuery = query
+        viewModelScope.launch {
+            _searching.value = true
+            _message.value = null
+            runCatching { repository.searchCoupons(query) }
+                .onSuccess { _results.value = it }
+                .onFailure { error ->
+                    // 결과 영역을 비우지 않는다. 직전 결과가 남아 있는 편이
+                    // 아무것도 없는 화면보다 낫고, 실패는 문구로 알린다.
+                    _message.value = error.message ?: "검색에 실패했습니다."
+                }
+            _searching.value = false
+            inFlightQuery = null
+        }
+    }
+
+    fun clear() {
+        _results.value = null
+        _message.value = null
+    }
+
+    companion object {
+        /** 서버의 SEARCH_MIN_QUERY_LENGTH 와 같은 값. 서버가 400 을 주기 전에 화면에서 막는다. */
+        const val MIN_SEARCH_QUERY_LENGTH = 2
     }
 }
 

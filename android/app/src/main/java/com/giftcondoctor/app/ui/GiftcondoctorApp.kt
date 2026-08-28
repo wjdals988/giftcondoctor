@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 import com.giftcondoctor.app.ui.screens.AppInfoScreen
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponDetailScreen
+import com.giftcondoctor.app.ui.screens.CouponSearchScreen
 import com.giftcondoctor.app.ui.screens.CouponTrashScreen
 import com.giftcondoctor.app.ui.screens.CreateRoomScreen
 import com.giftcondoctor.app.ui.screens.JoinRoomScreen
@@ -54,6 +55,7 @@ object Routes {
     const val Rooms = "rooms"
     const val CreateRoom = "rooms/create"
     const val JoinRoom = "rooms/join"
+    const val CouponSearch = "coupons/search"
     const val Notifications = "settings/notifications"
     const val AppInfo = "settings/app-info"
     const val RoomDetail = "rooms/{roomId}"
@@ -221,9 +223,20 @@ fun GiftcondoctorApp(
                         },
                         onCreateRoom = { navController.navigate(Routes.CreateRoom) },
                         onJoinRoom = { navController.navigate(Routes.JoinRoom) },
+                        onSearchCoupons = { navController.navigate(Routes.CouponSearch) },
                         onOpenNotifications = { navController.navigate(Routes.Notifications) },
                         sharedImageImport = sharedImageImport,
                         onDismissSharedImage = onSharedImageDismissed
+                    )
+                }
+                composable(Routes.CouponSearch) {
+                    CouponSearchScreen(
+                        onBack = { navController.popBackStack() },
+                        // 검색 결과에서 쿠폰을 바로 연다. 방을 거치지 않는 것이
+                        // 이 화면의 존재 이유다.
+                        onOpenCoupon = { roomId, couponId ->
+                            navController.navigate("rooms/$roomId/coupons/$couponId")
+                        }
                     )
                 }
                 composable(Routes.CreateRoom) {
