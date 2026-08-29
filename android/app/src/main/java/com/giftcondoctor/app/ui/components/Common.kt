@@ -71,12 +71,14 @@ fun GDScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
     snackbarHost: @Composable () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = floatingActionButton,
         snackbarHost = snackbarHost,
+        bottomBar = bottomBar,
         topBar = {
             TopAppBar(
                 title = { Text(title, modifier = Modifier.gdHeading()) },

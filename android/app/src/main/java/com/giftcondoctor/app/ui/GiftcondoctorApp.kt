@@ -33,6 +33,8 @@ import com.giftcondoctor.app.ui.screens.AppInfoScreen
 import com.giftcondoctor.app.ui.screens.AddCouponScreen
 import com.giftcondoctor.app.ui.screens.CouponDetailScreen
 import com.giftcondoctor.app.ui.screens.CouponSearchScreen
+import com.giftcondoctor.app.ui.screens.FavoritesScreen
+import com.giftcondoctor.app.ui.components.GDDestination
 import com.giftcondoctor.app.ui.screens.CouponTrashScreen
 import com.giftcondoctor.app.ui.screens.CreateRoomScreen
 import com.giftcondoctor.app.ui.screens.JoinRoomScreen
@@ -56,6 +58,7 @@ object Routes {
     const val CreateRoom = "rooms/create"
     const val JoinRoom = "rooms/join"
     const val CouponSearch = "coupons/search"
+    const val Favorites = "coupons/favorites"
     const val Notifications = "settings/notifications"
     const val AppInfo = "settings/app-info"
     const val RoomDetail = "rooms/{roomId}"
@@ -200,6 +203,20 @@ fun GiftcondoctorApp(
             val startDestination = remember(sessionViewModel) {
                 if (sessionViewModel.currentUid != null) Routes.Rooms else Routes.Login
             }
+            // 탭 전환은 스택을 쌓지 않는다. 탭을 오가며 뒤로가기 스택이 길어지면
+            // 뒤로가기가 앱을 벗어나기까지 몇 번 눌러야 하는지 예측할 수 없다.
+            val selectDestination: (GDDestination) -> Unit = { destination ->
+                navController.navigate(destination.route) {
+                    // restoreState 는 saveState 와 짝일 때만 동작한다. 한쪽만
+                    // 쓰면 탭을 되돌아왔을 때 스크롤 위치와 입력이 초기화된다.
+                    popUpTo(Routes.Rooms) {
+                        inclusive = false
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
             NavHost(navController = navController, startDestination = startDestination) {
                 composable(Routes.Login) {
                     LoginScreen(
@@ -223,15 +240,23 @@ fun GiftcondoctorApp(
                         },
                         onCreateRoom = { navController.navigate(Routes.CreateRoom) },
                         onJoinRoom = { navController.navigate(Routes.JoinRoom) },
-                        onSearchCoupons = { navController.navigate(Routes.CouponSearch) },
+                        onSelectDestination = selectDestination,
                         onOpenNotifications = { navController.navigate(Routes.Notifications) },
                         sharedImageImport = sharedImageImport,
                         onDismissSharedImage = onSharedImageDismissed
                     )
                 }
+                composable(Routes.Favorites) {
+                    FavoritesScreen(
+                        onOpenCoupon = { roomId, couponId ->
+                            navController.navigate("rooms/$roomId/coupons/$couponId")
+                        },
+                        onSelectDestination = selectDestination
+                    )
+                }
                 composable(Routes.CouponSearch) {
                     CouponSearchScreen(
-                        onBack = { navController.popBackStack() },
+                        onSelectDestination = selectDestination,
                         // 검색 결과에서 쿠폰을 바로 연다. 방을 거치지 않는 것이
                         // 이 화면의 존재 이유다.
                         onOpenCoupon = { roomId, couponId ->

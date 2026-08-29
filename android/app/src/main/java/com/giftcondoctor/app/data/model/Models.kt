@@ -55,6 +55,17 @@ data class ExpiringCoupons(
  * 방 안 검색(`filterAndSortCoupons`)과 달리 어느 방의 쿠폰인지가 결과의 일부다.
  * 방 밖에서 찾았으니 어디에 있는지를 함께 알려줘야 사용자가 다음 행동을 정한다.
  */
+/**
+ * 즐겨찾기 한 건이 가리키는 곳.
+ *
+ * 참조만 담는다. 제목·브랜드를 복사해 두면 쿠폰을 수정했을 때 즐겨찾기 목록만
+ * 옛 정보를 보인다. 보안 규칙도 이 두 필드와 생성 시각만 허용한다.
+ */
+data class FavoriteRef(
+    val roomId: String,
+    val couponId: String
+)
+
 data class CouponSearchHit(
     val roomId: String,
     val roomName: String,

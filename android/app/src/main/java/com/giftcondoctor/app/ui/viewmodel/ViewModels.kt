@@ -44,6 +44,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -440,6 +441,87 @@ class CouponSearchViewModel(
         const val MIN_SEARCH_QUERY_LENGTH = 2
     }
 }
+
+/**
+ * 방을 가리지 않는 즐겨찾기 목록.
+ *
+ * 즐겨찾기 참조는 실시간이고, 참조가 가리키는 쿠폰은 그때마다 한 번씩 읽는다.
+ * 쿠폰마다 리스너를 걸면 즐겨찾기 수만큼 연결이 생기는데, 즐겨찾기는 "가끔 열어
+ * 바로 쓰는" 화면이라 그 비용을 상시로 낼 이유가 없다.
+ */
+class FavoritesViewModel(
+    private val couponRepository: CouponRepository = CouponRepository(),
+    private val roomRepository: RoomRepository = RoomRepository()
+) : ViewModel() {
+
+    private val _coupons = MutableStateFlow<UiState<List<FavoriteCoupon>>>(UiState.Loading)
+    val coupons: StateFlow<UiState<List<FavoriteCoupon>>> = _coupons
+
+    /**
+     * 참조는 있는데 쿠폰을 읽지 못한 건수.
+     *
+     * 쿠폰이 삭제됐거나 방에서 나갔을 수 있다. 화면을 오류로 덮을 일은 아니지만
+     * 숨기면 "즐겨찾기가 사라졌다" 로 보인다.
+     */
+    private val _missingCount = MutableStateFlow(0)
+    val missingCount: StateFlow<Int> = _missingCount
+
+    private var started = false
+
+    fun start() {
+        if (started) return
+        started = true
+        viewModelScope.launch {
+            combine(
+                couponRepository.observeAllFavorites(),
+                roomRepository.observeMemberships()
+            ) { refs, memberships -> refs to memberships.associate { it.roomId to it.name } }
+                .catch { _coupons.value = UiState.Error(it.localizedMessage ?: "즐겨찾기를 불러오지 못했습니다.") }
+                .collect { (refs, roomNames) ->
+                    if (refs.isEmpty()) {
+                        _missingCount.value = 0
+                        _coupons.value = UiState.Success(emptyList())
+                        return@collect
+                    }
+                    val coupons = runCatching { couponRepository.loadFavoriteCoupons(refs) }
+                        .getOrElse { emptyList() }
+                    _missingCount.value = (refs.size - coupons.size).coerceAtLeast(0)
+                    _coupons.value = UiState.Success(
+                        coupons
+                            .map { coupon ->
+                                FavoriteCoupon(
+                                    coupon = coupon,
+                                    roomName = roomNames[coupon.roomId] ?: "이름 없는 방"
+                                )
+                            }
+                            // 즐겨찾기 안에서도 지금 쓸 수 있는 것이 먼저여야 한다.
+                            // 끝난 쿠폰은 지우지 않는다 — 해제 버튼이 여기에 있다.
+                            .sortedWith(
+                                compareBy<FavoriteCoupon> { it.coupon.isFinished() }
+                                    .thenBy { it.coupon.expiresLocalDate }
+                                    .thenBy { it.coupon.title.lowercase() }
+                            )
+                    )
+                }
+        }
+    }
+
+    fun removeFavorite(roomId: String, couponId: String) {
+        viewModelScope.launch {
+            // 실패해도 실시간 참조 스트림이 원상태를 되돌려주므로 화면을 직접
+            // 만지지 않는다.
+            runCatching { couponRepository.setFavorite(roomId, couponId, false) }
+        }
+    }
+}
+
+/** 즐겨찾기 목록 한 줄. 방 밖에서 보는 목록이므로 어느 방인지가 항상 붙어야 한다. */
+data class FavoriteCoupon(
+    val coupon: Coupon,
+    val roomName: String
+)
+
+private fun Coupon.isFinished(): Boolean = status == "used" || status == "expired"
 
 class RoomDetailViewModel(
     private val roomRepository: RoomRepository = RoomRepository(),
