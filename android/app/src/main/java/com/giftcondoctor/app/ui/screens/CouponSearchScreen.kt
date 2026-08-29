@@ -46,6 +46,8 @@ import com.giftcondoctor.app.core.expiryUrgency
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.data.model.CouponSearchHit
 import com.giftcondoctor.app.ui.components.EmptyState
+import com.giftcondoctor.app.ui.components.GDBottomBar
+import com.giftcondoctor.app.ui.components.GDDestination
 import com.giftcondoctor.app.ui.components.GDExpiryBadge
 import com.giftcondoctor.app.ui.components.GDScaffold
 import com.giftcondoctor.app.ui.components.InlineMessage
@@ -65,7 +67,7 @@ import java.time.LocalDate
  */
 @Composable
 fun CouponSearchScreen(
-    onBack: () -> Unit,
+    onSelectDestination: (GDDestination) -> Unit,
     onOpenCoupon: (String, String) -> Unit,
     viewModel: CouponSearchViewModel = viewModel()
 ) {
@@ -84,7 +86,10 @@ fun CouponSearchScreen(
         viewModel.search(query)
     }
 
-    GDScaffold(title = "쿠폰 검색", onBack = onBack) { modifier ->
+    GDScaffold(
+        title = "쿠폰 검색",
+        bottomBar = { GDBottomBar(current = GDDestination.Search, onSelect = onSelectDestination) }
+    ) { modifier ->
         Column(
             modifier = modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

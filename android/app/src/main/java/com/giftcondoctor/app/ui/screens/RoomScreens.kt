@@ -38,7 +38,6 @@ import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Restaurant
@@ -118,6 +117,8 @@ import com.giftcondoctor.app.data.model.RoomMembership
 import com.giftcondoctor.app.ui.components.EmptyState
 import com.giftcondoctor.app.ui.components.ErrorState
 import com.giftcondoctor.app.ui.components.GDBadge
+import com.giftcondoctor.app.ui.components.GDBottomBar
+import com.giftcondoctor.app.ui.components.GDDestination
 import com.giftcondoctor.app.ui.components.GDExpiryBadge
 import com.giftcondoctor.app.ui.components.GDInfoBanner
 import com.giftcondoctor.app.ui.components.GDScaffold
@@ -165,7 +166,7 @@ fun RoomListScreen(
     onOpenCoupon: (String, String) -> Unit = { _, _ -> },
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit,
-    onSearchCoupons: () -> Unit,
+    onSelectDestination: (GDDestination) -> Unit,
     onOpenNotifications: () -> Unit,
     sharedImageImport: SharedImageImportState = SharedImageImportState.None,
     onDismissSharedImage: () -> Unit = {},
@@ -196,13 +197,8 @@ fun RoomListScreen(
 
     GDScaffold(
         title = "내 쿠폰방",
+        bottomBar = { GDBottomBar(current = GDDestination.Rooms, onSelect = onSelectDestination) },
         actions = {
-            // 방이 있을 때만 검색이 의미가 있다. 방이 하나도 없으면 찾을 쿠폰도 없다.
-            if ((rooms as? UiState.Success)?.data?.isNotEmpty() == true) {
-                IconButton(onClick = onSearchCoupons, modifier = Modifier.testTag("open-coupon-search")) {
-                    Icon(Icons.Default.Search, contentDescription = "쿠폰 검색")
-                }
-            }
             IconButton(onClick = onOpenNotifications) {
                 Icon(Icons.Default.Notifications, contentDescription = "알림 설정")
             }

@@ -10,6 +10,7 @@ import com.giftcondoctor.app.core.favoriteDocId
 import com.giftcondoctor.app.core.findPossibleCouponDuplicates
 import com.giftcondoctor.app.data.model.Coupon
 import com.giftcondoctor.app.data.model.CouponComment
+import com.giftcondoctor.app.data.model.FavoriteRef
 import com.giftcondoctor.app.data.model.DeletedCoupon
 import com.giftcondoctor.app.data.model.DeletedCouponPage
 import com.giftcondoctor.app.data.model.expiresAtUtcForSeoulDate
@@ -80,6 +81,62 @@ class CouponRepository(
                 trySend(ids)
             }
         awaitClose { registration.remove() }
+    }
+
+    /**
+     * 방을 가리지 않고 내 즐겨찾기 전체를 관찰한다.
+     *
+     * 방 단위 스트림(`observeFavoriteCouponIds`)만 있으면 방이 여러 개일 때
+     * 즐겨찾기도 방마다 흩어진다. 즐겨찾기를 만든 이유가 "자주 쓰는 쿠폰을
+     * 빨리 꺼내는 것" 인데, 그러려면 어느 방에 넣었는지 기억하지 않아도 돼야
+     * 한다.
+     */
+    fun observeAllFavorites(): Flow<List<FavoriteRef>> = callbackFlow {
+        val uid = currentUid
+        if (uid == null) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+        val registration = firestore.collection("users/$uid/favorites")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val refs = snapshot?.documents.orEmpty().mapNotNull { document ->
+                    val roomId = document.getString("roomId")
+                    val couponId = document.getString("couponId")
+                    if (roomId.isNullOrBlank() || couponId.isNullOrBlank()) null
+                    else FavoriteRef(roomId = roomId, couponId = couponId)
+                }
+                trySend(refs)
+            }
+        awaitClose { registration.remove() }
+    }
+
+    /**
+     * 즐겨찾기가 가리키는 쿠폰들을 한 번에 읽는다.
+     *
+     * 참조만 저장했으므로 실제 내용은 여기서 따로 읽어야 한다. 참조에 제목을
+     * 복사해 두는 대안은 쿠폰을 수정했을 때 즐겨찾기만 옛 정보를 보이게 한다.
+     *
+     * 읽지 못한 참조는 결과에서 조용히 빠진다. 쿠폰이 삭제됐거나 방에서
+     * 나갔을 수 있고, 둘 다 화면을 오류로 덮을 만한 일이 아니다. 대신 몇 건이
+     * 빠졌는지는 호출자가 셀 수 있도록 입력과 출력 수를 비교할 수 있게 둔다.
+     */
+    suspend fun loadFavoriteCoupons(refs: List<FavoriteRef>): List<Coupon> = coroutineScope {
+        refs.map { ref ->
+            async {
+                runCatching {
+                    firestore.document("rooms/${ref.roomId}/coupons/${ref.couponId}")
+                        .get()
+                        .await()
+                        .takeIf { it.exists() }
+                        ?.toCoupon(ref.roomId)
+                }.getOrNull()
+            }
+        }.mapNotNull { it.await() }
     }
 
     /**
