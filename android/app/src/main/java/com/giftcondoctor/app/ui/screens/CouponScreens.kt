@@ -97,6 +97,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
@@ -116,6 +117,7 @@ import com.giftcondoctor.app.core.UiState
 import com.giftcondoctor.app.core.clampZoomOffset
 import com.giftcondoctor.app.core.couponDdayLabel
 import com.giftcondoctor.app.core.expiryDateLabel
+import com.giftcondoctor.app.core.ImageLoadErrors
 import com.giftcondoctor.app.core.expiryUrgency
 import com.giftcondoctor.app.core.seoulToday
 import com.giftcondoctor.app.core.statusLabel
@@ -1700,9 +1702,22 @@ private fun CouponImage(
             } else {
                 when (imageState) {
                     is CouponOriginalImageState.Error -> Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.testTag("coupon-image-error")
                     ) {
-                        Text(imageState.message, color = MaterialTheme.colorScheme.error)
+                        val hasBarcode = !coupon.barcodeValue.isNullOrBlank()
+                        val networkFailure = ImageLoadErrors.isNetworkFailure(imageState.message)
+                        Text(
+                            ImageLoadErrors.message(imageState.message, hasBarcode),
+                            // 바코드로 결제할 수 있는 상황을 오류색으로 칠하면
+                            // 실제보다 심각하게 읽힌다.
+                            color = if (networkFailure && hasBarcode) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            textAlign = TextAlign.Center
+                        )
                         TextButton(onClick = onRequestImage) { Text("이미지 다시 불러오기") }
                     }
                     else -> Text("이미지를 표시할 수 없습니다.")
