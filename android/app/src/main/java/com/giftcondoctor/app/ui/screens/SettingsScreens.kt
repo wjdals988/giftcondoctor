@@ -326,6 +326,14 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
             ChangeLogEntry(
+                version = "0.1.34",
+                changes = listOf(
+                    "모든 쿠폰방을 한 번에 검색할 수 있습니다. 방을 하나씩 열어 볼 필요가 없습니다.",
+                    "자주 쓰는 쿠폰에 별표를 달면 목록 맨 위로 올라옵니다.",
+                    "사용 완료를 잘못 눌렀을 때 5분 안에는 쿠폰 상세에서 되돌릴 수 있습니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.33",
                 changes = listOf(
                     "방 목록 맨 위에서 7일 안에 만료되는 쿠폰을 모아 보고, 탭하면 방을 거치지 않고 바로 열 수 있습니다.",
