@@ -326,6 +326,14 @@ fun AppInfoScreen(onBack: () -> Unit) {
             HorizontalDivider()
             Text("변경사항", style = MaterialTheme.typography.titleMedium, modifier = Modifier.gdHeading())
             ChangeLogEntry(
+                version = "0.1.35",
+                changes = listOf(
+                    "화면 아래 탭으로 쿠폰방·검색·즐겨찾기를 오갈 수 있습니다.",
+                    "즐겨찾기한 쿠폰을 방과 상관없이 한 화면에서 모아 봅니다.",
+                    "네트워크가 없어 원본 이미지를 못 불러와도, 바코드는 그대로 쓸 수 있다고 알려드립니다."
+                )
+            )
+            ChangeLogEntry(
                 version = "0.1.34",
                 changes = listOf(
                     "모든 쿠폰방을 한 번에 검색할 수 있습니다. 방을 하나씩 열어 볼 필요가 없습니다.",
